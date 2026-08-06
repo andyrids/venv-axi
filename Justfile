@@ -4,6 +4,8 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 [windows]
 set shell := ["cmd.exe", "/c"]
 
+set dotenv-load := true
+
 [default]
 @_:
     just --list
