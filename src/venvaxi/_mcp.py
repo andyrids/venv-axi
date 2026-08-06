@@ -72,6 +72,16 @@ def _with_help(output: str, hints: list[str]) -> str:
     return f"{output}\n{format_help(hints)}"
 
 
+def camel_case(name: str) -> str:
+    """Convert a snake_case name to camelCase."""
+    import re
+
+    def match_upper(match: re.Match) -> str:
+        return match.group(1).upper()
+
+    return re.sub(r"_([a-zA-Z])", match_upper, name)
+
+
 def list_packages_tool(include_dev: bool = False) -> str:
     """List venv packages for a consuming repo (TOON format)."""
     root = get_project_root()
@@ -82,15 +92,18 @@ def list_packages_tool(include_dev: bool = False) -> str:
         )
     rows = [asdict(package) for package in packages]
     table = encode_table("packages", rows, ["name", "version"])
+
+    cname = camel_case(show_package_tool.__name__)
     return _with_help(
         f"count: {len(packages)}\n{table}",
-        ["Call `show_package_api_tool` for a package's public API"],
+        [f"Call `{cname}` for a package's public API"],
     )
 
 
 def show_package_tool(name: str) -> str:
     """Show metadata for a single package (TOON format)."""
     package = resolve_package(name)
+    cname = camel_case(show_package_api_tool.__name__)
     return _with_help(
         encode_object(
             {
@@ -99,7 +112,7 @@ def show_package_tool(name: str) -> str:
                 "location": package.location,
             }
         ),
-        [f"Call `show_package_api_tool` with name={package.name}"],
+        [f"Call `{cname}` with name={package.name}"],
     )
 
 
@@ -107,13 +120,15 @@ def show_package_api_tool(name: str, docstring: bool = False) -> str:
     """Show public API symbols for a package (TOON format)."""
     symbols = get_public_api(name, docstring=docstring)
     if not symbols:
+        cname = camel_case(get_module_tree_tool.__name__)
         return _with_help(
-            "count: 0", [f"Call `get_module_tree_tool` with name={name}"]
+            "count: 0", [f"Call `{cname}` with name={name}"]
         )
     rows = [asdict(symbol) for symbol in symbols]
     table = encode_table("symbols", rows, SYMBOL_INFO_FIELDS)
+    cname = camel_case(get_symbol_tool.__name__)
     hint = (
-        "Call `get_symbol_tool` for one symbol's full detail"
+        f"Call `{cname}` for one symbol's full detail"
         if docstring
         else "Re-call with docstring=true for complete docstrings"
     )
@@ -131,9 +146,10 @@ def show_module_tool(name: str, docstring: bool = False) -> str:
         }
     )
     if not children:
+        cname = camel_case(get_module_tree_tool.__name__)
         return _with_help(
             f"{header}\nchildren count: 0",
-            [f"Call `get_module_tree_tool` with name={name}"],
+            [f"Call `{cname}` with name={name}"],
         )
     rows = [
         {
@@ -145,8 +161,9 @@ def show_module_tool(name: str, docstring: bool = False) -> str:
     table = encode_table(
         "children", rows, ["name", "kind", "signature", "doc"]
     )
+    cname = camel_case(get_symbol_tool.__name__)
     hint = (
-        "Call `get_symbol_tool` for one symbol's full detail"
+        f"Call `{cname}` for one symbol's full detail"
         if docstring
         else "Re-call with docstring=true for complete docstrings"
     )
@@ -179,8 +196,9 @@ def find_symbol_tool(
     """Search cached symbols by name|doc text (TOON format)."""
     nodes = find_symbol(query, limit, package)
     if not nodes:
+        cname = camel_case(list_packages_tool.__name__)
         hint = (
-            f"No match in `{package}` - call `list_packages_tool`"
+            f"No match in `{package}` - call `{cname}`"
             " to check the package name"
             if package
             else "Re-call with package=<package> to index it and search"
@@ -188,9 +206,11 @@ def find_symbol_tool(
         return _with_help("count: 0", [hint])
     rows = [node.as_row() for node in nodes]
     table = encode_table("symbols", rows, ["name", "kind", "qualified_name"])
+
+    cname = camel_case(get_symbol_tool.__name__)
     return _with_help(
         f"count: {len(nodes)}\n{table}",
-        ["Call `get_symbol_tool` with a qualified_name for full detail"],
+        [f"Call `{cname}` with a qualified_name for full detail"],
     )
 
 
@@ -198,17 +218,19 @@ def get_inheritors_tool(qualified_name: str) -> str:
     """Show classes that directly inherit from a class (TOON format)."""
     nodes = get_inheritors(qualified_name)
     if not nodes:
+        cname = camel_case(find_symbol_tool.__name__)
         return _with_help(
             "count: 0",
-            ["Call `find_symbol_tool` to locate a base class's name"],
+            [f"Call `{cname}` to locate a base class's name"],
         )
     rows = [node.as_row() for node in nodes]
     table = encode_table(
         "inheritors", rows, ["name", "kind", "qualified_name"]
     )
+    cname = camel_case(get_symbol_tool.__name__)
     return _with_help(
         f"count: {len(nodes)}\n{table}",
-        ["Call `get_symbol_tool` with a qualified_name for full detail"],
+        [f"Call `{cname}` with a qualified_name for full detail"],
     )
 
 
@@ -216,14 +238,17 @@ def get_module_tree_tool(name: str, max_depth: int = 2) -> str:
     """Show nested module tree for a module|package (TOON format)."""
     pairs = get_module_tree(name, max_depth)
     if not pairs:
+        cname = camel_case(show_module_tool.__name__)
         return _with_help(
-            "count: 0", ["Call `list_packages_tool` for the venv package list"]
+            "count: 0", [f"Call `{cname}` for the venv package list"]
         )
     rows = [{"depth": depth, **node.as_row()} for depth, node in pairs]
     table = encode_table("tree", rows, ["depth", "qualified_name", "kind"])
+
+    cname = camel_case(show_module_tool.__name__)
     return _with_help(
         f"count: {len(pairs)}\n{table}",
-        ["Call `show_module_tool` with a module name for its symbols"],
+        [f"Call `{cname}` with a module name for its symbols"],
     )
 
 
@@ -253,15 +278,12 @@ def build_server() -> Any:
     from fastmcp import FastMCP
 
     server = FastMCP("VenvAXI")
-    for function in _TOOLS:
-        fname = function.__name__
+    for fn in _TOOLS:
         # get_module_tree_tool -> getModuleTreeTool etc. (camelCase)
-        cname = re.sub(r"_([a-zA-Z])", lambda m: m.group(1).upper(), fname)
-
-        server.tool(_toon_errors(function), name=cname)
+        server.tool(_toon_errors(fn), name=camel_case(fn.__name__))
     return server
 
 
 def serve() -> None:
-    """Start the `axi` MCP server over stdio."""
+    """Start the `VenvAXI` MCP server over stdio."""
     build_server().run()

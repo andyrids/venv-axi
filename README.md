@@ -59,9 +59,12 @@ The AXI tools can be served over MCP (STDIO) with the `venvaxi serve` command, w
 uv add venv-axi --dev --extra mcp
 ```
 
-The MCP server exposes; `list_packages_tool`, `show_package_tool`, `show_package_api_tool`,
-`show_module_tool`, `get_symbol_tool`, `find_symbol_tool`, `get_inheritors_tool` and
-`get_module_tree_tool`
+The MCP server exposes; `listPackagesTool`, `showPackageTool`, `showPackageApiTool`,
+`showModuleTool`, `getSymbolTool`, `findSymbolTool`, `getInheritorsTool` and
+`getModuleTreeTool`
+
+> [!NOTE]
+> Tool names are in camelCase format, generated from the snake_case function names (`_mcp.py`).
 
 ## Installation
 
@@ -78,6 +81,16 @@ With the MCP server extra:
 ```bash
 uv add venv-axi --dev --extra mcp
 ```
+
+Register ambient context (`AGENTS.md` block + MCP config) in the consuming repo:
+
+```bash
+uv run venvaxi setup
+```
+
+> [!NOTE]
+> The MCP config (`.mcp.json`) is only created on `setup` when `venv-axi` is installed with the
+> `mcp` optional dependency. On adding this extra dependency, rerun the `setup` command.
 
 The symbol graph is cached per-project under `~/.venvaxi/`.
 
@@ -108,10 +121,7 @@ The SQLite Node|Edge graph architecture and symbol-graph walking patters used in
 are heavily inspired by `code-review-graph`.
 
 `code-review-graph` populates its graph from a static AST, whereas the AXI populates its graph
-from live object introspection.
-
-`code-review-graph` walks a static AST, whereas the AXI walks live objects via `importlib`
-and `inspect`.
+from live object introspection via `importlib` and `inspect`.
 
 - **Repository**: [tirth8205/code-review-graph](https://github.com/tirth8205/code-review-graph)
 - **License**: MIT License - Copyright (c) 2026 Tirth Kanani
@@ -123,3 +133,14 @@ adapted from the official `toon-python` reference implementation.
 
 - **Repository**: [toon-format/toon-python](https://github.com/toon-format/toon-python)
 - **License**: MIT License - Copyright (c) 2025 TOON Format Organization
+
+### `axi.md`
+
+I became aware of the AXI design principles through [Kun Chen](https://github.com/kunchenguid)
+via his projects and [site](https://axi.md/). His benchmarks and use of TOON format inspired and
+informed the creation of `venv-axi` - a future contribution to the AXI Community Catalog.
+
+- **Repository**:
+  - [kunchenguid/axi](https://github.com/kunchenguid/axi)
+  - [kunchenguid/gh-axi](https://github.com/kunchenguid/gh-axi)
+- **License**: MIT License - Copyright (c) 2026 Kun Chen

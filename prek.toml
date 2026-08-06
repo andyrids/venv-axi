@@ -2,7 +2,7 @@
 
 [[repos]]
 repo = "https://gitlab.com/andyrids/pkgdx"
-rev = "v0.1.0"
+rev = "v0.2.0"
 
 [[repos.hooks]]
 id = "pkgdx-lint"
@@ -16,13 +16,9 @@ name = "Format [Ruff]"
 id = "pkgdx-markdown"
 name = "Check Markdown [PyMarkdown]"
 
-# NOTE: `pkgdx-typing` runs in an isolated hook env, so `fastmcp` (the
-# `mcp` extra, imported lazily by `_mcp.py`) must be declared here or
-# mypy reports `import-not-found` for it.
 [[repos.hooks]]
 id = "pkgdx-typing"
 name = "Typing [Mypy]"
-additional_dependencies = ["fastmcp>=0.1.0"]
 
 [[repos.hooks]]
 id = "pkgdx-secrets"

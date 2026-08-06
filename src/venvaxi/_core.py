@@ -22,7 +22,7 @@ class ExitCode:
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class CLIContext:
-    """Centralized state for the CLI commands.
+    """Centralised state for the CLI commands.
 
     NOTE: Commands write raw TOON to `sys.stdout`, so there is no
     console abstraction to carry here.
