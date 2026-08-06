@@ -46,3 +46,5 @@ ICM/**/output/*
 .claude/skills/*-workspace/
 
 .mcp.json
+
+.env*
