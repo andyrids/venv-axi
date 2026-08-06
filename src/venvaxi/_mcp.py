@@ -2,7 +2,6 @@
 
 import functools
 import logging
-import re
 from collections.abc import Callable
 from dataclasses import asdict
 from typing import Any
@@ -121,9 +120,7 @@ def show_package_api_tool(name: str, docstring: bool = False) -> str:
     symbols = get_public_api(name, docstring=docstring)
     if not symbols:
         cname = camel_case(get_module_tree_tool.__name__)
-        return _with_help(
-            "count: 0", [f"Call `{cname}` with name={name}"]
-        )
+        return _with_help("count: 0", [f"Call `{cname}` with name={name}"])
     rows = [asdict(symbol) for symbol in symbols]
     table = encode_table("symbols", rows, SYMBOL_INFO_FIELDS)
     cname = camel_case(get_symbol_tool.__name__)
