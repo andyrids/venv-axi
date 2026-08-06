@@ -1,10 +1,6 @@
 name: CI
 
-# TODO: Build/Publish jobs are a follow-up. Publishing to PyPI via a
-# trusted publisher needs a tag-triggered `uv build` + `uv publish` job
-# and, because the version is derived by `hatch-vcs`, the
-# `SETUPTOOLS_SCM_PRETEND_VERSION_FOR_VENV_AXI` environment variable set
-# to the tag (analogous to `pkgdx`'s `..._FOR_PKGDX`).
+# NOTE: Tag-triggered build/publish to PyPI lives in `release.yml`.
 
 on:
   push:

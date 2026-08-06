@@ -1,0 +1,57 @@
+name: Release
+
+# Builds and publishes `venv-axi` to PyPI via Trusted Publishing (OIDC) when
+# a `v*` tag is pushed. Split into `build` (no credentials) and `publish`
+# (id-token: write only) jobs, per Astral's recommended pattern, so the
+# OIDC-credentialed job carries the smallest possible blast radius.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # NOTE: `fetch-depth: 0` - `hatch-vcs` derives the version from git
+      # tags, which a shallow clone does not carry.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set version from tag
+        run: |
+          echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_VENV_AXI=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - run: uv build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: astral-sh/setup-uv@v7
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - run: uv publish
