@@ -10,7 +10,7 @@ on:
     tags:
       - "v*"
   release:
-    types: [published]
+    types: [published, prerelease]
 
 jobs:
   build:
