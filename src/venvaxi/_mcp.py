@@ -75,8 +75,8 @@ def camel_case(name: str) -> str:
     """Convert a snake_case name to camelCase."""
     import re
 
-    def match_upper(match: re.Match) -> str:
-        return match.group(1).upper()
+    def match_upper(match: re.Match[str]) -> str:
+        return str(match.group(1)).upper()
 
     return re.sub(r"_([a-zA-Z])", match_upper, name)
 
