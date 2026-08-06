@@ -1,0 +1,83 @@
+[project]
+name = "venv-axi"
+dynamic = ["version"]
+description = "An Agent eXperience Interface (AXI) for querying venv dependencies."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICEN[CS]E*", "COPYRIGHT"]
+authors = [
+    { name = "Andrew Ridyard", email = "andyrids.culprit320@passmail.com" },
+]
+requires-python = ">=3.11"
+keywords = []
+classifiers = [
+    # 3 - Alpha | 4 - Beta | 5 - Production/Stable
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
+]
+dependencies = []
+
+[project.optional-dependencies]
+mcp = ["fastmcp>=0.1.0"]
+
+[dependency-groups]
+dev = [
+    "coverage>=7.14.1",
+    "fastmcp>=0.1.0",
+    "pkgdx",
+    "pytest>=9.1.1",
+]
+
+[project.scripts]
+venvaxi = "venvaxi.__main__:main"
+
+[project.urls]
+Repository = "https://github.com/andyrids/venv-axi"
+Issues = "https://github.com/andyrids/venv-axi/issues"
+Changelog = "https://github.com/andyrids/venv-axi/blob/main/CHANGELOG.md"
+
+# NOTE: `pkgdx` is not on PyPI - it ships to a GitLab project package
+# registry, which is publicly readable (no auth required).
+[[tool.uv.index]]
+name = "gitlab-pkgdx"
+url = "https://gitlab.com/api/v4/projects/82928123/packages/pypi/simple"
+explicit = true
+
+[tool.uv.sources]
+pkgdx = { index = "gitlab-pkgdx" }
+
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.raw-options]
+local_scheme = "no-local-version"
+version_scheme = "guess-next-dev"
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+  "/.uv-cache",
+]
+
+[tool.hatch.build.targets.wheel]
+exclude = [
+  "/.uv-cache",
+]
+
+[tool.pytest.ini_options]
+addopts = ["--import-mode=importlib"]
+log_cli = true
+log_cli_level = "INFO"
+tmp_path_retention_policy = "failed"
+
+[tool.coverage.run]
+omit = ["tests/*", "*/src_test*/*"]

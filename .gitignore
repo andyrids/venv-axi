@@ -1,0 +1,48 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# uv — virtual environment
+.venv/
+.uv-cache/
+
+# hatchling — build output
+dist/
+src/*.egg-info/
+
+# pytest — test cache
+.pytest_cache/
+
+# Coverage.py — reports and data
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# mypy — type-check cache
+.mypy_cache/
+
+# Ruff — lint/format cache
+.ruff_cache/
+
+# prek — pre-commit hook cache
+.prek/
+
+# macOS — filesystem metadata
+.DS_Store
+
+# Windows — filesystem metadata
+Thumbs.db
+ehthumbs.db
+
+# VSCode - settings
+.vscode/
+
+# ICM
+ICM/**/output/*
+!ICM/**/output/.gitkeep
+
+# skill-creator — eval workspaces
+.claude/skills/*-workspace/
+
+.mcp.json

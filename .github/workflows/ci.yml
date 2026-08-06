@@ -1,0 +1,55 @@
+name: CI
+
+# TODO: Build/Publish jobs are a follow-up. Publishing to PyPI via a
+# trusted publisher needs a tag-triggered `uv build` + `uv publish` job
+# and, because the version is derived by `hatch-vcs`, the
+# `SETUPTOOLS_SCM_PRETEND_VERSION_FOR_VENV_AXI` environment variable set
+# to the tag (analogous to `pkgdx`'s `..._FOR_PKGDX`).
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ruff-lint:
+    runs-on: ubuntu-latest
+    steps:
+      # NOTE: `fetch-depth: 0` - `hatch-vcs` derives the version from
+      # git tags, which a shallow clone does not carry.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - run: uv sync
+
+      - run: uv run pkgdx-lint-hook
+      - run: uv run pkgdx-format-hook
+
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - run: uv sync
+
+      - run: uv run coverage run -m pytest
+      - run: uv run coverage report
+      - run: uv run coverage xml

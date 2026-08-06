@@ -1,0 +1,125 @@
+# Agent eXperience Interface [`venv-axi`]
+
+`venv-axi` provides an [Agent eXperience Interface (AXI)](https://axi.md/), which introspects
+dependencies for a consuming project - querying exact signatures present in that venv, at the
+exact versions pinned there - in a token-efficient [TOON](https://github.com/toon-format/spec)
+format, on STDOUT.
+
+The CLI is installed as `venvaxi` and the same tools are available over MCP (STDIO).
+
+## Why?
+
+The AXI allows introspection of installed packages by importing them, thereby covering
+private, internal and undocumented distributions that documentation-retrieval tools cannot see.
+
+The interface cannot drift from the pinned version - reporting what a symbol is rather than how to
+use it - complimenting a documentation source such as `Context7`, `King Context` etc.
+
+The AXI answers "does this exist, and what is its exact shape in the version I have
+installed?" - other tools answer "how do I use this and why?"
+
+## How?
+
+An agent scans the codebase with available tools and uses its findings to drive the AXI:
+
+1. Scan the codebase -> bare name (`Console.print`) & package (`rich`)
+2. Resolve bare name -> qualified name
+
+```bash
+uv run venvaxi find Console.print --package rich
+```
+
+```bash
+uv run venvaxi inspect rich.console::Console.print
+```
+
+Other commands:
+
+- `venvaxi` - Live status & next-step hints
+- `venvaxi list` - Installed, declared dependencies
+- `venvaxi show rich --api` - Public API symbols
+- `venvaxi tree rich --max-depth 1` - Nested module tree
+- `venvaxi inspect rich.console` - Direct children
+- `venvaxi inherits <qualified_name>` - Direct subclasses
+
+Docstrings are truncated to a first line by default - add `--docstring` for complete bodies. The
+`--refresh` option rebuilds a stale graph after a dependency version change.
+
+Ambient context for agents can be injected into `AGENTS.md` alongside MCP server entries in
+`.vscode/mcp.json` and `.mcp.json`:
+
+```bash
+uv run venvaxi setup
+```
+
+The AXI tools can be served over MCP (STDIO) with the `venvaxi serve` command, which requires the
+`mcp` extra:
+
+```bash
+uv add venv-axi --dev --extra mcp
+```
+
+The MCP server exposes; `list_packages_tool`, `show_package_tool`, `show_package_api_tool`,
+`show_module_tool`, `get_symbol_tool`, `find_symbol_tool`, `get_inheritors_tool` and
+`get_module_tree_tool`
+
+## Installation
+
+> [!NOTE]
+> Installation is package-manager agnostic. Use another manager like Poetry and replace the
+> `uv run` accordingly or omit entirely, with an activated virtual environment.
+
+```bash
+uv add venv-axi --dev
+```
+
+With the MCP server extra:
+
+```bash
+uv add venv-axi --dev --extra mcp
+```
+
+The symbol graph is cached per-project under `~/.venvaxi/`.
+
+## A Note on AI Usage
+
+This project is being used as a testbed for Interpretable Context Methodology (ICM), which uses
+folder structure as Agent Architecture.
+
+ICM replaces framework-level orchestration with filesystem structure. Numbered folders represent
+stages. Plain markdown files carry prompts and context that tell a single AI agent what role to
+play at each step.
+
+The system is self-documenting - read `AGENTS.md` (symlink -> `CLAUDE.md`), which provide
+development context. Navigate to `CONTEXT.md` as per `AGENTS.md` [`Routing`](AGENTS.md#routing)
+instructions to see the necessary routing, context and reference that an agent would follow.
+
+A community dedicated to this methodology can be found at [https://www.skool.com/cliefnotes](https://www.skool.com/cliefnotes/about?ref=478219c6d94340bd984dde6a8d1046e6).
+
+> [!NOTE]
+> ICM can leverage AI in a way that streamlines development, but also generates enough friction
+> in the right areas to promote continued development (Friction Doctrine).
+
+## Attribution
+
+### `code-review-graph`
+
+The SQLite Node|Edge graph architecture and symbol-graph walking patters used in the AXI modules
+are heavily inspired by `code-review-graph`.
+
+`code-review-graph` populates its graph from a static AST, whereas the AXI populates its graph
+from live object introspection.
+
+`code-review-graph` walks a static AST, whereas the AXI walks live objects via `importlib`
+and `inspect`.
+
+- **Repository**: [tirth8205/code-review-graph](https://github.com/tirth8205/code-review-graph)
+- **License**: MIT License - Copyright (c) 2026 Tirth Kanani
+
+### `toon-python`
+
+The regex patterns, structural tokens and constant-extraction patterns for TOON format are directly
+adapted from the official `toon-python` reference implementation.
+
+- **Repository**: [toon-format/toon-python](https://github.com/toon-format/toon-python)
+- **License**: MIT License - Copyright (c) 2025 TOON Format Organization

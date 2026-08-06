@@ -1,0 +1,42 @@
+{
+  "skill_name": "axi",
+  "evals": [
+    {
+      "id": 1,
+      "name": "fastmcp-instructions-kwarg",
+      "prompt": "I want build_server() in src/venvaxi/_mcp.py to pass an `instructions` string into the FastMCP constructor so agents get contextual guidance before calling any tool, similar to how the CLI's help[] footers work. Does the FastMCP class in the fastmcp version pinned in this repo's venv actually accept an `instructions` kwarg on __init__, and what type is it (plain str, or something more structured)? I don't want to guess and end up with a TypeError.",
+      "expected_output": "Answers strictly from the installed fastmcp version (verified via `venvaxi` rather than recalled from memory), correctly stating whether `instructions` exists on `FastMCP.__init__` and its real type.",
+      "files": [],
+      "expectations": [
+        "States that FastMCP.__init__ accepts an `instructions` parameter",
+        "States the type as an optional string (str | None), not a structured object",
+        "Grounds the claim in a live verification step (e.g. running a venvaxi find/inspect command) rather than presenting it as pure recollection",
+        "Does not fabricate FastMCP-specific documentation prose if the tool's returned docstring is actually for an unrelated class (a real quirk in this repo's symbol graph: venvaxi inspect fastmcp::FastMCP currently returns AggregateProvider's docstring)"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "axi-serve-missing-extra-troubleshooting",
+      "prompt": "venvaxi serve keeps exiting immediately with something like 'requires the venv-axi[mcp] extra' in the log, but I'm pretty sure fastmcp is installed since I see it in pyproject.toml under [project.optional-dependencies]. Can you help me figure out why venvaxi still thinks it's missing, and how do I actually fix it for good so `venvaxi setup` picks it up too?",
+      "expected_output": "Correctly diagnoses that fastmcp presence in pyproject.toml doesn't mean it's installed in the active venv, points at `mcp_available()`'s `importlib.util.find_spec('fastmcp')` check, gives the correct fix (`uv add venv-axi[mcp]` / `uv sync --extra mcp`), and explains that `setup` will now register the MCP entries it previously omitted.",
+      "files": [],
+      "expectations": [
+        "Explains the check is import-based (an actual `find_spec('fastmcp')`/import check against the active venv), not based on the dependency merely being declared in pyproject.toml",
+        "Recommends actually installing/syncing the extra into the active venv (e.g. `uv add venv-axi[mcp]` or `uv sync --extra mcp`), not just editing pyproject.toml by hand",
+        "Explains that re-running `venvaxi setup` afterwards will (re-)register the MCP entries it previously skipped"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "rich-console-json-output-methods",
+      "prompt": "I'm adding a `--json` flag to `venvaxi list` in src/venvaxi/_cli.py so it can dump the same data as JSON instead of TOON, and I'm considering routing the output through a rich.console.Console rather than the plain sys.stdout.write we use today. Before I write it, what's on Console in the rich version installed here for emitting JSON directly - is there a print_json method, or do I need to serialize to a string myself and just print it?",
+      "expected_output": "Correctly reports whether `Console.print_json` exists in the installed rich version and its real signature (verified, not recalled), rather than assuming rich's API from general knowledge.",
+      "files": [],
+      "expectations": [
+        "Correctly states that Console.print_json exists in the installed rich version",
+        "Mentions at least one real parameter of print_json (e.g. json, data, or indent)",
+        "Grounds the claim in a live verification step rather than presenting it as pure recollection"
+      ]
+    }
+  ]
+}
