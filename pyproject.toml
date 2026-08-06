@@ -69,6 +69,9 @@ exclude = [
 ]
 
 [tool.hatch.build.targets.wheel]
+# NOTE: The distribution name (`venv-axi`) does not match the import name
+# (`venvaxi`), so hatchling cannot infer the package directory.
+packages = ["src/venvaxi"]
 exclude = [
   "/.uv-cache",
 ]

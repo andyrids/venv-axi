@@ -6,8 +6,9 @@ structured output.
 """
 
 import logging.config
+from typing import Any
 
-CONFIG: dict = {
+CONFIG: dict[str, Any] = {
     "version": 1,
     "incremental": False,
     "disable_existing_loggers": False,

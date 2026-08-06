@@ -82,3 +82,45 @@ them out to the same consolidated `ICM/create-feature` workspace.
 - Each workspace is compartmentalised
 - Each workspace `CONTEXT.md` provides necessary context
 - Avoid unnecessary files listed in `.gitignore`
+
+<!-- venvaxi:begin -->
+
+## AXI
+
+`venvaxi` reports the **installed truth** about this repo's
+dependencies - the exact signatures present in this venv, at the exact
+versions pinned here. Prefer it over recalling an API from memory:
+memory drifts from the installed version, `axi` cannot.
+
+It does not read the codebase of a consuming repo or need to - scan the
+codebase with your tools and use any findings to drive `axi`:
+
+1. Scan - locate the import and call sites of the dependency symbol
+   you are working on with your own file-search tools. This gives you a
+   bare symbol name (`Console.print`) and its owning package (`rich`).
+2. Resolve - `venvaxi find Console.print --package rich` turns
+   that bare name into a qualified one (`rich.console::Console.print`),
+   indexing the package if needed.
+3. Inspect - `venvaxi inspect rich.console::Console.print` returns
+   the real signature and docstring for the installed version.
+
+Docstrings are truncated to a first line by default; add `--docstring`
+for complete bodies. Add `--refresh` to any query to rebuild a stale
+graph after changing a dependency version (`find` requires `--package`
+alongside `--refresh`).
+
+`axi` reports what a symbol *is*, not how to use it - for guides,
+examples and migration notes, reach for documentation instead.
+
+Other commands:
+
+- `venvaxi` - live status and next-step hints.
+- `venvaxi list [--all]` - declared, installed dependencies.
+- `venvaxi show <package> [--api]` - metadata, or public API symbols.
+- `venvaxi tree <package> [--max-depth N]` - nested module tree.
+- `venvaxi inspect <module>` - a module's direct children.
+- `venvaxi inherits <qualified_name>` - direct subclasses.
+- `venvaxi serve` - the same tools over MCP (stdio).
+- `venvaxi setup` - re-register MCP config and refresh this block.
+
+<!-- venvaxi:end -->

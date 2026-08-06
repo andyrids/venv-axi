@@ -121,7 +121,9 @@ def inject_agents_md(root: Path) -> bool:
         True if `AGENTS.md` was created or modified.
     """
     path = root / "AGENTS.md"
-    block = f"{_BEGIN}\n{_BLOCK_BODY}\n{_END}"
+    # NOTE: `_BLOCK_BODY` already opens and closes on a blank line, so
+    # no extra separator - a doubled blank line trips markdown MD012.
+    block = f"{_BEGIN}\n{_BLOCK_BODY}{_END}"
 
     if not path.exists():
         _atomic_write_text(path, f"{block}\n")
@@ -140,7 +142,11 @@ def inject_agents_md(root: Path) -> bool:
         end = text.index(_END) + len(_END)
         updated = text[:start] + block + text[end:]
     else:
-        separator = "\n\n" if text and not text.endswith("\n\n") else ""
+        # NOTE: Pad to exactly one blank line before the block, whatever
+        # trailing newlines the existing file happens to carry - a
+        # doubled blank line trips markdown MD012.
+        trailing = len(text) - len(text.rstrip("\n")) if text else 2
+        separator = "\n" * max(2 - trailing, 0)
         updated = f"{text}{separator}{block}\n"
 
     if updated == original:

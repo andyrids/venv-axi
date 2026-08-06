@@ -1,0 +1,44 @@
+#:schema https://raw.githubusercontent.com/j178/prek/refs/heads/master/prek.schema.json
+
+[[repos]]
+repo = "https://gitlab.com/andyrids/pkgdx"
+rev = "v0.1.0"
+
+[[repos.hooks]]
+id = "pkgdx-lint"
+name = "Lint [Ruff]"
+
+[[repos.hooks]]
+id = "pkgdx-format"
+name = "Format [Ruff]"
+
+[[repos.hooks]]
+id = "pkgdx-markdown"
+name = "Check Markdown [PyMarkdown]"
+
+# NOTE: `pkgdx-typing` runs in an isolated hook env, so `fastmcp` (the
+# `mcp` extra, imported lazily by `_mcp.py`) must be declared here or
+# mypy reports `import-not-found` for it.
+[[repos.hooks]]
+id = "pkgdx-typing"
+name = "Typing [Mypy]"
+additional_dependencies = ["fastmcp>=0.1.0"]
+
+[[repos.hooks]]
+id = "pkgdx-secrets"
+name = "Detect Secrets [detect-secrets]"
+
+[[repos]]
+repo = "builtin"
+
+[[repos.hooks]]
+id = "check-toml"
+name = "Check TOML [Builtin]"
+
+[[repos.hooks]]
+id = "check-yaml"
+name = "Check YAML [Builtin]"
+
+[[repos.hooks]]
+id = "detect-private-key"
+name = "Detect PEM [Builtin]"

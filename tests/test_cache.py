@@ -9,8 +9,7 @@ from unittest import mock
 
 import pytest
 
-from venvaxi import exceptions
-from venvaxi import _cache
+from venvaxi import _cache, exceptions
 from venvaxi._store import NodeKind, SymbolNode, SymbolStore
 
 NodeFactory = Callable[..., SymbolNode]

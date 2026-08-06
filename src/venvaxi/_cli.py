@@ -327,9 +327,7 @@ def command_tree(ctx: CLIContext) -> int:
     _emit(f"count: {len(pairs)}")
     _emit(encode_table("tree", rows, [item.value for item in TreeField]))
     _emit(
-        format_help(
-            ["Run `venvaxi inspect <module>` for a module's symbols"]
-        )
+        format_help(["Run `venvaxi inspect <module>` for a module's symbols"])
     )
     return ExitCode.EX_OK
 

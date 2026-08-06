@@ -590,8 +590,8 @@ def _build_store_for(
         An open `SymbolStore`, populated with the symbol graph for the
         resolved top-level package. MUST be closed (`close()`).
     """
-    from venvaxi._core import get_project_root
     from venvaxi import _cache
+    from venvaxi._core import get_project_root
 
     root_package = _resolve_import_name(_top_level_root(name))
     try:
@@ -744,8 +744,8 @@ def find_symbol(
     Returns:
         Matching `SymbolNode` instance(s).
     """
-    from venvaxi._core import get_project_root
     from venvaxi._cache import get_cache_db_path
+    from venvaxi._core import get_project_root
 
     if not query.strip():
         msg = "Search query must be non-empty"

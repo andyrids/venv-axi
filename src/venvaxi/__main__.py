@@ -5,8 +5,7 @@ import logging
 import sys
 from typing import NoReturn
 
-from venvaxi import _core, exceptions
-from venvaxi._cli import add_subparser, command_home
+from venvaxi import _cli, _core, exceptions
 from venvaxi._logging import configure_cli_logging
 from venvaxi._toon import format_error
 
@@ -30,10 +29,13 @@ def main() -> NoReturn:
         action="store_true",
         help="Enable verbose logging [DEBUG]",
     )
-    parser.set_defaults(func=command_home)
+    # NOTE: Attribute access (not a module-level `from ... import`) so the
+    # bare-invocation default resolves at call time, like every other
+    # command registered by `add_subparser`.
+    parser.set_defaults(func=_cli.command_home)
 
     subparsers = parser.add_subparsers(title="commands", dest="command")
-    add_subparser(subparsers)
+    _cli.add_subparser(subparsers)
 
     args = parser.parse_args()
 
