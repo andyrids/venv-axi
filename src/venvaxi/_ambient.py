@@ -7,6 +7,7 @@ relevant state already visible - before the agent takes any action.
 - Inject a marked block into the `AGENTS.md` of a consuming repo
 - Register an MCP server entry in `.vscode/mcp.json`
 - Register an MCP server entry in a `.mcp.json`
+- Install `.claude/skills/venvaxi/SKILL.md` (opt-in, `--skill`)
 
 NOTE: The above steps are idempotent - running `venvaxi setup` multiple
 times has no adverse effect.
@@ -17,58 +18,23 @@ import json
 import logging
 import os
 import sys
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__package__)
 
-_BEGIN = "<!-- venvaxi:begin -->"
-_END = "<!-- venvaxi:end -->"
+ambient_markdown = Path(__file__).parent.joinpath("ambient.md")
+skill_markdown = Path(__file__).parent.joinpath("SKILL.md")
 
-# NOTE: Pre-extraction (`pkgdx axi`) markers - migrated on setup
-_OLD_BEGIN = "<!-- pkgdx:axi:begin -->"
-_OLD_END = "<!-- pkgdx:axi:end -->"
 
-_BLOCK_BODY = """
-## AXI
+class Text(StrEnum):
+    """Ambient-context text components."""
 
-`venvaxi` reports the **installed truth** about this repo's
-dependencies - the exact signatures present in this venv, at the exact
-versions pinned here. Prefer it over recalling an API from memory:
-memory drifts from the installed version, `axi` cannot.
-
-It does not read the codebase of a consuming repo or need to - scan the
-codebase with your tools and use any findings to drive `axi`:
-
-1. Scan - locate the import and call sites of the dependency symbol
-   you are working on with your own file-search tools. This gives you a
-   bare symbol name (`Console.print`) and its owning package (`rich`).
-2. Resolve - `venvaxi find Console.print --package rich` turns
-   that bare name into a qualified one (`rich.console::Console.print`),
-   indexing the package if needed.
-3. Inspect - `venvaxi inspect rich.console::Console.print` returns
-   the real signature and docstring for the installed version.
-
-Docstrings are truncated to a first line by default; add `--docstring`
-for complete bodies. Add `--refresh` to any query to rebuild a stale
-graph after changing a dependency version (`find` requires `--package`
-alongside `--refresh`).
-
-`axi` reports what a symbol *is*, not how to use it - for guides,
-examples and migration notes, reach for documentation instead.
-
-Other commands:
-
-- `venvaxi` - live status and next-step hints.
-- `venvaxi list [--all]` - declared, installed dependencies.
-- `venvaxi show <package> [--api]` - metadata, or public API symbols.
-- `venvaxi tree <package> [--max-depth N]` - nested module tree.
-- `venvaxi inspect <module>` - a module's direct children.
-- `venvaxi inherits <qualified_name>` - direct subclasses.
-- `venvaxi serve` - the same tools over MCP (stdio).
-- `venvaxi setup` - re-register MCP config and refresh this block.
-
-"""
+    BEGIN = "<!-- venvaxi:begin -->"
+    END = "<!-- venvaxi:end -->"
+    GAP = "\n\n"
+    BODY = ambient_markdown.read_text(encoding="utf-8").strip()
 
 
 def _atomic_write_text(path: Path, text: str) -> None:
@@ -110,10 +76,6 @@ def mcp_available() -> bool:
 def inject_agents_md(root: Path) -> bool:
     """Inject ambient-context block into `AGENTS.md` (idempotent).
 
-    NOTE: A pre-extraction `pkgdx:axi` block is tool-owned content - it
-    is sliced out first, so migrating repos neither keep a stale
-    duplicate nor drift.
-
     Args:
         root: The consuming repo's root path.
 
@@ -121,9 +83,7 @@ def inject_agents_md(root: Path) -> bool:
         True if `AGENTS.md` was created or modified.
     """
     path = root / "AGENTS.md"
-    # NOTE: `_BLOCK_BODY` already opens and closes on a blank line, so
-    # no extra separator - a doubled blank line trips markdown MD012.
-    block = f"{_BEGIN}\n{_BLOCK_BODY}{_END}"
+    block = f"{Text.BEGIN}{Text.GAP}{Text.BODY}{Text.GAP}{Text.END}"
 
     if not path.exists():
         _atomic_write_text(path, f"{block}\n")
@@ -132,19 +92,12 @@ def inject_agents_md(root: Path) -> bool:
 
     original = path.read_text(encoding="utf-8")
     text = original
-    if _OLD_BEGIN in text and _OLD_END in text:
-        start = text.index(_OLD_BEGIN)
-        end = text.index(_OLD_END) + len(_OLD_END)
-        text = text[:start] + text[end:]
 
-    if _BEGIN in text and _END in text:
-        start = text.index(_BEGIN)
-        end = text.index(_END) + len(_END)
+    if Text.BEGIN in text and Text.END in text:
+        start = text.index(Text.BEGIN)
+        end = text.index(Text.END) + len(Text.END)
         updated = text[:start] + block + text[end:]
     else:
-        # NOTE: Pad to exactly one blank line before the block, whatever
-        # trailing newlines the existing file happens to carry - a
-        # doubled blank line trips markdown MD012.
         trailing = len(text) - len(text.rstrip("\n")) if text else 2
         separator = "\n" * max(2 - trailing, 0)
         updated = f"{text}{separator}{block}\n"
@@ -153,7 +106,7 @@ def inject_agents_md(root: Path) -> bool:
         logger.debug("`AGENTS.md` axi block is up-to-date")
         return False
     _atomic_write_text(path, updated)
-    logger.debug("Updated `AGENTS.md` axi block")
+    logger.debug("Updated `AGENTS.md` AXI block")
     return True
 
 
@@ -184,7 +137,7 @@ def _update_mcp_json(path: Path, servers_key: str, available: bool) -> bool:
     servers = data.setdefault(servers_key, {})
 
     if not available:
-        if servers.pop("axi", None) is None:
+        if servers.pop("VenvAXI", None) is None:
             return False
         _atomic_write_text(path, json.dumps(data, indent=2) + "\n")
         return True
@@ -195,18 +148,46 @@ def _update_mcp_json(path: Path, servers_key: str, available: bool) -> bool:
         "args": ["serve"],
     }
 
-    # NOTE: A pre-extraction entry's `args` (`["axi", "serve"]`) can
-    # never equal the new entry's, so migration is detected for free.
-    if servers.get("axi") == entry:
+    if servers.get("VenvAXI") == entry:
         return False
 
-    servers["axi"] = entry
+    servers["VenvAXI"] = entry
     path.parent.mkdir(parents=True, exist_ok=True)
     _atomic_write_text(path, json.dumps(data, indent=2) + "\n")
     return True
 
 
-def setup_ambient_context(root: Path) -> dict[str, bool]:
+def install_skill(root: Path) -> bool:
+    """Install the AXI Claude Code Skill (idempotent).
+
+    NOTE: `SKILL.md` is entirely `venvaxi`-owned content - the whole
+    file is overwritten, so hand-edits to a previously installed copy
+    are lost (no marker block, no backup).
+
+    Args:
+        root: The consuming repo's root path.
+
+    Returns:
+        True if `SKILL.md` was created or modified.
+    """
+    # NOTE: Written verbatim - the bytes on disk *are* the file, so the
+    # round-trip must match exactly for the comparison below to hold.
+    text = skill_markdown.read_text(encoding="utf-8")
+    path = root / ".claude" / "skills" / "venvaxi" / "SKILL.md"
+
+    if path.exists() and path.read_text(encoding="utf-8") == text:
+        logger.debug("`SKILL.md` is up-to-date")
+        return False
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_write_text(path, text)
+    logger.debug("Installed `SKILL.md` skill")
+    return True
+
+
+def setup_ambient_context(
+    root: Path, *, skill: bool = False
+) -> dict[str, bool]:
     """Install AXI ambient context into the consuming repo.
 
     NOTE: MCP registration is gated on `fastmcp` availability - the
@@ -214,10 +195,13 @@ def setup_ambient_context(root: Path) -> dict[str, bool]:
 
     Args:
         root: The consuming repo root path.
+        skill: Whether to also install the Claude Code Skill.
 
     Returns:
         A mapping of which artifacts were created or modified:
-        `AGENTS.md`, `.vscode` and `.mcp.json`.
+        `AGENTS.md`, `.vscode`, `.mcp.json` and `skill` - the last of
+        which is always present, but only ever True when `skill` was
+        requested.
     """
     available = mcp_available()
     return {
@@ -228,4 +212,5 @@ def setup_ambient_context(root: Path) -> dict[str, bool]:
         ".mcp.json": _update_mcp_json(
             root / ".mcp.json", "mcpServers", available
         ),
+        "SKILL.md": install_skill(root) if skill else False,
     }

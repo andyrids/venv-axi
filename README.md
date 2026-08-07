@@ -1,7 +1,7 @@
 # Agent eXperience Interface [`venv-axi`]
 
 `venv-axi` provides an [Agent eXperience Interface (AXI)](https://axi.md/), which introspects
-dependencies for a consuming project - querying exact signatures present in that venv, at the
+dependencies for consuming projects - querying exact signatures present in that venv, at the
 exact versions pinned there - in a token-efficient [TOON](https://github.com/toon-format/spec)
 format, on STDOUT.
 
@@ -52,6 +52,18 @@ Ambient context for agents can be injected into `AGENTS.md` alongside MCP server
 uv run venvaxi setup
 ```
 
+The optional `--skill` flag additionally installs a Skill at `.claude/skills/venvaxi/SKILL.md`,
+covering the scan -> resolve -> inspect workflow, commands and MCP tool surface alongside common
+gotchas:
+
+```bash
+uv run venvaxi setup --skill
+```
+
+> [!WARNING]
+> Unlike the marked `AGENTS.md` block, `SKILL.md` is written as a whole file - any local edits
+> to a previously installed copy are overwritten.
+
 The AXI tools can be served over MCP (STDIO) with the `venvaxi serve` command, which requires the
 `mcp` extra:
 
@@ -70,7 +82,7 @@ The MCP server exposes; `listPackagesTool`, `showPackageTool`, `showPackageApiTo
 
 > [!NOTE]
 > Installation is package-manager agnostic. Use another manager like Poetry and replace the
-> `uv run` accordingly or omit entirely, with an activated virtual environment.
+> `uv run` accordingly or omit entirely, with an activated venv.
 
 ```bash
 uv add venv-axi --dev
@@ -107,17 +119,31 @@ The system is self-documenting - read `AGENTS.md` (symlink -> `CLAUDE.md`), whic
 development context. Navigate to `CONTEXT.md` as per `AGENTS.md` [`Routing`](AGENTS.md#routing)
 instructions to see the necessary routing, context and reference that an agent would follow.
 
+Context reference and guidance markdown files are kept in `ICM/_config` as living documents and
+are routed into the agent context where necessary.
+
 A community dedicated to this methodology can be found at [https://www.skool.com/cliefnotes](https://www.skool.com/cliefnotes/about?ref=478219c6d94340bd984dde6a8d1046e6).
 
 > [!NOTE]
 > ICM can leverage AI in a way that streamlines development, but also generates enough friction
-> in the right areas to promote continued development (Friction Doctrine).
+> in the right areas to promote continued development (Friction Doctrine). This method of using
+> Agents is a WIP.
+
+**TODO**:
+
+- Research spec-driven development integration & ICM suitability
+  - [JarvusInnovations/specops](https://github.com/JarvusInnovations/specops)
+- Research verification loops & ICM suitability
+  - [Getting started with loops](https://claude.com/blog/getting-started-with-loops)
+  - [Building verification loops](https://claude.com/blog/building-verification-loops-in-claude-code-with-skills)
+- Research context engineering changes
+  - [The new rules of context engineering](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models)
 
 ## Attribution
 
-### `code-review-graph`
+### `tirth8205/code-review-graph`
 
-The SQLite Node|Edge graph architecture and symbol-graph walking patters used in the AXI modules
+The SQLite Node|Edge graph architecture and symbol-graph walking patterns used in the AXI modules
 are heavily inspired by `code-review-graph`.
 
 `code-review-graph` populates its graph from a static AST, whereas the AXI populates its graph
@@ -126,7 +152,7 @@ from live object introspection via `importlib` and `inspect`.
 - **Repository**: [tirth8205/code-review-graph](https://github.com/tirth8205/code-review-graph)
 - **License**: MIT License - Copyright (c) 2026 Tirth Kanani
 
-### `toon-python`
+### `toon-format/toon-python`
 
 The regex patterns, structural tokens and constant-extraction patterns for TOON format are directly
 adapted from the official `toon-python` reference implementation.
@@ -134,11 +160,11 @@ adapted from the official `toon-python` reference implementation.
 - **Repository**: [toon-format/toon-python](https://github.com/toon-format/toon-python)
 - **License**: MIT License - Copyright (c) 2025 TOON Format Organization
 
-### `axi.md`
+### `kunchenguid/axi`
 
 I became aware of the AXI design principles through [Kun Chen](https://github.com/kunchenguid)
-via his projects and [site](https://axi.md/). His benchmarks and use of TOON format inspired and
-informed the creation of `venv-axi` - a future contribution to the AXI Community Catalog.
+via his projects and [axi.md site](https://axi.md/). His benchmarks and use of TOON format inspired
+and informed the creation of `venv-axi` - a future contribution to the AXI Community Catalog.
 
 - **Repository**:
   - [kunchenguid/axi](https://github.com/kunchenguid/axi)

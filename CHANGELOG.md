@@ -16,7 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > - `Fixed` for any bug fixes.
 > - `Security` in case of vulnerabilities.
 
-## [v0.1.0rc1]
+## [v0.1.0rc2] - 2026-08-07
+
+### Added
+
+- `venvaxi setup --skill` installs a generic `venvaxi` skill into the consuming repo.
+
+### Changed
+
+- MCP server registration key renamed to `VenvAXI` in JSON config.
+
+## [v0.1.0rc1] - 2026-08-06
 
 ### Added
 
@@ -26,18 +36,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Extracted from the `axi` subpackage of
-  [`pkgdx`](https://gitlab.com/andyrids/pkgdx) at tag `v0.1.0`, where the code
-  originated and its full development history remains.
-- CLI surface flattened - `pkgdx axi <command>` becomes `venvaxi <command>`.
-- Optional extra renamed - `pkgdx[axi]` becomes `venv-axi[mcp]`.
-- Symbol-graph cache relocated - `~/.pkgdx/axi/` becomes `~/.venvaxi/`.
-- Ambient context markers renamed - `<!-- pkgdx:axi:begin/end -->` becomes
-  `<!-- venvaxi:begin/end -->`. A `venvaxi setup` run migrates the old block
-  and the old `.mcp.json` server entry in place.
+- Extracted from the `axi` subpackage of [`pkgdx`](https://gitlab.com/andyrids/pkgdx).
+- CLI surface flattened - `venvaxi <command>`.
+- Optional extra - `venv-axi[mcp]`.
+- Symbol-graph cache - `~/.pkgdx/axi/` -> `~/.venvaxi/`.
+- Ambient context markers - `<!-- venvaxi:begin/end -->`.
+- Exceptions now derive from `venvaxi.exceptions.Error`
 
 ### Removed
 
-- `rich` runtime dependency - `venv-axi` has no runtime dependencies.
-- The `AXIError` exception tier - every `venvaxi` error now derives from
-  `venvaxi.exceptions.Error` directly.
+- Unused `rich` runtime dependency.
+- The `AXIError` exception.

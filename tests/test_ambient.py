@@ -7,7 +7,9 @@ from unittest import mock
 from venvaxi._ambient import (
     _update_mcp_json,
     inject_agents_md,
+    install_skill,
     setup_ambient_context,
+    skill_markdown,
 )
 
 AMBIENT = "venvaxi._ambient"
@@ -58,55 +60,19 @@ def test_inject_agents_md_replaces_stale_block(tmp_path: Path) -> None:
     text = path.read_text()
     assert changed is True
     assert "stale content" not in text
-    assert "axi" in text
-
-
-def test_inject_agents_md_migrates_pkgdx_axi_block(tmp_path: Path) -> None:
-    """A pre-extraction `pkgdx:axi` block is removed and the new block
-    installed, preserving surrounding prose."""
-    path = tmp_path / "AGENTS.md"
-    path.write_text(
-        "# My project\n\n"
-        "<!-- pkgdx:axi:begin -->\nold content\n"
-        "<!-- pkgdx:axi:end -->\n"
-    )
-    changed = inject_agents_md(tmp_path)
-    text = path.read_text()
-    assert changed is True
-    assert "pkgdx:axi" not in text
-    assert "old content" not in text
-    assert text.count("<!-- venvaxi:begin -->") == 1
-    assert "# My project" in text
-
-
-def test_inject_agents_md_removes_old_block_when_new_present(
-    tmp_path: Path,
-) -> None:
-    """A duplicated old+new state drops the old block, keeping one new
-    block."""
-    path = tmp_path / "AGENTS.md"
-    inject_agents_md(tmp_path)
-    path.write_text(
-        "<!-- pkgdx:axi:begin -->\nold content\n"
-        "<!-- pkgdx:axi:end -->\n\n" + path.read_text()
-    )
-    changed = inject_agents_md(tmp_path)
-    text = path.read_text()
-    assert changed is True
-    assert "old content" not in text
-    assert text.count("<!-- venvaxi:begin -->") == 1
+    assert "VenvAXI" in text
 
 
 def test_update_mcp_json_creates_file(tmp_path: Path) -> None:
-    """A missing MCP config file is created with a axi entry."""
+    """A missing MCP config file is created with a VenvAXI entry."""
     path = tmp_path / ".vscode" / "mcp.json"
     with mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"):
         changed = _update_mcp_json(path, "servers", available=True)
 
     data = json.loads(path.read_text())
     assert changed is True
-    assert data["servers"]["axi"]["command"] == "/bin/venvaxi"
-    assert data["servers"]["axi"]["args"] == ["serve"]
+    assert data["servers"]["VenvAXI"]["command"] == "/bin/venvaxi"
+    assert data["servers"]["VenvAXI"]["args"] == ["serve"]
 
 
 def test_update_mcp_json_idempotent(tmp_path: Path) -> None:
@@ -127,35 +93,7 @@ def test_update_mcp_json_preserves_other_keys(tmp_path: Path) -> None:
 
     data = json.loads(path.read_text())
     assert "other" in data["mcpServers"]
-    assert "axi" in data["mcpServers"]
-
-
-def test_update_mcp_json_migrates_pkgdx_axi_entry(tmp_path: Path) -> None:
-    """A pre-extraction `axi` entry (`args: ["axi", "serve"]`) is
-    rewritten to the flattened `venvaxi serve` form, others kept."""
-    path = tmp_path / "mcp.json"
-    path.write_text(
-        json.dumps(
-            {
-                "mcpServers": {
-                    "axi": {
-                        "type": "stdio",
-                        "command": "/bin/pkgdx",
-                        "args": ["axi", "serve"],
-                    },
-                    "other": {"command": "y"},
-                }
-            }
-        )
-    )
-    with mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"):
-        changed = _update_mcp_json(path, "mcpServers", available=True)
-
-    data = json.loads(path.read_text())
-    assert changed is True
-    assert data["mcpServers"]["axi"]["command"] == "/bin/venvaxi"
-    assert data["mcpServers"]["axi"]["args"] == ["serve"]
-    assert "other" in data["mcpServers"]
+    assert "VenvAXI" in data["mcpServers"]
 
 
 def test_update_mcp_json_recovers_from_malformed_json(
@@ -169,7 +107,7 @@ def test_update_mcp_json_recovers_from_malformed_json(
 
     data = json.loads(path.read_text())
     assert changed is True
-    assert "axi" in data["mcpServers"]
+    assert "VenvAXI" in data["mcpServers"]
 
 
 def test_update_mcp_json_unavailable_skips_creation(tmp_path: Path) -> None:
@@ -181,14 +119,14 @@ def test_update_mcp_json_unavailable_skips_creation(tmp_path: Path) -> None:
 
 
 def test_update_mcp_json_unavailable_removes_entries(tmp_path: Path) -> None:
-    """Without `fastmcp`, the `axi` entry is removed and other entries
-    are preserved."""
+    """Without `fastmcp`, the `VenvAXI` entry is removed and other
+    entries are preserved."""
     path = tmp_path / "mcp.json"
     path.write_text(
         json.dumps(
             {
                 "mcpServers": {
-                    "axi": {"command": "x"},
+                    "VenvAXI": {"command": "x"},
                     "other": {"command": "y"},
                 }
             }
@@ -198,7 +136,7 @@ def test_update_mcp_json_unavailable_removes_entries(tmp_path: Path) -> None:
 
     data = json.loads(path.read_text())
     assert changed is True
-    assert "axi" not in data["mcpServers"]
+    assert "VenvAXI" not in data["mcpServers"]
     assert "other" in data["mcpServers"]
 
 
@@ -211,20 +149,73 @@ def test_update_mcp_json_unavailable_idempotent(tmp_path: Path) -> None:
     assert "other" in json.loads(path.read_text())["mcpServers"]
 
 
+def test_skill_markdown_has_frontmatter() -> None:
+    """The packaged `skill.md` is a valid skill file."""
+    text = skill_markdown.read_text(encoding="utf-8")
+    assert text.startswith("---")
+    assert "name: venvaxi" in text
+
+
+def test_install_skill_creates_file(tmp_path: Path) -> None:
+    """A missing `SKILL.md` is created verbatim from `skill.md`."""
+    changed = install_skill(tmp_path)
+    path = tmp_path / ".claude" / "skills" / "venvaxi" / "SKILL.md"
+
+    assert changed is True
+    # NOTE: Byte-for-byte - the whole file is `venvaxi`-owned, so the
+    # round-trip must match for the idempotence check to hold
+    assert path.read_text(encoding="utf-8") == skill_markdown.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_install_skill_idempotent(tmp_path: Path) -> None:
+    """Running the install twice makes no further changes."""
+    install_skill(tmp_path)
+    changed = install_skill(tmp_path)
+    assert changed is False
+
+
+def test_install_skill_overwrites_stale_copy(tmp_path: Path) -> None:
+    """An existing, edited `SKILL.md` is overwritten wholesale."""
+    path = tmp_path / ".claude" / "skills" / "venvaxi" / "SKILL.md"
+    path.parent.mkdir(parents=True)
+    path.write_text("stale content\n", encoding="utf-8")
+    changed = install_skill(tmp_path)
+
+    assert changed is True
+    assert "stale content" not in path.read_text(encoding="utf-8")
+
+
 def test_setup_ambient_context_reports_all_artifacts(
     tmp_path: Path,
 ) -> None:
-    """`setup_ambient_context` reports all three artifact statuses."""
+    """`setup_ambient_context` reports all four artifact statuses."""
     # NOTE: `mcp_available` is patched so the suite passes with or
     # without the `mcp` extra installed
     with (
         mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"),
         mock.patch(f"{AMBIENT}.mcp_available", return_value=True),
     ):
+        changed = setup_ambient_context(tmp_path, skill=True)
+
+    assert set(changed) == {"AGENTS.md", ".vscode", ".mcp.json", "SKILL.md"}
+    assert all(changed.values())
+
+
+def test_setup_ambient_context_skips_skill_by_default(
+    tmp_path: Path,
+) -> None:
+    """Without `skill=True`, no skill file is written but the `skill`
+    key is still reported."""
+    with (
+        mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"),
+        mock.patch(f"{AMBIENT}.mcp_available", return_value=True),
+    ):
         changed = setup_ambient_context(tmp_path)
 
-    assert set(changed) == {"AGENTS.md", ".vscode", ".mcp.json"}
-    assert all(changed.values())
+    assert changed["SKILL.md"] is False
+    assert not (tmp_path / ".claude").exists()
 
 
 def test_setup_ambient_context_second_run_reports_no_change(
@@ -236,8 +227,8 @@ def test_setup_ambient_context_second_run_reports_no_change(
         mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"),
         mock.patch(f"{AMBIENT}.mcp_available", return_value=True),
     ):
-        setup_ambient_context(tmp_path)
-        changed = setup_ambient_context(tmp_path)
+        setup_ambient_context(tmp_path, skill=True)
+        changed = setup_ambient_context(tmp_path, skill=True)
 
     assert not any(changed.values())
 
@@ -250,7 +241,12 @@ def test_setup_ambient_context_skips_mcp_when_unavailable(
     with mock.patch(f"{AMBIENT}.mcp_available", return_value=False):
         changed = setup_ambient_context(tmp_path)
 
-    assert changed == {"AGENTS.md": True, ".vscode": False, ".mcp.json": False}
+    assert changed == {
+        "AGENTS.md": True,
+        ".vscode": False,
+        ".mcp.json": False,
+        "SKILL.md": False,
+    }
     assert (tmp_path / "AGENTS.md").exists()
     assert not (tmp_path / ".vscode" / "mcp.json").exists()
     assert not (tmp_path / ".mcp.json").exists()
