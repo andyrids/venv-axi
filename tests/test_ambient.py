@@ -60,7 +60,7 @@ def test_inject_agents_md_replaces_stale_block(tmp_path: Path) -> None:
     text = path.read_text()
     assert changed is True
     assert "stale content" not in text
-    assert "axi" in text
+    assert "VenvAXI" in text
 
 
 def test_update_mcp_json_creates_file(tmp_path: Path) -> None:
@@ -199,7 +199,7 @@ def test_setup_ambient_context_reports_all_artifacts(
     ):
         changed = setup_ambient_context(tmp_path, skill=True)
 
-    assert set(changed) == {"AGENTS.md", ".vscode", ".mcp.json", "skill"}
+    assert set(changed) == {"AGENTS.md", ".vscode", ".mcp.json", "SKILL.md"}
     assert all(changed.values())
 
 
@@ -214,7 +214,7 @@ def test_setup_ambient_context_skips_skill_by_default(
     ):
         changed = setup_ambient_context(tmp_path)
 
-    assert changed["skill"] is False
+    assert changed["SKILL.md"] is False
     assert not (tmp_path / ".claude").exists()
 
 
@@ -245,7 +245,7 @@ def test_setup_ambient_context_skips_mcp_when_unavailable(
         "AGENTS.md": True,
         ".vscode": False,
         ".mcp.json": False,
-        "skill": False,
+        "SKILL.md": False,
     }
     assert (tmp_path / "AGENTS.md").exists()
     assert not (tmp_path / ".vscode" / "mcp.json").exists()
