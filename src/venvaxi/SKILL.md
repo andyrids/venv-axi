@@ -26,19 +26,6 @@ whereas this AXI cannot.
 You MUST not use `venvaxi` to explain usage - signatures, kinds, docstrings and inheritance edges
 are in scope; tutorials, worked recipes and migration guides are not.
 
-## Invocation
-
-`venvaxi` is not on `PATH` here - it is a console script inside the project venv, so every command
-MUST run through uv:
-
-```sh
-uv run venvaxi find Console.print --package rich
-```
-
-The bare `venvaxi ...` spelling used in `AGENTS.md` and in the `help[]` footers assumes an
-activated venv or a consuming repo that has the console script on `PATH`. Prefix with `uv run` when
-working in this repo.
-
 ## Workflow
 
 `venvaxi` is keyed by *qualified* name (`rich.console::Console.print`), but the codebase references
@@ -120,9 +107,8 @@ Notes on the positional arguments and shared flags:
   or a bare/dotted module name - it dispatches on the presence of `::`.
 - `--refresh` exists on `show`, `find`, `tree`, `inspect` and `inherits`; it forces a graph
   rebuild before the query.
-- `setup --skill` additionally installs the *generic* skill packaged at `src/venvaxi/skill.md`
-  into `.claude/skills/venvaxi/SKILL.md`, overwriting any existing copy. Do **not** run it in
-  this repo - it would clobber this hand-maintained dev-facing file.
+- `setup --skill` additionally (re)installs this skill at `.claude/skills/venvaxi/SKILL.md`,
+  overwriting any existing copy.
 
 Output contract, common to every command:
 
@@ -135,9 +121,9 @@ Output contract, common to every command:
 ## MCP tools
 
 `venvaxi serve` exposes the same surface over stdio MCP under the server name `VenvAXI`. Tool
-names are a camelCase version of the underlying functions in `src/venvaxi/_mcp.py`. Every
-tool returns a TOON string with the same `count:`/`help[]` contract as the CLI, and any `Error`
-presents a TOON error block instead of an MCP transport error.
+names are a camelCase version of the underlying `venvaxi` MCP functions. Every tool returns a
+TOON string with the same `count:`/`help[]` contract as the CLI, and any `Error` presents a TOON
+error block instead of an MCP transport error.
 
 | Tool | Parameters | CLI equivalent |
 | --- | --- | --- |
@@ -158,8 +144,8 @@ Notable CLI differences:
 - The CLI `inspect` splits into `getSymbolTool` (qualified names, with `::`) and
   `showModuleTool` (module names) - pick by argument shape yourself.
 - **No tool takes a `refresh` parameter.** A stale graph can only be rebuilt from the CLI, so
-  after a dependency version bump run `uv run venvaxi <cmd> ... --refresh` once, then carry
-  on over MCP.
+  after a dependency version bump run `venvaxi <cmd> ... --refresh` once, then carry on over
+  MCP.
 
 ## Gotchas
 
@@ -190,25 +176,24 @@ Notable CLI differences:
   the MCP entry from `.mcp.json` / `.vscode/mcp.json` when `fastmcp` is missing, so an absent
   server entry after `setup` means the extra is not installed.
 - **`setup` writes files - it is not a diagnostic command.** It rewrites `AGENTS.md`'s ambient
-  block and `.mcp.json`/`.vscode/mcp.json` every time it runs. "Idempotent" here only means
-  repeated runs converge on the same result, not that a run is side-effect-free - it still
-  touches tracked files. Diagnosing *whether* `fastmcp` is available is a read-only question:
-  answer it with `venvaxi show fastmcp` (raises `PackageNotFoundError` if absent) rather than
-  running `setup` to see what it does. Only run `setup` when you actually mean to (re-)register
-  the MCP server - e.g. right after installing the extra, or when told to fix a stale
-  registration - never as a way to confirm or explain a fix while investigating.
-- **Token savings are payload-shaped, not a flat ~40%.** Measured against compact JSON
-  (`tests/test_toon_benchmark.py`): `venvaxi list` ~45%, `venvaxi find` ~27%, `venvaxi inspect
-  <symbol>` ~6%. The saving comes from amortising repeated JSON keys across a table header,
-  so it scales with row count and collapses on single-object output. Do not budget for a
-  general ~40%; on the `inspect` path, efficiency comes from truncation instead.
+  block and `.mcp.json`/`.vscode/mcp.json` every time it runs, and with `--skill` it overwrites
+  `.claude/skills/venvaxi/SKILL.md` wholesale. "Idempotent" here only means repeated runs
+  converge on the same result, not that a run is side-effect-free - it still touches tracked
+  files. Diagnosing *whether* `fastmcp` is available is a read-only question: answer it with
+  `venvaxi show fastmcp` (raises `PackageNotFoundError` if absent) rather than running `setup`
+  to see what it does. Only run `setup` when you actually mean to (re-)register the MCP server -
+  e.g. right after installing the extra, or when told to fix a stale registration - never as a
+  way to confirm or explain a fix while investigating.
+- **Token savings are payload-shaped, not a flat ~40%.** Measured against compact JSON:
+  `venvaxi list` ~45%, `venvaxi find` ~27%, `venvaxi inspect <symbol>` ~6%. The saving comes
+  from amortising repeated JSON keys across a table header, so it scales with row count and
+  collapses on single-object output. Do not budget for a general ~40%; on the `inspect` path,
+  efficiency comes from truncation instead.
 
 ## Pointers
 
-- `uv run venvaxi <cmd> --help` is the authoritative flag source. If the table above ever
-  disagrees with it, `--help` wins - and this file needs updating.
-- `ICM/_config/reference-standard-axi.md` covers the 10 AXI design principles, the measured
-  token-efficiency benchmarks and the symbol-graph qualified-name invariants. Read it when
-  modifying `src/venvaxi/` itself; it is not needed to *use* the CLI.
-- The always-on summary injected into `AGENTS.md` is generated from `src/venvaxi/ambient.md`
-  and refreshed by `venvaxi setup`. Edit the markdown, not the Markdown block.
+- `venvaxi <cmd> --help` is the authoritative flag source. If the table above ever disagrees
+  with it, `--help` wins.
+- The always-on summary injected into `AGENTS.md` is owned and refreshed by `venvaxi setup` -
+  it sits between `<!-- venvaxi:begin -->`/`<!-- venvaxi:end -->` markers and hand-edits inside
+  those markers are overwritten on the next run.

@@ -7,7 +7,9 @@ from unittest import mock
 from venvaxi._ambient import (
     _update_mcp_json,
     inject_agents_md,
+    install_skill,
     setup_ambient_context,
+    skill_markdown,
 )
 
 AMBIENT = "venvaxi._ambient"
@@ -147,20 +149,73 @@ def test_update_mcp_json_unavailable_idempotent(tmp_path: Path) -> None:
     assert "other" in json.loads(path.read_text())["mcpServers"]
 
 
+def test_skill_markdown_has_frontmatter() -> None:
+    """The packaged `skill.md` is a valid skill file."""
+    text = skill_markdown.read_text(encoding="utf-8")
+    assert text.startswith("---")
+    assert "name: venvaxi" in text
+
+
+def test_install_skill_creates_file(tmp_path: Path) -> None:
+    """A missing `SKILL.md` is created verbatim from `skill.md`."""
+    changed = install_skill(tmp_path)
+    path = tmp_path / ".claude" / "skills" / "venvaxi" / "SKILL.md"
+
+    assert changed is True
+    # NOTE: Byte-for-byte - the whole file is `venvaxi`-owned, so the
+    # round-trip must match for the idempotence check to hold
+    assert path.read_text(encoding="utf-8") == skill_markdown.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_install_skill_idempotent(tmp_path: Path) -> None:
+    """Running the install twice makes no further changes."""
+    install_skill(tmp_path)
+    changed = install_skill(tmp_path)
+    assert changed is False
+
+
+def test_install_skill_overwrites_stale_copy(tmp_path: Path) -> None:
+    """An existing, edited `SKILL.md` is overwritten wholesale."""
+    path = tmp_path / ".claude" / "skills" / "venvaxi" / "SKILL.md"
+    path.parent.mkdir(parents=True)
+    path.write_text("stale content\n", encoding="utf-8")
+    changed = install_skill(tmp_path)
+
+    assert changed is True
+    assert "stale content" not in path.read_text(encoding="utf-8")
+
+
 def test_setup_ambient_context_reports_all_artifacts(
     tmp_path: Path,
 ) -> None:
-    """`setup_ambient_context` reports all three artifact statuses."""
+    """`setup_ambient_context` reports all four artifact statuses."""
     # NOTE: `mcp_available` is patched so the suite passes with or
     # without the `mcp` extra installed
     with (
         mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"),
         mock.patch(f"{AMBIENT}.mcp_available", return_value=True),
     ):
+        changed = setup_ambient_context(tmp_path, skill=True)
+
+    assert set(changed) == {"AGENTS.md", ".vscode", ".mcp.json", "skill"}
+    assert all(changed.values())
+
+
+def test_setup_ambient_context_skips_skill_by_default(
+    tmp_path: Path,
+) -> None:
+    """Without `skill=True`, no skill file is written but the `skill`
+    key is still reported."""
+    with (
+        mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"),
+        mock.patch(f"{AMBIENT}.mcp_available", return_value=True),
+    ):
         changed = setup_ambient_context(tmp_path)
 
-    assert set(changed) == {"AGENTS.md", ".vscode", ".mcp.json"}
-    assert all(changed.values())
+    assert changed["skill"] is False
+    assert not (tmp_path / ".claude").exists()
 
 
 def test_setup_ambient_context_second_run_reports_no_change(
@@ -172,8 +227,8 @@ def test_setup_ambient_context_second_run_reports_no_change(
         mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"),
         mock.patch(f"{AMBIENT}.mcp_available", return_value=True),
     ):
-        setup_ambient_context(tmp_path)
-        changed = setup_ambient_context(tmp_path)
+        setup_ambient_context(tmp_path, skill=True)
+        changed = setup_ambient_context(tmp_path, skill=True)
 
     assert not any(changed.values())
 
@@ -186,7 +241,12 @@ def test_setup_ambient_context_skips_mcp_when_unavailable(
     with mock.patch(f"{AMBIENT}.mcp_available", return_value=False):
         changed = setup_ambient_context(tmp_path)
 
-    assert changed == {"AGENTS.md": True, ".vscode": False, ".mcp.json": False}
+    assert changed == {
+        "AGENTS.md": True,
+        ".vscode": False,
+        ".mcp.json": False,
+        "skill": False,
+    }
     assert (tmp_path / "AGENTS.md").exists()
     assert not (tmp_path / ".vscode" / "mcp.json").exists()
     assert not (tmp_path / ".mcp.json").exists()

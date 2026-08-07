@@ -16,13 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > - `Fixed` for any bug fixes.
 > - `Security` in case of vulnerabilities.
 
-## [v0.1.0rc2]
+## [v0.1.0rc2] - 2026-08-07
+
+### Added
+
+- `venvaxi setup --skill` installs a generic `venvaxi` skill into the consuming repo.
 
 ### Changed
 
 - MCP server registration key renamed to `VenvAXI` in JSON config.
 
-## [v0.1.0rc1]
+## [v0.1.0rc1] - 2026-08-06
 
 ### Added
 

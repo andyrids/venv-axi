@@ -7,6 +7,7 @@ relevant state already visible - before the agent takes any action.
 - Inject a marked block into the `AGENTS.md` of a consuming repo
 - Register an MCP server entry in `.vscode/mcp.json`
 - Register an MCP server entry in a `.mcp.json`
+- Install `.claude/skills/venvaxi/SKILL.md` (opt-in, `--skill`)
 
 NOTE: The above steps are idempotent - running `venvaxi setup` multiple
 times has no adverse effect.
@@ -24,6 +25,7 @@ from typing import Any
 logger = logging.getLogger(__package__)
 
 ambient_markdown = Path(__file__).parent.joinpath("ambient.md")
+skill_markdown = Path(__file__).parent.joinpath("SKILL.md")
 
 
 class Text(StrEnum):
@@ -155,7 +157,37 @@ def _update_mcp_json(path: Path, servers_key: str, available: bool) -> bool:
     return True
 
 
-def setup_ambient_context(root: Path) -> dict[str, bool]:
+def install_skill(root: Path) -> bool:
+    """Install the AXI Claude Code Skill (idempotent).
+
+    NOTE: `SKILL.md` is entirely `venvaxi`-owned content - the whole
+    file is overwritten, so hand-edits to a previously installed copy
+    are lost (no marker block, no backup).
+
+    Args:
+        root: The consuming repo's root path.
+
+    Returns:
+        True if `SKILL.md` was created or modified.
+    """
+    # NOTE: Written verbatim - the bytes on disk *are* the file, so the
+    # round-trip must match exactly for the comparison below to hold.
+    text = skill_markdown.read_text(encoding="utf-8")
+    path = root / ".claude" / "skills" / "venvaxi" / "SKILL.md"
+
+    if path.exists() and path.read_text(encoding="utf-8") == text:
+        logger.debug("`SKILL.md` is up-to-date")
+        return False
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_write_text(path, text)
+    logger.debug("Installed `SKILL.md` skill")
+    return True
+
+
+def setup_ambient_context(
+    root: Path, *, skill: bool = False
+) -> dict[str, bool]:
     """Install AXI ambient context into the consuming repo.
 
     NOTE: MCP registration is gated on `fastmcp` availability - the
@@ -163,10 +195,13 @@ def setup_ambient_context(root: Path) -> dict[str, bool]:
 
     Args:
         root: The consuming repo root path.
+        skill: Whether to also install the Claude Code Skill.
 
     Returns:
         A mapping of which artifacts were created or modified:
-        `AGENTS.md`, `.vscode` and `.mcp.json`.
+        `AGENTS.md`, `.vscode`, `.mcp.json` and `skill` - the last of
+        which is always present, but only ever True when `skill` was
+        requested.
     """
     available = mcp_available()
     return {
@@ -177,4 +212,5 @@ def setup_ambient_context(root: Path) -> dict[str, bool]:
         ".mcp.json": _update_mcp_json(
             root / ".mcp.json", "mcpServers", available
         ),
+        "SKILL.md": install_skill(root) if skill else False,
     }

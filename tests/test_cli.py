@@ -586,18 +586,55 @@ def test_command_setup(
     # NOTE: Keys mirror `_ambient.setup_ambient_context`'s real return
     # value - a mocked shape that the implementation never emits would
     # let a rename of those keys pass unnoticed.
-    changed = {"AGENTS.md": True, ".vscode": False, ".mcp.json": False}
+    changed = {
+        "AGENTS.md": True,
+        ".vscode": False,
+        ".mcp.json": False,
+        "skill": False,
+    }
+    ctx = make_cli_context(args=argparse.Namespace(skill=False))
     with (
         mock.patch(f"{CLI}.get_project_root", return_value=tmp_path),
-        mock.patch(f"{CLI}.setup_ambient_context", return_value=changed),
+        mock.patch(
+            f"{CLI}.setup_ambient_context", return_value=changed
+        ) as setup,
         mock.patch(f"{CLI}.mcp_available", return_value=True),
     ):
-        exit_code = _cli.command_setup(make_cli_context())
+        exit_code = _cli.command_setup(ctx)
     out = capsys.readouterr().out
     assert exit_code == 0
     assert "AGENTS.md: true" in out
     assert '".mcp.json": false' in out
+    assert "skill: false" in out
     assert "venv-axi[mcp]" not in out
+    setup.assert_called_once_with(tmp_path, skill=False)
+
+
+def test_command_setup_installs_skill(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+) -> None:
+    """`--skill` is forwarded and the skill status is reported."""
+    changed = {
+        "AGENTS.md": True,
+        ".vscode": False,
+        ".mcp.json": False,
+        "skill": True,
+    }
+    ctx = make_cli_context(args=argparse.Namespace(skill=True))
+    with (
+        mock.patch(f"{CLI}.get_project_root", return_value=tmp_path),
+        mock.patch(
+            f"{CLI}.setup_ambient_context", return_value=changed
+        ) as setup,
+        mock.patch(f"{CLI}.mcp_available", return_value=True),
+    ):
+        exit_code = _cli.command_setup(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "skill: true" in out
+    setup.assert_called_once_with(tmp_path, skill=True)
 
 
 def test_command_setup_hints_missing_extra(
@@ -606,13 +643,19 @@ def test_command_setup_hints_missing_extra(
     make_cli_context: ContextFactory,
 ) -> None:
     """A missing `fastmcp` extra surfaces an install hint in `help[]`."""
-    changed = {"AGENTS.md": True, ".vscode": False, ".mcp.json": False}
+    changed = {
+        "AGENTS.md": True,
+        ".vscode": False,
+        ".mcp.json": False,
+        "skill": False,
+    }
+    ctx = make_cli_context(args=argparse.Namespace(skill=False))
     with (
         mock.patch(f"{CLI}.get_project_root", return_value=tmp_path),
         mock.patch(f"{CLI}.setup_ambient_context", return_value=changed),
         mock.patch(f"{CLI}.mcp_available", return_value=False),
     ):
-        exit_code = _cli.command_setup(make_cli_context())
+        exit_code = _cli.command_setup(ctx)
     out = capsys.readouterr().out
     assert exit_code == 0
     assert "help[2]:" in out

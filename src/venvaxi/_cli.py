@@ -494,17 +494,17 @@ def command_serve(_: CLIContext) -> int:
     return ExitCode.EX_OK
 
 
-def command_setup(_: CLIContext) -> int:
+def command_setup(context: CLIContext) -> int:
     """Install `venvaxi` ambient context into the consuming repo.
 
     Args:
-        _: The CLI context.
+        context: The CLI context.
 
     Returns:
         The process exit code.
     """
     root = get_project_root()
-    changed = setup_ambient_context(root)
+    changed = setup_ambient_context(root, skill=context.args.skill)
 
     _emit(encode_object(changed))
     hints = ["Run `venvaxi` to confirm ambient context is live"]
@@ -650,7 +650,18 @@ def add_subparser(subparsers: "argparse._SubParsersAction[Any]") -> None:
         help=" ".join(
             [
                 "Install AXI ambient context into the repo",
-                "(AGENTS.md & MCP config)",
+                "(AGENTS.md, MCP config & optional skill)",
+            ]
+        ),
+    )
+    parser_setup.add_argument(
+        "--skill",
+        action="store_true",
+        help=" ".join(
+            [
+                "Also install the venvaxi Claude Code Skill",
+                "(.claude/skills/venvaxi/SKILL.md) - overwrites any",
+                "existing copy",
             ]
         ),
     )
