@@ -61,52 +61,16 @@ def test_inject_agents_md_replaces_stale_block(tmp_path: Path) -> None:
     assert "axi" in text
 
 
-def test_inject_agents_md_migrates_pkgdx_axi_block(tmp_path: Path) -> None:
-    """A pre-extraction `pkgdx:axi` block is removed and the new block
-    installed, preserving surrounding prose."""
-    path = tmp_path / "AGENTS.md"
-    path.write_text(
-        "# My project\n\n"
-        "<!-- pkgdx:axi:begin -->\nold content\n"
-        "<!-- pkgdx:axi:end -->\n"
-    )
-    changed = inject_agents_md(tmp_path)
-    text = path.read_text()
-    assert changed is True
-    assert "pkgdx:axi" not in text
-    assert "old content" not in text
-    assert text.count("<!-- venvaxi:begin -->") == 1
-    assert "# My project" in text
-
-
-def test_inject_agents_md_removes_old_block_when_new_present(
-    tmp_path: Path,
-) -> None:
-    """A duplicated old+new state drops the old block, keeping one new
-    block."""
-    path = tmp_path / "AGENTS.md"
-    inject_agents_md(tmp_path)
-    path.write_text(
-        "<!-- pkgdx:axi:begin -->\nold content\n"
-        "<!-- pkgdx:axi:end -->\n\n" + path.read_text()
-    )
-    changed = inject_agents_md(tmp_path)
-    text = path.read_text()
-    assert changed is True
-    assert "old content" not in text
-    assert text.count("<!-- venvaxi:begin -->") == 1
-
-
 def test_update_mcp_json_creates_file(tmp_path: Path) -> None:
-    """A missing MCP config file is created with a axi entry."""
+    """A missing MCP config file is created with a VenvAXI entry."""
     path = tmp_path / ".vscode" / "mcp.json"
     with mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"):
         changed = _update_mcp_json(path, "servers", available=True)
 
     data = json.loads(path.read_text())
     assert changed is True
-    assert data["servers"]["axi"]["command"] == "/bin/venvaxi"
-    assert data["servers"]["axi"]["args"] == ["serve"]
+    assert data["servers"]["VenvAXI"]["command"] == "/bin/venvaxi"
+    assert data["servers"]["VenvAXI"]["args"] == ["serve"]
 
 
 def test_update_mcp_json_idempotent(tmp_path: Path) -> None:
@@ -127,35 +91,7 @@ def test_update_mcp_json_preserves_other_keys(tmp_path: Path) -> None:
 
     data = json.loads(path.read_text())
     assert "other" in data["mcpServers"]
-    assert "axi" in data["mcpServers"]
-
-
-def test_update_mcp_json_migrates_pkgdx_axi_entry(tmp_path: Path) -> None:
-    """A pre-extraction `axi` entry (`args: ["axi", "serve"]`) is
-    rewritten to the flattened `venvaxi serve` form, others kept."""
-    path = tmp_path / "mcp.json"
-    path.write_text(
-        json.dumps(
-            {
-                "mcpServers": {
-                    "axi": {
-                        "type": "stdio",
-                        "command": "/bin/pkgdx",
-                        "args": ["axi", "serve"],
-                    },
-                    "other": {"command": "y"},
-                }
-            }
-        )
-    )
-    with mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"):
-        changed = _update_mcp_json(path, "mcpServers", available=True)
-
-    data = json.loads(path.read_text())
-    assert changed is True
-    assert data["mcpServers"]["axi"]["command"] == "/bin/venvaxi"
-    assert data["mcpServers"]["axi"]["args"] == ["serve"]
-    assert "other" in data["mcpServers"]
+    assert "VenvAXI" in data["mcpServers"]
 
 
 def test_update_mcp_json_recovers_from_malformed_json(
@@ -169,7 +105,7 @@ def test_update_mcp_json_recovers_from_malformed_json(
 
     data = json.loads(path.read_text())
     assert changed is True
-    assert "axi" in data["mcpServers"]
+    assert "VenvAXI" in data["mcpServers"]
 
 
 def test_update_mcp_json_unavailable_skips_creation(tmp_path: Path) -> None:
@@ -181,14 +117,14 @@ def test_update_mcp_json_unavailable_skips_creation(tmp_path: Path) -> None:
 
 
 def test_update_mcp_json_unavailable_removes_entries(tmp_path: Path) -> None:
-    """Without `fastmcp`, the `axi` entry is removed and other entries
-    are preserved."""
+    """Without `fastmcp`, the `VenvAXI` entry is removed and other
+    entries are preserved."""
     path = tmp_path / "mcp.json"
     path.write_text(
         json.dumps(
             {
                 "mcpServers": {
-                    "axi": {"command": "x"},
+                    "VenvAXI": {"command": "x"},
                     "other": {"command": "y"},
                 }
             }
@@ -198,7 +134,7 @@ def test_update_mcp_json_unavailable_removes_entries(tmp_path: Path) -> None:
 
     data = json.loads(path.read_text())
     assert changed is True
-    assert "axi" not in data["mcpServers"]
+    assert "VenvAXI" not in data["mcpServers"]
     assert "other" in data["mcpServers"]
 
 

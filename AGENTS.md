@@ -11,19 +11,11 @@ Agent eXperience Interface (AXI) CLI for token-efficient querying of venv depend
 
 ## General Guidance
 
-- Follow YAGNI principles
-- Reuse existing patterns in the codebase
-- Use the Standard Library over a dependency
-- Use an existing dependency over a new one
-- Use a one-liner where possible
-- Write the minimum code that works
-- For technical decisions
-  - Do not give much weight to development cost
-  - Prefer quality, simplicity, robustness & scalability
+- Read `ICM/_config/reference-standard-yagni.md`
 
 ## Environment and Toolchain
 
-Venv-axi is developed with Astral uv, which MUST be installed globally or in the venv.
+Venv-axi is developed with uv, which MUST be installed globally or in the venv.
 
 - **Language**: Python >=3.11
 - **OS**: Windows/Linux/WSL2
@@ -78,49 +70,54 @@ them out to the same consolidated `ICM/create-feature` workspace.
 
 ## Token Efficiency
 
-- Each task is performed within a specific ICM workspace
-- Each workspace is compartmentalised
+- Each task is performed within a specific, compartmentalised ICM workspace
 - Each workspace `CONTEXT.md` provides necessary context
 - Avoid unnecessary files listed in `.gitignore`
 
 <!-- venvaxi:begin -->
 
-## AXI
+## VenvAXI
 
-`venvaxi` reports the **installed truth** about this repo's
-dependencies - the exact signatures present in this venv, at the exact
-versions pinned here. Prefer it over recalling an API from memory:
-memory drifts from the installed version, `axi` cannot.
+`venvaxi` introspects dependencies for a consuming project - querying exact signatures present in
+that venv, at the exact versions pinned there.
 
-It does not read the codebase of a consuming repo or need to - scan the
-codebase with your tools and use any findings to drive `axi`:
+You SHOULD prefer `venvaxi` over API recall from memory, which drifts from the installed
+version, whereas the AXI cannot.
 
-1. Scan - locate the import and call sites of the dependency symbol
-   you are working on with your own file-search tools. This gives you a
-   bare symbol name (`Console.print`) and its owning package (`rich`).
-2. Resolve - `venvaxi find Console.print --package rich` turns
-   that bare name into a qualified one (`rich.console::Console.print`),
-   indexing the package if needed.
-3. Inspect - `venvaxi inspect rich.console::Console.print` returns
-   the real signature and docstring for the installed version.
+You MUST scan the codebase with your tools and use any findings to drive the AXI, when conducting
+tasks.
 
-Docstrings are truncated to a first line by default; add `--docstring`
-for complete bodies. Add `--refresh` to any query to rebuild a stale
-graph after changing a dependency version (`find` requires `--package`
-alongside `--refresh`).
+### (1) Scan
 
-`axi` reports what a symbol *is*, not how to use it - for guides,
-examples and migration notes, reach for documentation instead.
+Locate the import and call sites of the dependency symbol you are working on with your own tools.
+This gives you a bare symbol name (`Console.print`) and its owning package (`rich`).
+
+### (2) Resolve
+
+`venvaxi find Console.print --package rich` converts the bare name into a qualified name
+(`rich.console::Console.print`), indexing the package if needed.
+
+### (3) Inspect
+
+`venvaxi inspect rich.console::Console.print` returns the real signature and docstring for the
+installed version.
+
+## Guidance
+
+Docstrings are truncated by default; add `--docstring` if needed. Add `--refresh` to rebuild a
+stale graph after updating dependencies (`find` requires `--package` alongside `--refresh`).
+
+VenvAXI reports what a symbol *is*, not how to use it - reach for documentation if needed.
 
 Other commands:
 
-- `venvaxi` - live status and next-step hints.
-- `venvaxi list [--all]` - declared, installed dependencies.
-- `venvaxi show <package> [--api]` - metadata, or public API symbols.
-- `venvaxi tree <package> [--max-depth N]` - nested module tree.
-- `venvaxi inspect <module>` - a module's direct children.
-- `venvaxi inherits <qualified_name>` - direct subclasses.
-- `venvaxi serve` - the same tools over MCP (stdio).
-- `venvaxi setup` - re-register MCP config and refresh this block.
+- `venvaxi` - status & next-step hints
+- `venvaxi list [--all]` - installed dependencies
+- `venvaxi show <package> [--api]` - metadata|public API symbols
+- `venvaxi tree <package> [--max-depth N]` - nested module tree
+- `venvaxi inspect <module>` - direct children
+- `venvaxi inherits <qualified_name>` - direct subclasses
+- `venvaxi serve` - MCP (STDIO)
+- `venvaxi setup` - register MCP config & refresh
 
 <!-- venvaxi:end -->
