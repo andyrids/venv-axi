@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > - `Fixed` for any bug fixes.
 > - `Security` in case of vulnerabilities.
 
-## [Unreleased]
+## [v0.1.0] - 2026-08-09
 
 ### Added
 
@@ -42,6 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in the graph.
 - `tree --help` called `package` a distribution name although dotted module names are accepted;
   the help string and the spec's invocation table now say so.
+- `inspect`, `show --api` and the MCP symbol tools reported an inherited docstring.
+- Cached symbol graphs holding the incorrect docstrings are rebuilt automatically.
+- MCP next-step hints named the wrong tool or dropped half an explanation.
 
 ### Changed
 
@@ -52,12 +55,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ICM/_config/reference-toolchain-pymarkdown.md` records a `BadTokenizationError`.
 - `PACKAGE` and submodule node docstrings route through the shared own-docstring helper -
   behaviour-neutral uniformity, so a future helper change cannot silently skip module nodes.
-
-### Fixed
-
-- `inspect`, `show --api` and the MCP symbol tools reported an inherited docstring.
-- Cached symbol graphs holding the incorrect docstrings are rebuilt automatically.
-- MCP next-step hints named the wrong tool or dropped half an explanation.
 
 ## [v0.1.0rc2] - 2026-08-08
 
