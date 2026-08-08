@@ -2,7 +2,6 @@
 
 import importlib
 import logging
-import shutil
 import sys
 import types
 from collections.abc import Iterator
@@ -65,30 +64,6 @@ def fake_module(
         yield module
     finally:
         del sys.modules[module.__name__]
-
-
-@pytest.fixture
-def fake_package(
-    isolated_cache: Path, tmp_path_factory: pytest.TempPathFactory
-) -> Iterator[str]:
-    """Register a real on-disk package with a submodule and a subclass."""
-    from tests.resources import package
-
-    src_test = tmp_path_factory.mktemp("src_test")
-    shutil.copytree(
-        Path(package.__file__).parent,
-        src_test / "package",
-        ignore=shutil.ignore_patterns("__pycache__"),
-    )
-
-    sys.path.insert(0, str(src_test))
-    try:
-        yield "package"
-    finally:
-        sys.path.remove(str(src_test))
-        for name in list(sys.modules):
-            if name.startswith("package"):
-                del sys.modules[name]
 
 
 @pytest.fixture
@@ -524,6 +499,98 @@ def test_get_symbol_raises_for_unknown_symbol(fake_package: str) -> None:
     """An unknown qualified name raises `SymbolNotFoundError`."""
     with pytest.raises(SymbolNotFoundError):
         get_symbol(f"{fake_package}::DoesNotExist")
+
+
+def test_get_symbol_resolves_facade_spelled_method(fake_package: str) -> None:
+    """A method spelled through a facade resolves to its home-keyed row,
+    answered as stored (the home spelling, never the caller's)."""
+    node = get_symbol(f"{fake_package}.api::Client.connect")
+    assert node.qualified_name == f"{fake_package}._impl::Client.connect"
+    assert node.kind is NodeKind.METHOD
+    assert node.module == f"{fake_package}._impl"
+
+
+def test_get_symbol_facade_member_miss_raises(fake_package: str) -> None:
+    """A facade-spelled member absent from the home row is a genuine
+    miss, keyed to the caller's spelling in the message."""
+    with pytest.raises(SymbolNotFoundError, match="api::Client.nosuchmethod"):
+        get_symbol(f"{fake_package}.api::Client.nosuchmethod")
+
+
+def test_get_symbol_home_keyed_member_miss_raises(fake_package: str) -> None:
+    """A missing member on an already home-keyed owner raises without
+    engaging the fallback (`canonical_name` is a no-op there)."""
+    with pytest.raises(SymbolNotFoundError):
+        get_symbol(f"{fake_package}._impl::Client.nosuchmethod")
+
+
+def test_get_symbol_resolves_facade_spelled_nested_class(
+    fake_package: str,
+) -> None:
+    """A nested class resolves through the fallback as an attribute
+    member of its outer class."""
+    node = get_symbol(f"{fake_package}.facade::Widget.Inner")
+    leaf = f"{fake_package}.subpkg.inner.leaf"
+    assert node.qualified_name == f"{leaf}::Widget.Inner"
+    assert node.kind is NodeKind.ATTRIBUTE
+
+
+def test_get_symbol_nested_class_member_missing_both_spellings(
+    fake_package: str,
+) -> None:
+    """Members of nested classes are not indexed - the not-found answer
+    is definitive under the facade and the home spelling alike."""
+    leaf = f"{fake_package}.subpkg.inner.leaf"
+    with pytest.raises(SymbolNotFoundError):
+        get_symbol(f"{fake_package}.facade::Widget.Inner.zoom")
+    with pytest.raises(SymbolNotFoundError):
+        get_symbol(f"{leaf}::Widget.Inner.zoom")
+
+
+def test_get_symbol_resolves_deep_home_member_without_rebuild(
+    fake_package: str,
+) -> None:
+    """A member homed deeper than the built depth (offset 3 against a
+    built depth of 2) resolves with no deeper rebuild - member rows are
+    written by the class walk at home keys regardless of build depth."""
+    from venvaxi import _introspect
+
+    with mock.patch.object(
+        _introspect,
+        "_build_store_for",
+        side_effect=_introspect._build_store_for,
+    ) as build_spy:
+        node = get_symbol(f"{fake_package}.facade::Widget.poke")
+    assert node.qualified_name == (
+        f"{fake_package}.subpkg.inner.leaf::Widget.poke"
+    )
+    assert node.kind is NodeKind.METHOD
+    assert build_spy.call_count == 1
+
+
+def test_get_symbol_module_level_miss_skips_fallback(
+    fake_package: str,
+) -> None:
+    """A dot-free tail takes the unchanged raise path - the fallback
+    disengages before any owner resolution."""
+    with (
+        mock.patch.object(
+            SymbolStore, "canonical_name", autospec=True
+        ) as canonical_spy,
+        pytest.raises(SymbolNotFoundError),
+    ):
+        get_symbol(f"{fake_package}::DoesNotExist")
+    canonical_spy.assert_not_called()
+
+
+def test_module_docs_route_through_own_doc(fake_package: str) -> None:
+    """`PACKAGE` and submodule node docs match each module's own
+    docstring after the `_own_doc` reroute - asserted against a real
+    on-disk package walked by the real builder, not a mock."""
+    package_node, _ = show_module(fake_package)
+    assert package_node.doc == "Fixture package."
+    submodule_node, _ = show_module(f"{fake_package}.module")
+    assert submodule_node.doc == "Fixture package submodule."
 
 
 def test_get_inheritors_returns_subclasses(fake_package: str) -> None:
