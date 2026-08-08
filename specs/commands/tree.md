@@ -38,8 +38,11 @@ shallower depth MUST be rebuilt rather than answered from - see
 
 ## Errors
 
+- `InvalidArgumentError` - `package` is not a possible package name.
 - `PackageNotFoundError` - not installed in the venv.
 - `PackageImportError` - installed but not importable.
+
+The three classes are defined once in [Package resolution](../behaviors/package-resolution.md).
 
 ## Principles
 

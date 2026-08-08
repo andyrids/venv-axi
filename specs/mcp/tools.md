@@ -21,6 +21,12 @@ Every tool returns **TOON text**, not JSON, and mirrors the CLI's
 escape into FastMCP's generic error path, which would present a different failure shape to the
 agent depending on which surface it happened to be using.
 
+**No exception escapes**, not just no `Error`. An unexpected exception is caught at the same
+boundary and returned as the `Unexpected error:` block the CLI renders, logged to STDERR with its
+traceback. Catching only `Error` leaves the surfaces divergent in exactly the case where the
+agent has least to go on - the CLI reports a fault it can read, the MCP caller gets a transport
+error carrying no TOON at all.
+
 ## Tools
 
 | Tool                 | Parameters                          | CLI equivalent            |

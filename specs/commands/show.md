@@ -50,14 +50,17 @@ API usually means the symbols are one level down rather than absent.
 
 ## Errors
 
-- `InvalidArgumentError` - an unknown `--fields` entry, or a `package` argument whose spelling is
-  malformed rather than merely absent.
+- `InvalidArgumentError` - an unknown `--fields` entry, or in API mode a `package` argument whose
+  spelling is malformed rather than merely absent.
 - `PackageNotFoundError` - the package is not installed in the venv.
 - `PackageImportError` - the package is installed but cannot be imported for introspection.
 
 A malformed name and a missing one are different answers. `../etc/passwd` is not a package name
 that failed to resolve; it is not a package name at all, and reporting it as 'not installed'
-would invite the caller to try installing it.
+would invite the caller to try installing it. The three classes are defined once in
+[Package resolution](../behaviors/package-resolution.md), whose Metadata mode section carves
+metadata mode out: its answers are about the metadata database, so a spelling it cannot answer
+reports as not installed, with the dotted-name hint where the name looks like a module path.
 
 ## Principles
 

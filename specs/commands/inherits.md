@@ -54,9 +54,13 @@ build stays undiscovered until some query builds that deep - the lazy-depth mode
 ## Errors
 
 - `SymbolNotFoundError` - the base class name does not resolve.
+- `InvalidArgumentError` - the name's top-level component is not a possible package name.
 - `PackageNotFoundError` - the owning package is not installed in the venv.
 - `PackageImportError` - the owning package is installed but cannot be imported to build the
   graph.
+
+The three package classes are defined once in
+[Package resolution](../behaviors/package-resolution.md).
 
 ## Principles
 
