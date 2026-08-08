@@ -25,7 +25,13 @@ The cached symbol graph. Dispatch is on the **argument shape**, not on a flag: a
 name always contains `::`, and a bare or dotted module name never does.
 
 Both modes answer with **facade-keyed** data - the module the symbol was recorded under, which is
-the spelling the caller will import. See
+the spelling the caller will import. Class members are the carve-out: member rows are keyed at
+the owning class's *home* module only, so a member spelled through a facade
+(`fastmcp::Client.call_tool`) MUST resolve to its home-keyed row and answers with the home
+spelling (`fastmcp.client.client::Client.call_tool`) - the only row that exists, and the same
+name `find` returns for the symbol. Echoing the caller's facade spelling back would report a
+qualified name no other command can resolve. A member spelling that still misses after
+resolution raises `SymbolNotFoundError`. See
 [Qualified name semantics](../behaviors/qualified-name-semantics.md).
 
 ## Output rules

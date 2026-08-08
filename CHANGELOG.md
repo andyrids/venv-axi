@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   misleading not-installed answer.
 - MCP tools return the CLI's `Unexpected error:` TOON block for a non-`Error` exception instead
   of letting it escape into FastMCP's generic error path.
+- `inspect` and `getSymbolTool` resolve a facade-spelled class member
+  (`fastmcp::Client.call_tool`) to its home-keyed row instead of reporting it not found;
+  the answer keeps the home spelling, the only qualified name the graph holds for a member.
 - An empty `tree` result (CLI and MCP) hinted at the package list, which cannot explain a
   missing submodule; both surfaces now name the root package's own tree, and
   `specs/commands/tree.md` states the real cause - a dotted name whose submodule has no node
@@ -47,6 +50,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `ICM/create-feature` pipeline now gates on decisions rather than on step completion.
 - Workspace acceptance criteria now name approval-carrying-changes as a distinct checkpoint.
 - `ICM/_config/reference-toolchain-pymarkdown.md` records a `BadTokenizationError`.
+- `PACKAGE` and submodule node docstrings route through the shared own-docstring helper -
+  behaviour-neutral uniformity, so a future helper change cannot silently skip module nodes.
 
 ### Fixed
 

@@ -170,6 +170,19 @@ def test_get_symbol_tool_returns_toon(make_symbol_node: NodeFactory) -> None:
     assert "kind: class" in result
 
 
+def test_get_symbol_tool_resolves_facade_spelled_method(
+    fake_package: str,
+) -> None:
+    """`getSymbolTool` resolves a facade-spelled method through the real
+    call path, identically to the CLI - no mock, so parity is the
+    resolver's, not the test's."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("get_symbol_tool")))
+    result = tool.fn(qualified_name=f"{fake_package}.api::Client.connect")
+    assert f'"{fake_package}._impl::Client.connect"' in result
+    assert "kind: method" in result
+
+
 def test_find_symbol_tool_returns_toon(
     make_symbol_node: NodeFactory,
 ) -> None:
