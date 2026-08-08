@@ -30,11 +30,13 @@ logger = logging.getLogger(__package__)
 
 
 def _toon_errors(fn: Callable[..., str]) -> Callable[..., str]:
-    """Wrap an MCP tool so `Error`s return a TOON error block.
+    """Wrap an MCP tool so no exception escapes into FastMCP.
 
-    NOTE: Mirrors the CLI error contract - without this, `Error`s
-    escape into FastMCP's generic error path instead of the same
-    `format_error` block the CLI emits on stdout.
+    NOTE: Mirrors the CLI error contract - `Error`s return the same
+    `format_error` block the CLI emits on stdout, and anything else
+    returns the CLI's `Unexpected error:` block. Without the broad arm,
+    a non-`Error` exception escapes into FastMCP's generic error path -
+    see `specs/mcp/tools.md`.
 
     Args:
         fn: The tool function to wrap.
@@ -47,8 +49,17 @@ def _toon_errors(fn: Callable[..., str]) -> Callable[..., str]:
     def wrapper(*args: Any, **kwargs: Any) -> str:
         try:
             return fn(*args, **kwargs)
+        # NOTE: Ordering is load-bearing - `Error` derives from
+        # `Exception`, so the broad arm placed first would swallow
+        # every domain error into the unexpected shape.
         except Error as err:
             return format_error(str(err))
+        except Exception as err:
+            # NOTE: Broad on purpose, mirroring `__main__.main` - the
+            # traceback is logged at ERROR so a genuine bug still fails
+            # loudly in the logs rather than vanishing into TOON.
+            logger.exception("Unexpected error")
+            return format_error(f"Unexpected error: {err}")
 
     return wrapper
 

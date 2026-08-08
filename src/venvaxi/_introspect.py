@@ -40,7 +40,9 @@ from venvaxi.exceptions import (
 
 logger = logging.getLogger(__package__)
 
-_VALID_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+# NOTE: The single-character alternative is load-bearing - `_`, `a` and
+# `2` are legal names, so the trailing group must be optional.
+_VALID_NAME_RE = re.compile(r"^[A-Za-z0-9_]([A-Za-z0-9._-]*[A-Za-z0-9_])?$")
 DEFAULT_TRUNCATE_LIMIT = 200
 DEFAULT_MAX_DEPTH = 2
 
@@ -188,6 +190,28 @@ def _resolve_import_name(name: str) -> str:
             if dist_name.lower().replace("-", "_") == normalized:
                 return import_name
     return name.replace("-", "_")
+
+
+def _ensure_valid_name(root: str, name: str) -> None:
+    """Raise if `root` cannot possibly be a package name.
+
+    NOTE: Boundary validation of caller input, run before resolution -
+    the dash/case fallback can only disguise a malformed name, never
+    repair one. The message carries `name` because the root of a
+    degenerate spelling (`.foo`) is `""`, which names nothing the
+    caller can fix. See `specs/behaviors/package-resolution.md`.
+
+    Args:
+        root: The top-level component to validate, as supplied.
+        name: The caller's original spelling, used for the message.
+
+    Raises:
+        InvalidArgumentError: On `root` not being a possible package
+            name.
+    """
+    if not _VALID_NAME_RE.match(root):
+        msg = f"Invalid package name `{name}`"
+        raise InvalidArgumentError(msg)
 
 
 def _ensure_installed(import_name: str, name: str) -> None:
@@ -665,6 +689,8 @@ def _build_store_for(
         refresh: Rebuild even if the cached graph is still current.
 
     Raises:
+        InvalidArgumentError: On the top-level root of `name` not being
+            a possible package name.
         PackageNotFoundError: On the resolved package not being installed
             in the active venv.
         PackageImportError: On resolved module import error.
@@ -680,6 +706,7 @@ def _build_store_for(
     # carries `.module::Symbol` that neither names a distribution nor
     # belongs in a 'not installed' message.
     root = _top_level_root(name)
+    _ensure_valid_name(root, name)
     root_package = _resolve_import_name(root)
     _ensure_installed(root_package, root)
     try:
@@ -794,6 +821,8 @@ def get_module_tree(
         refresh: Rebuild the cached graph first.
 
     Raises:
+        InvalidArgumentError: On the top-level root of `name` not being
+            a possible package name.
         PackageNotFoundError: On the owning package not being installed
             in the active venv.
         PackageImportError: On resolved module import error.
@@ -830,8 +859,8 @@ def find_symbol(
         refresh: Rebuild the cached graph first for `package`.
 
     Raises:
-        InvalidArgumentError: On missing `query` or `refresh` without
-            `package`.
+        InvalidArgumentError: On missing `query`, `refresh` without
+            `package`, or a malformed `package` name.
         PackageNotFoundError: On `package` not being installed in the
             active venv.
         PackageImportError: On `package` import error.
@@ -879,7 +908,8 @@ def get_public_api(
         refresh: Rebuild the cached graph first.
 
     Raises:
-        InvalidArgumentError: On `name` containing invalid characters.
+        InvalidArgumentError: On `name` not being a possible package
+            name.
         PackageNotFoundError: On `name` not being installed in the active
             venv.
         PackageImportError: On resolved module import error.
@@ -888,9 +918,7 @@ def get_public_api(
         Public top-level symbols, with their kind, signature and
         docstring.
     """
-    if not _VALID_NAME_RE.match(name):
-        msg = f"Invalid package name `{name}`"
-        raise InvalidArgumentError(msg)
+    _ensure_valid_name(name, name)
 
     import_name = _resolve_import_name(name)
     _ensure_installed(import_name, name)
