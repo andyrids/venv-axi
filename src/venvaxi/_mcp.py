@@ -86,8 +86,9 @@ def list_packages_tool(include_dev: bool = False) -> str:
     root = get_project_root()
     packages = list_packages(root, include_dev=include_dev)
     if not packages:
+        cname = camel_case(list_packages_tool.__name__)
         return _with_help(
-            "count: 0", ["Call `list_packages_tool` with include_dev=true"]
+            "count: 0", [f"Call `{cname}` with include_dev=true"]
         )
     rows = [asdict(package) for package in packages]
     table = encode_table("packages", rows, ["name", "version"])
@@ -95,7 +96,7 @@ def list_packages_tool(include_dev: bool = False) -> str:
     cname = camel_case(show_package_tool.__name__)
     return _with_help(
         f"count: {len(packages)}\n{table}",
-        [f"Call `{cname}` for a package's public API"],
+        [f"Call `{cname}` for package metadata"],
     )
 
 
@@ -218,7 +219,13 @@ def get_inheritors_tool(qualified_name: str) -> str:
         cname = camel_case(find_symbol_tool.__name__)
         return _with_help(
             "count: 0",
-            [f"Call `{cname}` to locate a base class's name"],
+            [
+                (
+                    "Subclasses may live in unindexed packages or below"
+                    f" the built depth - call `{cname}` with"
+                    " package=<package> to index one"
+                )
+            ],
         )
     rows = [node.as_row() for node in nodes]
     table = encode_table(
@@ -235,7 +242,7 @@ def get_module_tree_tool(name: str, max_depth: int = 2) -> str:
     """Show nested module tree for a module|package (TOON format)."""
     pairs = get_module_tree(name, max_depth)
     if not pairs:
-        cname = camel_case(show_module_tool.__name__)
+        cname = camel_case(list_packages_tool.__name__)
         return _with_help(
             "count: 0", [f"Call `{cname}` for the venv package list"]
         )
