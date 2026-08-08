@@ -11,7 +11,7 @@
         "States that FastMCP.__init__ accepts an `instructions` parameter",
         "States the type as an optional string (str | None), not a structured object",
         "Grounds the claim in a live verification step (e.g. running a venvaxi find/inspect command) rather than presenting it as pure recollection",
-        "Does not fabricate FastMCP-specific documentation prose if the tool's returned docstring is actually for an unrelated class (a real quirk in this repo's symbol graph: venvaxi inspect fastmcp::FastMCP currently returns AggregateProvider's docstring)"
+        "Does not fabricate FastMCP-specific documentation prose when the tool returns no docstring (venvaxi inspect fastmcp::FastMCP reports an empty doc because FastMCP defines none of its own - an empty doc is a definitive answer, not an invitation to invent one; the signature is still authoritative)"
       ]
     },
     {

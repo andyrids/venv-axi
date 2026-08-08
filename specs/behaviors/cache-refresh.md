@@ -24,16 +24,35 @@ One SQLite database per consuming project at `~/.venvaxi/<hash>.db`, where `<has
 
 ### Validity
 
-A package's cached graph is valid when **both** hold:
+A cached graph is valid when **all three** hold:
 
-1. The recorded build version equals the currently installed distribution version.
-2. The recorded build depth is **at least** the depth the current query requires.
+1. The store's schema version equals the current one.
+2. The recorded build version equals the currently installed distribution version.
+3. The recorded build depth is **at least** the depth the current query requires.
 
 Depth is part of the check by necessity: a graph built at `--max-depth 1` MUST NOT satisfy a
 later `--max-depth 4` request, which would silently return a shallow tree and read as a
 definitive empty answer.
 
 A package with no recorded build is invalid, and is built on first query.
+
+### Schema version covers the builder, not just the shape
+
+The schema version is stored as SQLite's `PRAGMA user_version`. On mismatch the tables are
+dropped and rebuilt from scratch - cache databases are disposable derived data, so there are no
+migrations.
+
+**It MUST be bumped whenever the *content* a walk records changes, not only when a table's
+columns change.** Node fields are computed at walk time and frozen into the store, so a change to
+how a docstring, signature or home name is derived leaves every existing cache serving the old
+value. The version checks above cannot catch this: the distribution version has not moved, and
+the depth is unchanged.
+
+This is the subtle one, and the failure it prevents is silent. A user upgrading `venvaxi` to get
+a correctness fix would otherwise keep the incorrect data indefinitely - until an unrelated
+dependency bump happened to evict it - with no signal that anything was wrong, because incorrect
+introspection output looks entirely plausible. Treat "did I change what gets written?" as the
+trigger, not "did I change the table?"
 
 ### Rebuild
 

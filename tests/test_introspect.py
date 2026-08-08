@@ -13,6 +13,8 @@ import pytest
 
 from venvaxi._introspect import (
     SIGNATURE_UNAVAILABLE,
+    _doc_of,
+    _own_doc,
     _resolve_import_name,
     _signature_of,
     _walk_module,
@@ -118,6 +120,89 @@ def test_truncate_long_text_appends_hint() -> None:
     result = truncate("x" * 20, limit=5)
     assert result.startswith("xxxxx... truncated, 20 chars total")
     assert "use --docstring to see complete body" in result
+
+
+def test_own_doc_normalises_whitespace() -> None:
+    """An own docstring is returned dedented, as `getdoc` would."""
+
+    class Documented:
+        """Summary.
+
+        Indented body.
+        """
+
+    assert _own_doc(Documented) == "Summary.\n\nIndented body."
+
+
+def test_own_doc_absent_returns_empty() -> None:
+    """An object with no docstring of its own yields an empty string."""
+
+    class Bare:
+        pass
+
+    assert _own_doc(Bare) == ""
+
+
+def test_own_doc_non_string_returns_empty() -> None:
+    """A non-string `__doc__` yields an empty string rather than raising."""
+    assert _own_doc(types.SimpleNamespace(__doc__=42)) == ""
+
+
+def test_doc_of_undocumented_class_ignores_base_docstring() -> None:
+    """A class with no docstring does not inherit its base class's."""
+
+    class Base:
+        """Base docstring."""
+
+    class Derived(Base):
+        pass
+
+    assert _doc_of(Derived, NodeKind.CLASS) == ""
+
+
+def test_doc_of_documented_class_returns_own_docstring() -> None:
+    """A class that defines a docstring still reports it."""
+
+    class Documented:
+        """Own docstring."""
+
+    assert _doc_of(Documented, NodeKind.CLASS) == "Own docstring."
+
+
+def test_doc_of_override_without_docstring_returns_empty() -> None:
+    """An override with no docstring does not inherit the base method's."""
+
+    class Base:
+        def run(self) -> None:
+            """Run the base implementation."""
+
+    class Derived(Base):
+        def run(self) -> None:
+            pass
+
+    assert _doc_of(Derived.run, NodeKind.METHOD) == ""
+
+
+def test_doc_of_inherited_method_returns_base_docstring() -> None:
+    """An un-overridden method is the same object, so the base's docstring
+    is genuinely its own and is reported."""
+
+    class Base:
+        def run(self) -> None:
+            """Run the base implementation."""
+
+    class Derived(Base):
+        pass
+
+    assert Derived.run is Base.run
+    assert (
+        _doc_of(Derived.run, NodeKind.METHOD) == "Run the base implementation."
+    )
+
+
+def test_doc_of_attribute_ignores_type_docstring() -> None:
+    """A module-level constant is not recorded with its type's docstring."""
+    assert _doc_of({"key": "value"}, NodeKind.ATTRIBUTE) == ""
 
 
 def test_get_public_api_filters_private_and_non_callables(
