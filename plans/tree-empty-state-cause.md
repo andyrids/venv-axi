@@ -5,7 +5,7 @@ specs:
   - specs/commands/tree.md
   - specs/mcp/tools.md
 issues: [16, 17]
-pr:
+pr: 25
 ---
 
 # Plan: Correct the tree empty-state cause
