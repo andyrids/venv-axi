@@ -11,7 +11,7 @@ specs:
   - specs/commands/inherits.md
   - specs/mcp/tools.md
 issues: []
-pr:
+pr: 24
 ---
 
 # Plan: Reject malformed package names at the boundary
@@ -148,7 +148,8 @@ than a generic malformed-name error - see the Metadata mode section of the behav
 - Regex sweep re-run at implementation time: 97 distributions + 198 import-name keys, 234 union;
   the only rejections are the 34 pywin32 `packages_distributions()` keys carrying path
   separators.
-- `pr:` is deliberately unset - this run made no commit and opened no PR.
+- The implementation run made no commit and left `pr:` unset; the branch was committed and
+  [#24](https://github.com/andyrids/venv-axi/pull/24) opened afterwards, and `pr:` set then.
 
 ## Follow-ups
 
