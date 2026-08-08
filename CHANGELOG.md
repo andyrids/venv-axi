@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `ICM/_config/reference-standard-markdown.md` - typographical and stylistic conventions
+- `venvaxi setup --skill` installs a generic `venvaxi` skill into the consuming repo.
+- `specs/` - the permanent behavioural contract for spec-driven development.
+- `plans/` - the work-in-flight record, with frontmatter, status lifecycle and closeout ritual.
+- `ICM/_config/reference-standard-spec.md` - spec authoring bar and templates.
+- `icm-spec` skill, `spec-drift-auditor` agent and the `/audit-spec-drift` command.
 
 ### Fixed
 
@@ -53,21 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `ICM/create-feature` pipeline now gates on decisions rather than on step completion.
 - Workspace acceptance criteria now name approval-carrying-changes as a distinct checkpoint.
 - `ICM/_config/reference-toolchain-pymarkdown.md` records a `BadTokenizationError`.
-- `PACKAGE` and submodule node docstrings route through the shared own-docstring helper -
-  behaviour-neutral uniformity, so a future helper change cannot silently skip module nodes.
-
-## [v0.1.0rc2] - 2026-08-08
-
-### Added
-
-- `venvaxi setup --skill` installs a generic `venvaxi` skill into the consuming repo.
-- `specs/` - the permanent behavioural contract for spec-driven development.
-- `plans/` - the work-in-flight record, with frontmatter, status lifecycle and closeout ritual.
-- `ICM/_config/reference-standard-spec.md` - spec authoring bar and templates.
-- `icm-spec` skill, `spec-drift-auditor` agent and the `/audit-spec-drift` command.
-
-### Changed
-
+- `PACKAGE` and submodule node docstrings route through the shared own-docstring helper.
 - MCP server registration key renamed to `VenvAXI` in JSON config.
 - ICM `create-feature` pipeline is now spec-driven:
   - Stage 01 emits a spec change and a plan alongside the techspec.
