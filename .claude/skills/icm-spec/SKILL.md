@@ -35,8 +35,8 @@ artifacts should say.
 | Plan     | What we are doing about it    | `plans/<slug>.md`   | Frozen at `status: done`     |
 | Techspec | How, at implementation detail | ICM stage `output/` | Ephemeral scratch            |
 
-Confusing spec with plan is the failure this exists to prevent. "Add a `--json` flag to `find`"
-is motion - a plan. "`find` emits a `symbols` table ranked by facade path length" is state - a
+Confusing spec with plan is the failure this exists to prevent. 'Add a `--json` flag to `find`'
+is motion - a plan. '`find` emits a `symbols` table ranked by facade path length' is state - a
 spec.
 
 ## Workflow
@@ -86,11 +86,11 @@ built.
   will rot on the first refactor. Specs describe behaviour observable from outside
   `src/venvaxi/`.
 - **`venvaxi <cmd> --help` outranks any command spec.** If they disagree, the spec is the thing
-  that is wrong. Fix it rather than "correcting" the CLI to match prose.
+  that is wrong. Fix it rather than 'correcting' the CLI to match prose.
 - **Your built-in plan mode is not `plans/`.** An ephemeral plan evaporates when the turn ends.
-  The classic trap is drafting "write spec X, then build it", doing exactly that, and leaving
+  The classic trap is drafting 'write spec X, then build it', doing exactly that, and leaving
   neither a reviewed spec nor a plan file - split it into the two real artifacts.
-- **"Too small for a plan" is how the record hollows out.** A bounded change still gets a file
+- **'Too small for a plan' is how the record hollows out.** A bounded change still gets a file
   that freezes to `done`. The frozen plan plus its merged PR *is* the project's memory of what
   got built; skipping it trades seconds now for an unexplained change later.
 - **Spec/code divergence is a bug, not debt.** Fix the code, or amend the spec. Never work around

@@ -10,7 +10,7 @@ context-hierarchy-role: Desired state (specification)
 The symbol graph is cached per project and invalidated by **installed version plus build depth**,
 never by file hash or incremental parse.
 
-## Applies To
+## Applies to
 
 `show --api`, `find`, `tree`, `inspect`, `inherits` - every command accepting `--refresh`.
 `list` and `show` (metadata) read installed distribution metadata directly and are not cached.
@@ -51,8 +51,8 @@ the depth is unchanged.
 This is the subtle one, and the failure it prevents is silent. A user upgrading `venvaxi` to get
 a correctness fix would otherwise keep the incorrect data indefinitely - until an unrelated
 dependency bump happened to evict it - with no signal that anything was wrong, because incorrect
-introspection output looks entirely plausible. Treat "did I change what gets written?" as the
-trigger, not "did I change the table?"
+introspection output looks entirely plausible. Treat 'did I change what gets written?' as the
+trigger, not 'did I change the table?'
 
 ### Rebuild
 

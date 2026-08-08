@@ -3,13 +3,11 @@ context-hierarchy: Layer 3
 context-hierarchy-role: Rules, conventions and guidelines
 ---
 
-# Documentation
-
-## Docstrings
+# Standard - docstrings
 
 Docstrings follow the Google style guide and PEP 257 guidelines.
 
-### (1) Module-Level Docstrings
+## (1) Module-level docstrings
 
 - MUST follow existing codebase style
 - MUST include a summary line
@@ -28,7 +26,7 @@ License:
 """
 ```
 
-### (2) Functions and Methods
+## (2) Functions and methods
 
 - MUST follow existing codebase style
 - MUST use the imperative-style in the summary line
@@ -63,7 +61,7 @@ def format_help(lines: Sequence[str]) -> str:
     return f"help[{len(lines)}]:\n{body}"
 ```
 
-### (3) Classes
+## (3) Classes
 
 - MUST follow existing codebase style
 - MUST have a summary line that describes what the class instance represents

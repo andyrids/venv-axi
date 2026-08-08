@@ -15,17 +15,17 @@ Plans are temporal. Once merged they **freeze** as historical record: the merged
 completed validation checklist is the project's working memory of what got built, how, and what
 was deferred.
 
-## This is the Planning System
+## This is the planning system
 
 `plans/` is not a substitute for, and is not substituted by, an agent's built-in plan mode. An
 ephemeral plan evaporates when the turn ends, leaving no record. If a scratchpad is used to
 think, the artifact still lands here.
 
-The classic failure: drafting an ad-hoc plan of "write spec X, then build it", doing exactly
+The classic failure: drafting an ad-hoc plan of 'write spec X, then build it', doing exactly
 that, and leaving behind neither a reviewed spec change nor a plan file. Split it - the spec
 change goes through `specs/`, and the work to execute it gets a file here.
 
-Even small work leaves a plan. Skipping it because a change is "quick" is what hollows the record
+Even small work leaves a plan. Skipping it because a change is 'quick' is what hollows the record
 out.
 
 No DAG drawing or status table is maintained in this file - both rot the moment someone forgets
@@ -43,7 +43,7 @@ makes this file a false positive in every ripple check that greps for it.
 after editing a spec you want every plan that so much as mentions it. The *coverage* check behind
 Invariant 1 in `specs/README.md` is the opposite - it must read only the frontmatter `specs:`
 block, because a plan's prose routinely names specs it does not implement, and counting those as
-coverage lets the invariant pass on specs nothing owns. Never answer "is this spec covered?" with
+coverage lets the invariant pass on specs nothing owns. Never answer 'is this spec covered?' with
 a whole-file grep.
 
 ## Frontmatter
@@ -81,7 +81,7 @@ unknowns**, **Notes**, **Follow-ups**.
 it supplies the requirement identifiers the ICM verification stage reports against. `Notes` and
 `Follow-ups` stay empty until closeout.
 
-## Status Lifecycle
+## Status lifecycle
 
 ```text
 planned -> in-progress -> done      (frozen; edit only to correct the record)
@@ -101,14 +101,14 @@ The last commit before merge:
 5. Absorb any deferrals (see below).
 6. Reconcile `specs/` - if the implementation diverged, fix the code or amend the spec.
 
-## Follow-ups Taxonomy
+## Follow-ups taxonomy
 
 - **Issue `[#N](link)`** - actionable, but owned by no current plan.
 - **Deferred to `[<plan>](<plan>.md)`** - work an unstarted downstream plan will absorb.
 - **Tracked as** - external dependencies that are neither issue nor plan.
 - **None** - state this explicitly. Silence is ambiguous.
 
-## Deferral Absorption
+## Deferral absorption
 
 A `Deferred to` entry MUST, **in the same commit**, edit the named downstream plan to absorb it -
 typically a bullet in its Approach plus a new Validation criterion, cross-linked back.

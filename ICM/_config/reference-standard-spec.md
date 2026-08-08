@@ -3,22 +3,22 @@ context-hierarchy: Layer 3
 context-hierarchy-role: Rules, conventions and guidelines
 ---
 
-# Standard - Specifications
+# Standard - specifications
 
 How to write a file in `specs/`. The tree layout and the invariants it holds are in
 `specs/README.md`; this file is the authoring bar and the templates.
 
-## The Right Level of Detail
+## The right level of detail
 
 Specs declare **what** MUST be true, not **how** to implement it.
 
-- **Too vague** - "The find command searches symbols and returns useful results." An implementer
+- **Too vague** - 'The find command searches symbols and returns useful results.' An implementer
   still has to make a hundred decisions. Which fields? What ordering? What happens on no match?
-- **Right** - "Emit `count: <n>` and a `symbols` table of `name`, `kind`, `qualified_name`.
+- **Right** - 'Emit `count: <n>` and a `symbols` table of `name`, `kind`, `qualified_name`.
   Ranking prefers short facade paths. On no match with `--package` set, hint at `list --all`; on
-  no match without it, hint at `--package`." Testable by running the command.
-- **Too detailed** - "Call `find_symbol(query, limit, package)`, build rows via `node.as_row()`,
-  pass to `encode_table` with fields `[...]`." This is writing the code twice, and it rots on the
+  no match without it, hint at `--package`.' Testable by running the command.
+- **Too detailed** - 'Call `find_symbol(query, limit, package)`, build rows via `node.as_row()`,
+  pass to `encode_table` with fields `[...]`.' This is writing the code twice, and it rots on the
   first refactor.
 
 The test: could two implementers read it and disagree about whether the code conforms? If yes, it
@@ -32,7 +32,7 @@ is too vague to be a spec.
 - MUST NOT restate `--help` output as prose. `venvaxi <cmd> --help` is authoritative; a spec that
   disagrees with it is the thing that is wrong
 - SHOULD explain *why* a non-obvious rule exists, in one line. A rule whose reason is lost gets
-  "simplified" away by the next implementer
+  'simplified' away by the next implementer
 - SHOULD NOT duplicate a behaviour spec into a command spec - link to it
 
 ## Principles
@@ -40,9 +40,9 @@ is too vague to be a spec.
 A principle is a generative rule that resolves the cases enumeration never reaches. It earns its
 place only if it is **decisive**: it picks a side of a real trade-off and rules something out.
 
-- **Not a principle** - "Output should be clean and agent-friendly." Rules nothing out.
-- **A principle** - "On single-object payloads, efficiency comes from truncation, not the
-  encoding; MUST NOT relax the truncation default to compensate." An implementer can act on it.
+- **Not a principle** - 'Output should be clean and agent-friendly.' Rules nothing out.
+- **A principle** - 'On single-object payloads, efficiency comes from truncation, not the
+  encoding; MUST NOT relax the truncation default to compensate.' An implementer can act on it.
 
 `ICM/_config/reference-standard-yagni.md` is the in-repo worked example - every line picks a
 side.
@@ -58,9 +58,9 @@ Reserve `specs/principles.md` for genuinely project-wide rules. The trigger to p
 outgrown any one file. Lift it once, then replace both copies with references, rather than
 letting two near-identical statements drift apart.
 
-Do not agonise at capture time. Put it on the spec you are in; promote later if it spreads.
+Do not agonize at capture time. Put it on the spec you are in; promote later if it spreads.
 
-### Referencing Back Down
+### Referencing back down
 
 Promotion sends principles up; this is the flow back down. An agent working from one command spec
 will not open `specs/principles.md` on its own, so a project-wide principle quietly governing
@@ -75,7 +75,7 @@ principles this spec owns. Omit either subsection if empty.
 
 ## Templates
 
-### Command Spec
+### Command spec
 
 ```markdown
 # Command: venvaxi <verb>
@@ -83,14 +83,14 @@ principles this spec owns. Omit either subsection if empty.
 ## Invocation
 Positional arguments and flags, with defaults, as a table.
 
-## Data Requirements
+## Data requirements
 What the command reads - installed metadata, the symbol store, live introspection.
 
-## Output Rules
+## Output rules
 Declarative description of the TOON payload: fields emitted by default, truncation,
 the definitive empty state and its hint, the `help[]` footer.
 
-## Exit Codes
+## Exit codes
 Which `ExitCode` under which condition.
 
 ## Errors
@@ -101,15 +101,15 @@ Which `venvaxi.exceptions` surface, and what the caller sees.
 **Local** - principles owned by this command.
 ```
 
-### Behavior Spec
+### Behavior spec
 
 ```markdown
-# Behavior: <Name>
+# Behavior: <name>
 
 ## Rule
 The invariant, stated declaratively.
 
-## Applies To
+## Applies to
 Which commands, tools or modules this governs.
 
 ## Details
@@ -119,7 +119,7 @@ Edge cases, calculations, ordering, failure handling.
 Same two-part shape as above.
 ```
 
-### Principle Entry
+### Principle entry
 
 ```markdown
 ## <Short, stable heading>
@@ -131,15 +131,15 @@ rather than literally.
 The heading is the anchor other specs link to (`principles.md#<name>`). Keep it stable; changing
 it breaks every inbound reference.
 
-## Watch For Specs Mid-task
+## Watch for specs mid-task
 
 This is standing, not a stage. While implementing, debugging or reviewing, watch for the moment a
 decision gets resolved that would change how a *future* implementer decides something:
 
 - The user explains *why* they want something a certain way
-- A trade-off is settled in conversation ("always favour X over Y")
+- A trade-off is settled in conversation ('always favour X over Y')
 - An unspecified case is hit, an answer picked, and that answer implies a general rule
-- A "we'll always" or "we'll never" sentiment surfaces
+- A 'we'll always' or 'we'll never' sentiment surfaces
 - The same principle turns up in a second spec - the loudest promotion signal there is
 
 When noticed, **stop and surface it**: name the decision, say whether it reads as an enumerated

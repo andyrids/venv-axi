@@ -10,7 +10,7 @@ context-hierarchy-role: Desired state (specification)
 Every command writes TOON to STDOUT and nothing else. Logging goes to STDERR. Errors are TOON
 blocks on STDOUT, not tracebacks on STDERR.
 
-## Applies To
+## Applies to
 
 Every CLI command and every MCP tool.
 
@@ -65,7 +65,7 @@ nothing. An unresolvable name raises `SymbolNotFoundError` instead.
 
 The same reasoning governs scalar fields, which is why an absent docstring is a marker rather
 than `""`. A bare empty string is the silent blank this rule forbids: an agent cannot tell
-"defines none" from "something went wrong", and the plausible recovery - retry, or fall back to
+'defines none' from 'something went wrong', and the plausible recovery - retry, or fall back to
 recalled documentation - is exactly the drift the AXI exists to prevent.
 
 `(no docstring)` states a different fact from `(signature unavailable)`. The signature marker

@@ -10,7 +10,7 @@ context-hierarchy-role: Desired state (specification)
 The symbol graph keys nodes and edges in two different frames. Respect this invariant or
 `inherits` silently returns zero for re-exported classes.
 
-## Applies To
+## Applies to
 
 `find`, `inspect`, `inherits`, and every MCP tool that resolves a qualified name. Any change to
 `_store.py`, `_introspect.py` or the `*.sql` queries must be checked against this file.
@@ -28,7 +28,7 @@ The symbol graph keys nodes and edges in two different frames. Respect this inva
 - `SymbolStore.canonical_name` is the single facade -> home resolution point. It is applied by
   `get_inheritors` only - `get_symbol`/`show_module` deliberately answer with facade-keyed data
   (rewriting would change the `module` field agents see), and `find` ranking deliberately prefers
-  short facade paths (the correct public spelling for agents; never "fix" the ordering to prefer
+  short facade paths (the correct public spelling for agents; never 'fix' the ordering to prefer
   home paths - the resolver absorbs facade input where it matters).
 - Home-path class nodes are materialized only when the home module sits inside the *same*
   package. A foreign (e.g. stdlib) class re-exported by two indexed packages must not have its

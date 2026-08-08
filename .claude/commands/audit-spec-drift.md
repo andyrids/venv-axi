@@ -2,7 +2,7 @@
 description: Audit the specs/ tree against the implementation
 ---
 
-# Audit Spec Drift
+# Audit spec drift
 
 Scope (optional): $ARGUMENTS
 

@@ -4,7 +4,7 @@ context-hierarchy-role: Stage control point
 maximum-context-tokens: 500
 ---
 
-# Documentation and Closeout
+# Documentation and closeout
 
 Update project documentation, then freeze the plan as the durable record of what was built.
 
@@ -13,13 +13,14 @@ Update project documentation, then freeze the plan as the durable record of what
 - `03-verification/output/[slug]-test.md`
 - `plans/[slug].md` - the plan being closed out
 
-## Reference Material
+## Reference material
 
 Material tagged 'COULD' should be read if relevant to the implementation output or verification
 process.
 
 - Read (MUST):
   - `ICM/_config/reference-standard-changelog.md`
+  - `ICM/_config/reference-standard-markdown.md`
   - `ICM/_config/reference-standard-techspec.md`
   - `plans/README.md`
 

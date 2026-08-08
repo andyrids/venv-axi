@@ -60,7 +60,7 @@ be imported at runtime, including C extensions and dynamically-constructed attri
 `EXPORTS` and `IMPORTS_FROM` are the **re-export record**: both are written together whenever a
 walked symbol's home module differs from the module recording it, capturing the facade-to-home
 relationship as graph edges rather than only as a node field. No query consumes them today - they
-exist so a future feature (re-export provenance, "where does this really come from") can be built
+exist so a future feature (re-export provenance, 'where does this really come from') can be built
 without a cache rebuild, since the edges are already being accumulated.
 
 `DEPENDS_ON` is declared but never written or read. It is dead, and should either gain a purpose

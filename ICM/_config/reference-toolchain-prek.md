@@ -6,7 +6,7 @@ context-hierarchy-role: Rules, conventions and guidelines
 # Toolchain - `Prek`
 
 Prek is used as a pre-commit hook manager and is installed as a dependency. Running Prek through
-`uv run` ensures that the project virtual environment is activated and utilised.
+`uv run` ensures that the project virtual environment is activated and utilized.
 
 ## Commands
 

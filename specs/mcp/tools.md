@@ -52,8 +52,8 @@ These are deliberate and MUST be preserved:
 
 ## Hint wording
 
-Empty-state and next-step hints are phrased for the MCP caller - "Call `getSymbolTool` ...", not
-"Run `venvaxi inspect` ...". A hint naming a shell command is useless to a tool-calling agent,
+Empty-state and next-step hints are phrased for the MCP caller - 'Call `getSymbolTool` ...', not
+'Run `venvaxi inspect` ...'. A hint naming a shell command is useless to a tool-calling agent,
 and mixing the two teaches the wrong invocation surface.
 
 Hints reference other tools by deriving the camelCase name from the function, so a rename cannot

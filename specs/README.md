@@ -44,7 +44,7 @@ specs/
 ```
 
 - **`commands/`** - one file per CLI verb. What the agent invokes and what comes back.
-- **`behaviors/`** - rules spanning several commands. When a command spec says "truncated", the
+- **`behaviors/`** - rules spanning several commands. When a command spec says 'truncated', the
   output contract defines what truncation means.
 - **`mcp/`** - the MCP surface, which MUST stay behaviourally aligned with the CLI.
 

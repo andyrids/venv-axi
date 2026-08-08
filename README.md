@@ -15,8 +15,8 @@ private, internal and undocumented distributions that documentation-retrieval to
 The interface cannot drift from the pinned version - reporting what a symbol is rather than how to
 use it - complimenting a documentation source such as `Context7`, `King Context` etc.
 
-The AXI answers "does this exist, and what is its exact shape in the version I have
-installed?" - other tools answer "how do I use this and why?"
+The AXI answers 'does this exist, and what is its exact shape in the version I have
+installed?' - other tools answer 'how do I use this and why?'
 
 ## How?
 
@@ -106,7 +106,7 @@ uv run venvaxi setup
 
 The symbol graph is cached per-project under `~/.venvaxi/`.
 
-## A Note on AI Usage
+## A note on AI usage
 
 This project is being used as a testbed for Interpretable Context Methodology (ICM), which uses
 folder structure as Agent Architecture.

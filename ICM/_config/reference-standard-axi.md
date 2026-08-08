@@ -4,7 +4,7 @@ context-hierarchy-role: Pointer - content relocated
 context-hierarchy-scope: Feature-scoped - read only when working on the axi CLI (src/venvaxi)
 ---
 
-# AXI Principles
+# Standard - AXI principles
 
 **This content has moved into `specs/`.** It described what MUST be true of `venvaxi`, which
 makes it desired state, not a toolchain convention - see `specs/README.md` for the state vs
@@ -19,5 +19,5 @@ This file remains as a pointer because it is cited from source docstrings and te
 | Qualified name semantics              | `specs/behaviors/qualified-name-semantics.md` |
 | Streams, exit codes, truncation       | `specs/behaviors/output-contract.md`          |
 
-Principle numbers are stable. A source docstring citing "AXI principle 3" still means content
+Principle numbers are stable. A source docstring citing 'AXI principle 3' still means content
 truncation with size hints.

@@ -25,13 +25,13 @@ The positional argument widens under `--api`. In metadata mode it MUST be a dist
 API mode any importable dotted module path is accepted, because the target is the import system
 rather than the metadata database.
 
-## Data Requirements
+## Data requirements
 
 - **Metadata mode**: installed distribution metadata. Not cached.
 - **API mode**: public, top-level API symbols from the cached symbol graph, built on demand. See
   [Cache and refresh](../behaviors/cache-refresh.md).
 
-## Output Rules
+## Output rules
 
 **Metadata mode** - a flat TOON object over the selected fields, then a footer naming
 `show <package> --api`.
@@ -44,7 +44,7 @@ it is not already set. A symbol defining no docstring of its own reports `(no do
 Empty API result: `count: 0` plus a hint naming `venvaxi tree <package>`, because an empty public
 API usually means the symbols are one level down rather than absent.
 
-## Exit Codes
+## Exit codes
 
 `EX_OK`, including empty results. `EX_FAILURE` on any raised `Error`.
 

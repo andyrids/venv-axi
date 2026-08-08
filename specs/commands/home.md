@@ -16,10 +16,10 @@ venvaxi [-v|--verbose]
 The subparsers action is deliberately **not** `required`, so a bare `venvaxi` falls through to
 this view instead of erroring.
 
-## Data Requirements
+## Data requirements
 
 Live process state only. No package resolution, no symbol store, no project root lookup - this
-view MUST work in a broken or uninitialised project.
+view MUST work in a broken or uninitialized project.
 
 - `bin` - the resolved path of `sys.argv[0]`
 - `venv` - the resolved `sys.prefix`
@@ -27,14 +27,14 @@ view MUST work in a broken or uninitialised project.
 
 Both paths are rendered `~/`-prefixed when under the home directory, else absolute.
 
-## Output Rules
+## Output rules
 
 A flat TOON object of `description`, `bin`, `venv`, `status`, followed by a `help[]` footer
 naming every available command with a concrete, runnable template.
 
 This is the content-first surface: it shows live, actionable state, never help text.
 
-## Exit Codes
+## Exit codes
 
 Always `EX_OK`.
 

@@ -16,7 +16,7 @@ venvaxi list [--all] [--fields <csv>]
 | `--all`    | off              | Include dev and optional dependency groups   |
 | `--fields` | `name,version`   | Comma-separated display fields               |
 
-## Data Requirements
+## Data requirements
 
 The consuming project's **declared** dependencies, resolved against what is installed. The
 project root is the nearest ancestor containing a `pyproject.toml`.
@@ -25,7 +25,7 @@ Declared, not merely installed: the answer is what the project asked for, so tra
 are excluded. Valid `--fields` values are the `PackageInfo` fields - `name`, `version`,
 `location`, `summary`.
 
-## Output Rules
+## Output rules
 
 - `count: <n>` followed by a `packages` TOON table over the selected fields.
 - Default fields are two, not the full four, per principle 2 (minimal default schemas).
@@ -33,7 +33,7 @@ are excluded. Valid `--fields` values are the `PackageInfo` fields - `name`, `ve
   results.
 - Footer otherwise names `venvaxi show <package>`.
 
-## Exit Codes
+## Exit codes
 
 `EX_OK`, including the empty case. `EX_FAILURE` on an invalid `--fields` value or an
 unresolvable project root.

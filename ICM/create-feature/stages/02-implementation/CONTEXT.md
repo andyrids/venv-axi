@@ -17,7 +17,7 @@ Write Python code for the technical specification from the Specification stage.
 Set the plan's `status` to `in-progress` before starting. If the spec turns out to be ambiguous
 or wrong, amend the spec - do not guess in code, and do not work around it.
 
-## Reference Material
+## Reference material
 
 Material tagged 'COULD' should be read if relevant to the technical specification.
 
