@@ -1,9 +1,9 @@
 ---
-status: planned
+status: done
 depends: [mcp-hint-parity]
 specs: []
-issues: []
-pr:
+issues: [20]
+pr: 19
 ---
 
 # Plan: Gate the create-feature pipeline on decisions, not on steps
@@ -16,6 +16,12 @@ widen the checkpoint response protocol.
 
 Touches the four stage `CONTEXT.md` files and the workspace control point. No `src/venvaxi/`
 change, no spec change.
+
+**Widened at stage 01 to a sixth file**, `.claude/commands/create-feature.md`. It instructs every
+run to honour "every CHECKPOINT", which under conditional gates invites an agent to read a
+legitimate non-firing as a violation. Leaving it stale would defeat the gate change 1 introduces,
+in the one file every run reads first. Recorded here rather than absorbed silently, per the
+re-entry discipline this plan is about.
 
 **Revised after the second end-to-end run.** The first draft was written from one run
 ([inspect-own-docstring](inspect-own-docstring.md)). The second
@@ -200,18 +206,20 @@ seven would have. The reduction is real but modest, and smaller than the first d
 
 ## Validation
 
-- [ ] Stage 03's test gate is explicitly conditional, and the stage file requires the condition to
+- [x] Stage 03's test gate is explicitly conditional, and the stage file requires the condition to
   be discharged with evidence in the visible response
-- [ ] Stage 03 keeps checkpoints at both conformance (11) and report (13), with 13 conditional
+- [x] Stage 03 keeps checkpoints at both conformance (11) and report (13), with 13 conditional
   and carrying the escape clause for material the report itself surfaces
-- [ ] The stage 03 prek gate is unchanged and still a separate step from the test gate
-- [ ] `ICM/create-feature/CONTEXT.md` carries the re-entry rule, and both stage 03 step 11 and
+- [x] The stage 03 prek gate is unchanged and still a separate step from the test gate
+- [x] `ICM/create-feature/CONTEXT.md` carries the re-entry rule, and both stage 03 step 11 and
   stage 04 step 3 reference it
-- [ ] Stage 03 Inputs name `evals.json` with the reason it belongs there
-- [ ] Workspace Acceptance Criteria admit approval-carrying-changes as a distinct response
-- [ ] Nominal checkpoints across the four stages drop from 9 to 8, of which 6 are unconditional
-- [ ] A dry read-through of all five files finds no step numbering left stale by the reordering
-- [ ] `uv run -m prek run --all-files` passes
+- [x] Stage 03 Inputs name `evals.json` with the reason it belongs there
+- [x] Workspace Acceptance Criteria admit approval-carrying-changes as a distinct response
+- [x] `.claude/commands/create-feature.md` no longer demands every checkpoint be honoured
+  unconditionally, and names the evidence a conditional gate must discharge
+- [x] Nominal checkpoints across the four stages drop from 9 to 8, of which 6 are unconditional
+- [x] A dry read-through of all five files finds no step numbering left stale by the reordering
+- [x] `uv run -m prek run --all-files` passes
 - [ ] The next `/create-feature` run reports how many gates fired, how many were skipped by
   condition, and whether any conditional skip went unannounced
 
@@ -250,8 +258,55 @@ seven would have. The reduction is real but modest, and smaller than the first d
 
 ## Notes
 
-Populated at closeout.
+**This run is no evidence about whether the rework works.** It executed the *old* nine-gate
+structure one last time - the new gates do not exist until this change lands, and adopting them
+mid-run would have left the run unauditable against either structure. It also ran in an agreed
+end-to-end mode where no gate fired as a stop, the four stage artifacts being reviewed together
+at the end. The unticked criterion below is waiting for the first run that actually uses the new
+gates.
+
+**One Validation criterion is deliberately unticked.** *"The next `/create-feature` run reports
+how many gates fired..."* is forward-looking by construction: it asks the next run to report. A
+ticked box that was not checked is worse than an unticked one.
+
+**Scope widened at stage 01 to a sixth file.** `.claude/commands/create-feature.md` told every
+run to honour "every CHECKPOINT", which under conditional gates reads a legitimate non-firing as
+a violation - in the one file every run reads first. Agreed before the run started and recorded
+in Scope rather than absorbed silently.
+
+**No spec to conform against, and that is the open gap - not a pass.** `specs: []`, so stage 03's
+conformance step had no input. The plan's Risks already flag it: nothing governs the process,
+making the stage files a spec would be circular, and the `specs/README.md` invariant quietly
+assumes every plan implements a spec. Restated here because an empty conformance section reads
+like success if nobody says otherwise.
+
+**Deviation forced by a tool bug.** The Acceptance Criteria text was written with the repo's
+house pipe notation (`"approved" | "continue"`). PyMarkdown's tokenizer crashes on a pipe inside
+a nested list item - an unhandled `BadTokenizationError` naming no file, line or rule. A pipe at
+the top level is fine, and reconstructing the file's original three-level nesting did not avoid
+it, so the pre-existing pipe-carrying line survived by some narrower accident than depth.
+Resolved by writing "or" in that section only, which leaves a small house-style inconsistency.
+Filed as [#20](https://github.com/andyrids/venv-axi/issues/20).
+
+That gotcha went into `ICM/_config/reference-toolchain-pymarkdown.md` with the bisection recipe.
+It earns its place *because* the tool gives no signal - the same test rejected an ISC004 entry on
+the previous run, where Ruff names the rule and prints the remedy. A reference entry duplicating
+a good diagnostic rots while the tool stays right; one substituting for a useless diagnostic does
+not.
+
+**The prek gate is now defended in writing.** Stage 03 carries a line explaining why step 7 is
+unconditional and separate from the test gate: on the previous run every unit test passed while a
+lint error sat in the code. Recorded because "reduce the gate count" is the kind of goal that
+quietly eats a gate that was working - and this run is itself an instance of that goal.
 
 ## Follow-ups
 
-Populated at closeout.
+- **Issue** [#20](https://github.com/andyrids/venv-axi/issues/20) - PyMarkdown crashes with
+  `BadTokenizationError` on a pipe in a nested list item, and the diagnostic names no file, line
+  or rule. Worked around here; the reference entry carries the bisection recipe. Narrowing the
+  reproducer and reporting upstream is the only resolution that removes the trap, and is worth
+  doing if it recurs - a second occurrence would also give a second data point on the trigger.
+- **Deferred to** - none.
+- **Tracked as** - the first `/create-feature` run under the new gates. It discharges the one
+  unticked Validation criterion and is the first real evidence about whether the rework works.
+  Not assigned to a plan, because it is whatever run happens next rather than work of its own.
