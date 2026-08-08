@@ -38,10 +38,14 @@ the spelling the caller will import. See
 
 Rules binding both modes:
 
-- **`doc` MUST be the target's own docstring.** A symbol that defines none reports an empty
-  `doc` - it MUST NOT inherit its base class's, its metaclass's, or its type's docstring.
-  Reporting an inherited docstring as the symbol's own records a false fact about the installed
-  package, which is precisely the drift this tool exists to eliminate.
+- **`doc` MUST be the target's own docstring.** It MUST NOT inherit its base class's, its
+  metaclass's, or its type's docstring. Reporting an inherited docstring as the symbol's own
+  records a false fact about the installed package, which is precisely the drift this tool exists
+  to eliminate.
+- A symbol that defines no docstring of its own reports the marker `(no docstring)`, not an empty
+  string, in both truncated and `--docstring` modes. See
+  [Definitive empty states](../behaviors/output-contract.md#definitive-empty-states) for why a
+  bare `""` is insufficient.
 - `signature` is the real signature from live introspection. Where `inspect.signature` fails on a
   callable, the marker `(signature unavailable)` is recorded - distinct from every real
   signature, so "introspection failed" is never confused with "takes no arguments".

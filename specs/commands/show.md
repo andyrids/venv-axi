@@ -38,7 +38,8 @@ rather than the metadata database.
 
 **API mode** - `count: <n>` and a `symbols` table of `name`, `kind`, `signature`, `doc`.
 Docstrings are truncated unless `--docstring` is set; the footer suggests `--docstring` only when
-it is not already set.
+it is not already set. A symbol defining no docstring of its own reports `(no docstring)` - see
+[Definitive empty states](../behaviors/output-contract.md#definitive-empty-states).
 
 Empty API result: `count: 0` plus a hint naming `venvaxi tree <package>`, because an empty public
 API usually means the symbols are one level down rather than absent.

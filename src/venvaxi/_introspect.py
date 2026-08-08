@@ -50,6 +50,19 @@ NOTE: Distinct from every real signature, so an agent can tell
 TOON structural characters, so the encoder never has to quote it.
 """
 
+DOCSTRING_ABSENT = "(no docstring)"
+"""Marker emitted for a symbol that defines no docstring of its own.
+
+NOTE: AXI principle 5 (definitive empty states) - a bare `""` reads as
+silent blank output, leaving an agent unable to tell "defines none" from
+"something went wrong". States a different fact from
+`SIGNATURE_UNAVAILABLE`: absence by definition, not failed introspection.
+
+Applied at *emission* only. Recording it would put the literal text into
+the FTS index, so `find docstring` would match every undocumented symbol
+in the graph.
+"""
+
 
 @dataclass(frozen=True, slots=True)
 class SymbolInfo:
@@ -102,19 +115,41 @@ def summarize_doc(
         limit: The truncation limit. Defaults to 200.
 
     Returns:
-        `doc` unchanged, or its truncated first line.
+        `DOCSTRING_ABSENT` when `doc` is empty, else `doc` unchanged or
+        its truncated first line.
     """
+    if not doc:
+        return DOCSTRING_ABSENT
     if docstring:
         return doc
-    return truncate(doc.splitlines()[0] if doc else "", limit)
+    return truncate(doc.splitlines()[0], limit)
+
+
+def _own_doc(obj: Any) -> str:
+    """Extract an object's own docstring, never an inherited one.
+
+    NOTE: `inspect.getdoc` is `cleandoc` of the object's own `__doc__`
+    plus a `_finddoc` fallback that walks the MRO - so an undocumented
+    class, or a method overriding a documented one, is handed its base's
+    docstring as if it were its own. Reading `__doc__` directly drops
+    only that fallback, keeping `cleandoc`'s whitespace normalisation.
+
+    Args:
+        obj: The object to document.
+
+    Returns:
+        The object's own, whitespace-normalised docstring, or `""`.
+    """
+    doc = getattr(obj, "__doc__", None)
+    return inspect.cleandoc(doc) if isinstance(doc, str) else ""
 
 
 def _doc_of(obj: Any, kind: NodeKind) -> str:
     """Extract an object's own docstring.
 
-    NOTE: `inspect.getdoc` falls back to an instance's *type* docstring,
-    so a module-level `dict`/`str` constant would otherwise be recorded
-    carrying the builtin's docstring as its own.
+    NOTE: An instance's `__doc__` *is* its type's, so a module-level
+    `dict`/`str` constant would otherwise be recorded carrying the
+    builtin's docstring as its own - hence the `ATTRIBUTE` comparison.
 
     Args:
         obj: The object to document.
@@ -123,10 +158,10 @@ def _doc_of(obj: Any, kind: NodeKind) -> str:
     Returns:
         The object's own docstring, or `""`.
     """
-    doc = inspect.getdoc(obj) or ""
+    doc = _own_doc(obj)
     if kind is not NodeKind.ATTRIBUTE:
         return doc
-    return "" if doc == (inspect.getdoc(type(obj)) or "") else doc
+    return "" if doc == _own_doc(type(obj)) else doc
 
 
 def _resolve_import_name(name: str) -> str:

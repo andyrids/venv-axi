@@ -29,6 +29,9 @@ installed version.
 Docstrings are truncated by default; add `--docstring` if needed. Add `--refresh` to rebuild a
 stale graph after updating dependencies (`find` requires `--package` alongside `--refresh`).
 
+`doc: (no docstring)` means the symbol defines none of its own - a definitive answer, not a
+failure. Do not retry, and do not substitute a base class's documentation or your own recall.
+
 VenvAXI reports what a symbol *is*, not how to use it - reach for documentation if needed.
 
 Other commands:
