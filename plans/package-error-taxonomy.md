@@ -8,7 +8,7 @@ specs:
   - specs/commands/inspect.md
   - specs/commands/inherits.md
 issues: []
-pr:
+pr: 22
 ---
 
 # Plan: Distinguish not-installed from failed-to-import
