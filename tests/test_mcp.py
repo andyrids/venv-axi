@@ -196,14 +196,27 @@ def test_find_symbol_tool_returns_toon(
     assert 'Console|class|"rich::Console"' in result
 
 
-def test_find_symbol_tool_empty() -> None:
-    """No matches reports a zero count."""
+def test_find_symbol_tool_empty_without_package_hints_indexing() -> None:
+    """No match without a package hints at re-calling with one."""
     server = build_server()
     with mock.patch(f"{MCP}.find_symbol", return_value=[]):
         tool = asyncio.run(server.get_tool(camel_case("find_symbol_tool")))
         result = tool.fn(query="nope")
     assert result.startswith("count: 0")
-    assert "help[1]:" in result
+    assert "Re-call with package=<package>" in result
+    assert "listPackagesTool" not in result
+
+
+def test_find_symbol_tool_empty_with_package_names_list_tool() -> None:
+    """No match with a package set hints at the package-list tool."""
+    server = build_server()
+    with mock.patch(f"{MCP}.find_symbol", return_value=[]):
+        tool = asyncio.run(server.get_tool(camel_case("find_symbol_tool")))
+        result = tool.fn(query="nope", package="rich")
+    assert result.startswith("count: 0")
+    assert "No match in `rich`" in result
+    assert "listPackagesTool" in result
+    assert "list_packages_tool" not in result
 
 
 def test_get_inheritors_tool_returns_toon(
@@ -310,13 +323,20 @@ def test_get_module_tree_tool_returns_toon(
     assert "1|rich.table|module" in result
 
 
-def test_get_module_tree_tool_empty_hint_names_list_tool() -> None:
-    """No tree hints at the tool that lists packages, not the module one."""
+def test_get_module_tree_tool_empty_hint_names_root_tree(
+    fake_package: str,
+) -> None:
+    """A missing submodule hints at the root package's own tree.
+
+    NOTE: Driven by a real input, not a mock on `get_module_tree` - the
+    branch is reached by a dotted name whose root imports but whose tail
+    has no node in the graph. See issue #16.
+    """
     server = build_server()
-    with mock.patch(f"{MCP}.get_module_tree", return_value=[]):
-        tool = asyncio.run(server.get_tool(camel_case("get_module_tree_tool")))
-        result = tool.fn(name="nope")
+    tool = asyncio.run(server.get_tool(camel_case("get_module_tree_tool")))
+    result = tool.fn(name=f"{fake_package}.nosuchmodule")
     assert result.startswith("count: 0")
-    assert "listPackagesTool" in result
-    assert "showModuleTool" not in result
-    assert "list_packages_tool" not in result
+    assert "getModuleTreeTool" in result
+    assert f"name={fake_package}" in result
+    assert "listPackagesTool" not in result
+    assert "get_module_tree_tool" not in result

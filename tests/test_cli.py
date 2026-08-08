@@ -363,19 +363,30 @@ def test_command_tree_with_results(
     assert "1|rich.table|module" in out
 
 
-def test_command_tree_empty(
-    capsys: pytest.CaptureFixture, make_cli_context: ContextFactory
+@pytest.mark.parametrize("submodule", ["nosuchmodule", "_impl"])
+def test_command_tree_empty_hint_names_root_tree(
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+    fake_package: str,
+    submodule: str,
 ) -> None:
-    """An empty tree prints the empty state."""
+    """A dotted name with no graph node hints at the root's own tree.
+
+    NOTE: Driven by a real input, not a mock on `get_module_tree` - the
+    branch is reached by a dotted name whose root imports but whose tail
+    has no node (nonexistent or private submodule). See issue #16.
+    """
     ctx = make_cli_context(
-        args=argparse.Namespace(package="rich", max_depth=2)
+        args=argparse.Namespace(
+            package=f"{fake_package}.{submodule}", max_depth=2
+        )
     )
-    with mock.patch(f"{CLI}.get_module_tree", return_value=[]):
-        exit_code = _cli.command_tree(ctx)
+    exit_code = _cli.command_tree(ctx)
     out = capsys.readouterr().out
     assert exit_code == 0
     assert "count: 0" in out
-    assert "help[1]:" in out
+    assert f"Run `venvaxi tree {fake_package}`" in out
+    assert "venvaxi list" not in out
 
 
 def test_command_inspect_prints_symbol_detail(

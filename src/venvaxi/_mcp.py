@@ -253,9 +253,19 @@ def get_module_tree_tool(name: str, max_depth: int = 2) -> str:
     """Show nested module tree for a module|package (TOON format)."""
     pairs = get_module_tree(name, max_depth)
     if not pairs:
-        cname = camel_case(list_packages_tool.__name__)
+        # NOTE: Reached only by a dotted name whose tail has no graph
+        # node - a bad *package* raises upstream, so the root's own tree
+        # is the hint that shows what exists. See `specs/commands/tree.md`.
+        root = name.split(".", 1)[0]
+        cname = camel_case(get_module_tree_tool.__name__)
         return _with_help(
-            "count: 0", [f"Call `{cname}` for the venv package list"]
+            "count: 0",
+            [
+                (
+                    f"Call `{cname}` with name={root} for the"
+                    " submodules that exist"
+                )
+            ],
         )
     rows = [{"depth": depth, **node.as_row()} for depth, node in pairs]
     table = encode_table("tree", rows, ["depth", "qualified_name", "kind"])

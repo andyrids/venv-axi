@@ -36,6 +36,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `inspect` and `getSymbolTool` resolve a facade-spelled class member
   (`fastmcp::Client.call_tool`) to its home-keyed row instead of reporting it not found;
   the answer keeps the home spelling, the only qualified name the graph holds for a member.
+- An empty `tree` result (CLI and MCP) hinted at the package list, which cannot explain a
+  missing submodule; both surfaces now name the root package's own tree, and
+  `specs/commands/tree.md` states the real cause - a dotted name whose submodule has no node
+  in the graph.
+- `tree --help` called `package` a distribution name although dotted module names are accepted;
+  the help string and the spec's invocation table now say so.
 
 ### Changed
 

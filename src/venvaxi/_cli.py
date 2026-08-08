@@ -319,8 +319,17 @@ def command_tree(ctx: CLIContext) -> int:
         ctx.args.package, ctx.args.max_depth, refresh=ctx.args.refresh
     )
     if not pairs:
+        # NOTE: Reached only by a dotted name whose tail has no graph
+        # node (nonexistent, private or failed-import submodule) - a bad
+        # *package* raises upstream, so the root's own tree is the hint
+        # that shows what exists. See `specs/commands/tree.md`.
+        root = ctx.args.package.split(".", 1)[0]
         _emit("count: 0")
-        _emit(format_help(["Run `venvaxi list` for the venv package list"]))
+        _emit(
+            format_help(
+                [f"Run `venvaxi tree {root}` for the submodules that exist"]
+            )
+        )
         return ExitCode.EX_OK
 
     rows = [{"depth": depth, **node.as_row()} for depth, node in pairs]
@@ -594,7 +603,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[Any]") -> None:
     parser_tree = subparsers.add_parser(
         "tree", help="Show nested module tree for a package"
     )
-    parser_tree.add_argument("package", help="Package (distribution) name")
+    parser_tree.add_argument("package", help="Package or dotted module name")
     parser_tree.add_argument(
         "--max-depth",
         type=int,

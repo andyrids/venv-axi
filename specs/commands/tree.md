@@ -13,7 +13,7 @@ venvaxi tree <package> [--max-depth N] [--refresh]
 
 | Argument      | Default  | Meaning                             |
 | ------------- | -------- | ----------------------------------- |
-| `package`     | required | Distribution name                   |
+| `package`     | required | Package or dotted module name       |
 | `--max-depth` | `2`      | Maximum submodule recursion depth   |
 | `--refresh`   | off      | Rebuild the cached graph first      |
 
@@ -29,8 +29,11 @@ shallower depth MUST be rebuilt rather than answered from - see
 - Depth is emitted as a column rather than as indentation, so the payload stays a uniform TOON
   table. Rendering a visual tree is the caller's business.
 - Footer names `venvaxi inspect <module>`.
-- Empty result: `count: 0` plus a hint naming `venvaxi list`, because the usual cause is a
-  mistyped or uninstalled package.
+- Empty result: `count: 0` plus a hint naming the root package's own tree
+  (`venvaxi tree <root>`), which shows the submodules that do exist. Only a dotted module name
+  reaches this state - the root package resolved and imported, but the named submodule has no
+  node in the graph: it does not exist, is private, or failed to import during the walk. A
+  mistyped or uninstalled package never reaches it; that raises and exits `EX_FAILURE`.
 
 ## Exit codes
 
