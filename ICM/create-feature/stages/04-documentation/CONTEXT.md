@@ -33,7 +33,9 @@ process.
      - Consider appending to a relevant `ICM/_config/reference-*.md` file
      - Consider creating a new `ICM/_config/reference-*.md` file
    - List the closeout edits planned for `plans/[slug].md`
-3. CHECKPOINT - await user review in accordance with acceptance criteria
+3. CHECKPOINT - await user review in accordance with acceptance criteria. A decision here that
+   changes observable behaviour follows the re-entry rule in `ICM/create-feature/CONTEXT.md`
+   rather than being patched in place
 4. Update project documentation
 5. Close out `plans/[slug].md` - this is the last edit before merge, after which the plan freezes
    as historical record:

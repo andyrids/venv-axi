@@ -1,5 +1,5 @@
 ---
-status: planned
+status: in-progress
 depends: [mcp-hint-parity]
 specs: []
 issues: []
@@ -16,6 +16,12 @@ widen the checkpoint response protocol.
 
 Touches the four stage `CONTEXT.md` files and the workspace control point. No `src/venvaxi/`
 change, no spec change.
+
+**Widened at stage 01 to a sixth file**, `.claude/commands/create-feature.md`. It instructs every
+run to honour "every CHECKPOINT", which under conditional gates invites an agent to read a
+legitimate non-firing as a violation. Leaving it stale would defeat the gate change 1 introduces,
+in the one file every run reads first. Recorded here rather than absorbed silently, per the
+re-entry discipline this plan is about.
 
 **Revised after the second end-to-end run.** The first draft was written from one run
 ([inspect-own-docstring](inspect-own-docstring.md)). The second
@@ -209,6 +215,8 @@ seven would have. The reduction is real but modest, and smaller than the first d
   stage 04 step 3 reference it
 - [ ] Stage 03 Inputs name `evals.json` with the reason it belongs there
 - [ ] Workspace Acceptance Criteria admit approval-carrying-changes as a distinct response
+- [ ] `.claude/commands/create-feature.md` no longer demands every checkpoint be honoured
+  unconditionally, and names the evidence a conditional gate must discharge
 - [ ] Nominal checkpoints across the four stages drop from 9 to 8, of which 6 are unconditional
 - [ ] A dry read-through of all five files finds no step numbering left stale by the reordering
 - [ ] `uv run -m prek run --all-files` passes

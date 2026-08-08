@@ -18,6 +18,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The `ICM/create-feature` pipeline now gates on decisions rather than on step completion. Two
+  test-outcome checkpoints fold into one that fires only on a failure, the verification report's
+  gate is conditional on the conformance gate having produced changes, and a cross-stage re-entry
+  rule sends a late decision back to the earliest stage it invalidates. Nominal checkpoints drop
+  from 9 to 8, of which 6 are unconditional.
+- Workspace acceptance criteria now name approval-carrying-changes as a distinct checkpoint
+  response, and require a conditional gate's condition to be discharged with visible evidence.
+- `ICM/_config/reference-toolchain-pymarkdown.md` records a `BadTokenizationError` crash whose
+  diagnostic names no file, line or rule.
+
 ### Fixed
 
 - `inspect`, `show --api` and the MCP symbol tools reported an inherited docstring as a symbol's
