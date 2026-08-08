@@ -33,6 +33,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   misleading not-installed answer.
 - MCP tools return the CLI's `Unexpected error:` TOON block for a non-`Error` exception instead
   of letting it escape into FastMCP's generic error path.
+- An empty `tree` result (CLI and MCP) hinted at the package list, which cannot explain a
+  missing submodule; both surfaces now name the root package's own tree, and
+  `specs/commands/tree.md` states the real cause - a dotted name whose submodule has no node
+  in the graph.
+- `tree --help` called `package` a distribution name although dotted module names are accepted;
+  the help string and the spec's invocation table now say so.
 
 ### Changed
 
