@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `PackageNotFoundError` for a package that is not installed.
   - `PackageImportError` for one that is installed but cannot be imported.
 - `show <name> --api` raises `InvalidArgumentError` rather than `PackageNotFoundError`.
+- A package argument that cannot possibly name a package (`.foo`, `a b`, `../etc/passwd`) now
+  raises `InvalidArgumentError` at exit 1, instead of `Unexpected error` at exit 2 or a
+  misleading not-installed answer.
+- MCP tools return the CLI's `Unexpected error:` TOON block for a non-`Error` exception instead
+  of letting it escape into FastMCP's generic error path.
 
 ### Changed
 
