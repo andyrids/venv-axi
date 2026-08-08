@@ -61,8 +61,8 @@ uv run venvaxi setup --skill
 ```
 
 > [!WARNING]
-> Unlike the marked `AGENTS.md` block, `SKILL.md` is written as a whole file - any local edits
-> to a previously installed copy are overwritten.
+> Unlike the marked `AGENTS.md` block, `SKILL.md` is a bundled artifact - any local edits to a
+> previously installed copy are overwritten.
 
 The AXI tools can be served over MCP (STDIO) with the `venvaxi serve` command, which requires the
 `mcp` extra:
@@ -129,14 +129,26 @@ A community dedicated to this methodology can be found at [https://www.skool.com
 > in the right areas to promote continued development (Friction Doctrine). This method of using
 > Agents is a WIP.
 
+ICM is spec-driven. Three artifact layers are kept deliberately separate:
+
+| Layer    | Answers                       | Location            | Lifetime                     |
+| -------- | ----------------------------- | ------------------- | ---------------------------- |
+| Spec     | What MUST be true, forever    | `specs/`            | Permanent, changed by review |
+| Plan     | What we are doing about it    | `plans/`            | Frozen at `status: done`     |
+| Techspec | How, at implementation detail | ICM stage `output/` | Ephemeral scratch            |
+
+`specs/` is the source of truth for behaviour; `plans/` is the durable record of what got built
+and why. Stage outputs stay gitignored scratch. See [`specs/README.md`](specs/README.md) and
+[`plans/README.md`](plans/README.md).
+
 **TODO**:
 
-- Research spec-driven development integration & ICM suitability
-  - [JarvusInnovations/specops](https://github.com/JarvusInnovations/specops)
-- Research verification loops & ICM suitability
+- [X] ~~Research spec-driven development integration & ICM suitability~~ - adapted from
+  [JarvusInnovations/specops](https://github.com/JarvusInnovations/specops)
+- [ ] Research verification loops & ICM suitability
   - [Getting started with loops](https://claude.com/blog/getting-started-with-loops)
   - [Building verification loops](https://claude.com/blog/building-verification-loops-in-claude-code-with-skills)
-- Research context engineering changes
+- [ ] Research context engineering changes
   - [The new rules of context engineering](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models)
 
 ## Attribution
