@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `(no docstring)`.
 - Cached symbol graphs holding the incorrect docstrings are rebuilt automatically. No `--refresh`
   is needed; the first command after upgrading is slower.
+- MCP next-step hints named the wrong tool or dropped half an explanation - `listPackagesTool`
+  named itself in snake_case and described `showPackageTool` as returning a package's public API,
+  `getModuleTreeTool`'s empty hint named `showModuleTool` for the package list, and
+  `getInheritorsTool`'s empty hint gave only one of the two reasons a result can be empty.
 
 ## [v0.1.0rc2] - 2026-08-08
 
