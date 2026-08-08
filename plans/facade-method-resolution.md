@@ -5,7 +5,7 @@ specs:
   - specs/commands/inspect.md
   - specs/behaviors/qualified-name-semantics.md
 issues: [12, 13]
-pr:
+pr: 26
 ---
 
 # Plan: Resolve facade-spelled class members
