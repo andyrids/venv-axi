@@ -114,6 +114,10 @@ Output contract, common to every command:
 
 - Structured TOON goes to **stdout**, including errors: `error: true` plus a `message:` line,
   with exit code `1`. Success is exit code `0`.
+- Two package failures read differently, and the recovery differs: `is not installed in the
+  active venv` means the venv has nothing by that name, so install it or check the spelling;
+  `Failed to import` means it is installed and broken, so investigate it rather than
+  reinstalling.
 - Collection commands lead with `count: N`, then the table.
 - Most commands close with a `help[]` block of concrete next-step commands - follow them
   rather than guessing at a spelling.

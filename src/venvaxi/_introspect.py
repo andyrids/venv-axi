@@ -12,10 +12,12 @@ Attribution:
 """
 
 import importlib
+import importlib.util
 import inspect
 import logging
 import pkgutil
 import re
+import sys
 from dataclasses import dataclass, fields
 from importlib import metadata
 from types import ModuleType
@@ -186,6 +188,50 @@ def _resolve_import_name(name: str) -> str:
             if dist_name.lower().replace("-", "_") == normalized:
                 return import_name
     return name.replace("-", "_")
+
+
+def _ensure_installed(import_name: str, name: str) -> None:
+    """Raise if nothing in the venv answers to `import_name`.
+
+    NOTE: Availability is decided by the import system, not by
+    `importlib.metadata` - a stdlib module, a namespace package and a
+    local module on `sys.path` are all importable with no distribution
+    claiming them, and 'install it' is the wrong advice for all three.
+
+    NOTE: `sys.modules` is checked first because `find_spec` *raises*
+    on a module whose `__spec__` is None (a bare `types.ModuleType`).
+    An already-imported module is available by definition.
+
+    Args:
+        import_name: The resolved import name, from
+            `_resolve_import_name`.
+        name: The caller's original spelling, used for the message.
+
+    Raises:
+        PackageNotFoundError: On nothing in the venv providing
+            `import_name`.
+    """
+    if import_name in sys.modules:
+        return
+
+    # NOTE: `find_spec` delegates to arbitrary `sys.meta_path` finders,
+    # which may raise rather than return None. A finder that fails is
+    # 'not located', not a crash - the distribution check below still
+    # gets its say.
+    try:
+        if importlib.util.find_spec(import_name) is not None:
+            return
+    except (ImportError, ValueError):
+        logger.debug("No module spec located for `%s`", import_name)
+
+    # NOTE: Located by nothing, but a distribution claims the name - it
+    # is installed and broken, so the caller's import attempt runs and
+    # reports `PackageImportError` rather than 'not installed'.
+    try:
+        metadata.distribution(name)
+    except metadata.PackageNotFoundError as err:
+        msg = f"Package `{name}` is not installed in the active venv"
+        raise PackageNotFoundError(msg) from err
 
 
 def _signature_of(obj: Any) -> str:
@@ -619,6 +665,8 @@ def _build_store_for(
         refresh: Rebuild even if the cached graph is still current.
 
     Raises:
+        PackageNotFoundError: On the resolved package not being installed
+            in the active venv.
         PackageImportError: On resolved module import error.
 
     Returns:
@@ -628,7 +676,12 @@ def _build_store_for(
     from venvaxi import _cache
     from venvaxi._core import get_project_root
 
-    root_package = _resolve_import_name(_top_level_root(name))
+    # NOTE: The check takes the *root*, not `name` - a qualified name
+    # carries `.module::Symbol` that neither names a distribution nor
+    # belongs in a 'not installed' message.
+    root = _top_level_root(name)
+    root_package = _resolve_import_name(root)
+    _ensure_installed(root_package, root)
     try:
         return _cache.get_or_build_store(
             get_project_root(),
@@ -740,6 +793,11 @@ def get_module_tree(
         max_depth: The maximum recursion depth.
         refresh: Rebuild the cached graph first.
 
+    Raises:
+        PackageNotFoundError: On the owning package not being installed
+            in the active venv.
+        PackageImportError: On resolved module import error.
+
     Returns:
         `(depth, node)` pairs in depth-first order, with depth measured
         from the named module.
@@ -774,6 +832,8 @@ def find_symbol(
     Raises:
         InvalidArgumentError: On missing `query` or `refresh` without
             `package`.
+        PackageNotFoundError: On `package` not being installed in the
+            active venv.
         PackageImportError: On `package` import error.
 
     Returns:
@@ -819,7 +879,9 @@ def get_public_api(
         refresh: Rebuild the cached graph first.
 
     Raises:
-        PackageNotFoundError: On `name` containing invalid characters.
+        InvalidArgumentError: On `name` containing invalid characters.
+        PackageNotFoundError: On `name` not being installed in the active
+            venv.
         PackageImportError: On resolved module import error.
 
     Returns:
@@ -828,9 +890,10 @@ def get_public_api(
     """
     if not _VALID_NAME_RE.match(name):
         msg = f"Invalid package name `{name}`"
-        raise PackageNotFoundError(msg)
+        raise InvalidArgumentError(msg)
 
     import_name = _resolve_import_name(name)
+    _ensure_installed(import_name, name)
     try:
         importlib.import_module(import_name)
     except ImportError as err:
