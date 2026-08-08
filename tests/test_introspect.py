@@ -16,6 +16,7 @@ from venvaxi._introspect import (
     SIGNATURE_UNAVAILABLE,
     _doc_of,
     _ensure_installed,
+    _ensure_valid_name,
     _own_doc,
     _resolve_import_name,
     _signature_of,
@@ -288,6 +289,65 @@ def test_get_public_api_not_installed_raises() -> None:
     """An uninstalled package raises `PackageNotFoundError`."""
     with pytest.raises(PackageNotFoundError, match="not installed"):
         get_public_api("this-package-does-not-exist-xyz")
+
+
+@pytest.mark.parametrize(
+    "name",
+    [".foo", "...", "", "a b", "../etc/passwd", "foo/bar", "-x", "foo-", "."],
+)
+def test_ensure_valid_name_rejects_degenerate(name: str) -> None:
+    """A name that cannot possibly name a package raises
+    `InvalidArgumentError`, carrying the caller's spelling."""
+    with pytest.raises(InvalidArgumentError, match="Invalid package name"):
+        _ensure_valid_name(name, name)
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["rich.console", "detect-secrets", "zope.interface", "2to3", "_", "a"],
+)
+def test_ensure_valid_name_accepts_legitimate(name: str) -> None:
+    """Every legitimate name shape passes, including the single-character
+    and digit-leading forms the trailing regex group must not require."""
+    _ensure_valid_name(name, name)
+
+
+def test_get_module_tree_malformed_raises() -> None:
+    """A degenerate name raises `InvalidArgumentError`, not the
+    unhandled `ValueError` that produced `EX_SYNTAX` (previously:
+    `Unexpected error: A distribution name is required.`)."""
+    with pytest.raises(InvalidArgumentError, match="Invalid package name"):
+        get_module_tree(".foo")
+
+
+def test_get_symbol_malformed_raises() -> None:
+    """A qualified name with a malformed root raises
+    `InvalidArgumentError` naming the caller's full spelling - the root
+    of `.foo::Bar` is `""`, which names nothing the caller can fix."""
+    with pytest.raises(InvalidArgumentError) as excinfo:
+        get_symbol(".foo::Bar")
+    assert ".foo::Bar" in str(excinfo.value)
+
+
+def test_get_inheritors_malformed_raises() -> None:
+    """`inherits` shares the builder guard with `inspect`."""
+    with pytest.raises(InvalidArgumentError, match="Invalid package name"):
+        get_inheritors(".foo::Bar")
+
+
+def test_find_symbol_malformed_package_raises() -> None:
+    """`--package` with an impossible name raises `InvalidArgumentError`
+    rather than inviting an install that can never succeed (previously:
+    `PackageNotFoundError`)."""
+    with pytest.raises(InvalidArgumentError, match="Invalid package name"):
+        find_symbol("Nope", package="a b")
+
+
+def test_get_public_api_space_name_raises() -> None:
+    """A space-carrying name is malformed, not absent (previously:
+    `PackageNotFoundError`)."""
+    with pytest.raises(InvalidArgumentError, match="Invalid package name"):
+        get_public_api("a b")
 
 
 def test_show_module_returns_node_and_children(fake_package: str) -> None:
