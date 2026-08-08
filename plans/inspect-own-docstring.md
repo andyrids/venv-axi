@@ -4,7 +4,7 @@ depends: [spec-driven-icm]
 specs:
   - specs/commands/inspect.md
   - specs/behaviors/cache-refresh.md
-issues: []
+issues: [12, 13]
 pr: 11
 ---
 
@@ -192,16 +192,18 @@ friction:
 
 ## Follow-ups
 
-- **Issue** - `venvaxi inspect fastmcp::Client.call_tool` raises `SymbolNotFoundError`; only the
-  home spelling `fastmcp.client.client::Client.call_tool` resolves, because class members are
-  keyed at the class's home module. Consistent with
-  `specs/behaviors/qualified-name-semantics.md`, but in tension with
+- **Issue** [#12](https://github.com/andyrids/venv-axi/issues/12) -
+  `venvaxi inspect fastmcp::Client.call_tool` raises `SymbolNotFoundError`; only the home
+  spelling `fastmcp.client.client::Client.call_tool` resolves, because class members are keyed at
+  the class's home module. Consistent with `specs/behaviors/qualified-name-semantics.md`, but in
+  tension with
   [the agent's spelling wins](../specs/principles.md#the-agents-spelling-wins-over-the-internally-correct-one):
   an agent that read `from fastmcp import Client` gets a not-found. Needs either a resolver
   change or a spec amendment making the asymmetry explicit in `inspect.md`. Pre-existing, not
-  introduced here. **No issue number yet - not filed.**
-- **Tracked as** - `inspect.getdoc` remains at `_cache.py:152` and `_introspect.py:422`, both on
-  module objects, which cannot inherit docstrings. Behaviour-neutral to change, so left under
-  YAGNI; recorded so it does not read as an oversight.
+  introduced here.
+- **Issue** [#13](https://github.com/andyrids/venv-axi/issues/13) - `inspect.getdoc` remains at
+  `_cache.py:152` and `_introspect.py:422`, both on module objects, which cannot inherit
+  docstrings. Behaviour-neutral to change, so left under YAGNI; filed so the asymmetry does not
+  read as an oversight and so a future `_own_doc` change is known not to reach them.
 - **Tracked as** - the pipeline friction above. Acting on it means editing the stage `CONTEXT.md`
   files, which is `spec-driven-icm`'s territory rather than this plan's.
