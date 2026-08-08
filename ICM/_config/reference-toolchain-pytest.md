@@ -33,3 +33,5 @@ Pytest is used for unit testing, with tests colocated in `tests/`.
 - Use `tmp_path_factory` for isolated filesystem fixtures (see `mock_project`)
 - Test names: `test_<behaviour>_<condition>`, e.g. `test_setup_progress_disabled_in_non_tty`
 - One behavioural assertion focus per test; state the expected behaviour in a one-line docstring
+- A test written for a bug fix SHOULD be shown to fail against the previous implementation - a
+  regression test that passes both before and after the fix asserts nothing

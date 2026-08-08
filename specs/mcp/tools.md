@@ -14,8 +14,8 @@ Tool functions are defined in snake_case and **registered in camelCase**
 Python function renames an MCP tool.
 
 Every tool returns **TOON text**, not JSON, and mirrors the CLI's
-[output contract](../behaviors/output-contract.md): `count:` aggregates, definitive empty states,
-truncation at 200 characters, and a `help[]` footer.
+[output contract](../behaviors/output-contract.md): `count:` aggregates, definitive empty states
+(including the `(no docstring)` marker), truncation at 200 characters, and a `help[]` footer.
 
 `Error` is caught per tool and returned as the same TOON error block the CLI emits. It MUST NOT
 escape into FastMCP's generic error path, which would present a different failure shape to the

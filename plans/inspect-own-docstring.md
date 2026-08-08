@@ -1,11 +1,11 @@
 ---
-status: in-progress
+status: done
 depends: [spec-driven-icm]
 specs:
   - specs/commands/inspect.md
   - specs/behaviors/cache-refresh.md
 issues: []
-pr:
+pr: 11
 ---
 
 # Plan: Report a class's own docstring, never an inherited one
@@ -13,7 +13,8 @@ pr:
 ## Scope
 
 Make `inspect` (and the MCP `getSymbolTool` / `showModuleTool`) report a class's **own**
-docstring, emitting empty when it defines none, instead of falling back up the MRO.
+docstring, emitting a definitive `(no docstring)` marker when it defines none, instead of falling
+back up the MRO.
 
 Surfaced by `specs/commands/inspect.md`, which declares the own-docstring rule that the
 implementation does not currently satisfy. This plan exists so that spec is covered motion rather
@@ -92,24 +93,29 @@ that feels awkward as a finding about the pipeline, and record it in Notes at cl
 
 ## Validation
 
-- [ ] `venvaxi inspect fastmcp::FastMCP` emits an empty `doc`, not `AggregateProvider`'s text
-- [ ] A class that *does* define a docstring still reports it, whitespace-normalised as before
-- [ ] A method overriding a documented base method without its own docstring reports empty
-- [ ] A method inherited without override still reports the base's docstring - it is the same
+Two criteria were reworded at stage 04, when the empty-string output was replaced by a marker -
+see Notes.
+
+- [x] `venvaxi inspect fastmcp::FastMCP` emits `(no docstring)`, not `AggregateProvider`'s text
+- [x] A class that *does* define a docstring still reports it, whitespace-normalised as before
+- [x] A method overriding a documented base method without its own docstring reports the marker
+- [x] A method inherited without override still reports the base's docstring - it is the same
   function object, so that text is genuinely its own
-- [ ] A module-level constant still reports empty rather than its type's docstring
+- [x] A module-level constant is not *recorded* with its type's docstring
   (the `NodeKind.ATTRIBUTE` guard is preserved)
-- [ ] `inspect --docstring` on an own-docstring class is unchanged
-- [ ] `showModuleTool` and `getSymbolTool` show the same corrected behaviour
-- [ ] `SCHEMA_VERSION` bumped to 5, and an existing cache built at 4 is dropped and rebuilt on
+- [x] The marker is emission-only - `_doc_of` still records `""`, so `find` does not match every
+  undocumented symbol on the marker's wording
+- [x] `inspect --docstring` on an own-docstring class is unchanged
+- [x] `showModuleTool` and `getSymbolTool` show the same corrected behaviour
+- [x] `SCHEMA_VERSION` bumped to 5, and an existing cache built at 4 is dropped and rebuilt on
   first query rather than serving stale docstrings
-- [ ] The `fastmcp-instructions-kwarg` eval is updated to expect the corrected output
-- [ ] `uv run coverage run -m pytest` green; new unit test covers the inherited-docstring case
-- [ ] `uv run -m prek run --all-files` passes
-- [ ] Executed end to end through `/create-feature`, all four stages with their checkpoints,
+- [x] The `fastmcp-instructions-kwarg` eval is updated to expect the corrected output
+- [x] `uv run coverage run -m pytest` green; new unit test covers the inherited-docstring case
+- [x] `uv run -m prek run --all-files` passes
+- [x] Executed end to end through `/create-feature`, all four stages with their checkpoints,
   producing a techspec, a spec reconciliation and a closeout - this closes the criterion
   [spec-driven-icm](spec-driven-icm.md) left unticked
-- [ ] Any friction found in the pipeline itself is recorded in Notes at closeout
+- [x] Any friction found in the pipeline itself is recorded in Notes at closeout
 
 ## Risks / unknowns
 
@@ -129,8 +135,73 @@ that feels awkward as a finding about the pipeline, and record it in Notes at cl
 
 ## Notes
 
-Populated at closeout.
+**The whole fix is "never call `inspect._finddoc`".** `getdoc` is `cleandoc(own __doc__)` plus a
+fallback that walks the MRO. Reading `__doc__` directly and keeping `cleandoc` drops only the
+fallback. Normal attribute lookup does not inherit `__doc__` for classes or override methods, so
+one rule covers every kind and no method-specific carve-out was needed - which was stage 01's
+open question, settled by experiment rather than reasoning.
+
+**Cache invalidation needed no new mechanism.** The plan anticipated building one; `_store.py`
+already had `SCHEMA_VERSION` behind a `PRAGMA user_version` drop-and-rebuild. The real gap was
+that nothing said it must be bumped when *derived content* changes, only when the table shape
+does - a reader changing `_doc_of` would never have thought to touch it. That rule now lives in
+`specs/behaviors/cache-refresh.md` and in the constant's own docstring. Bumped 4 -> 5; the graph
+rebuilt with no `--refresh`.
+
+**The marker decision arrived at stage 04, after implementation and verification.** The original
+spec said an undocumented symbol reports an empty `doc`; review replaced that with a
+`(no docstring)` marker, by analogy with the existing `SIGNATURE_UNAVAILABLE`. Consequences:
+
+- Four spec files changed rather than two - the rule is cross-cutting, so it went in
+  `specs/behaviors/output-contract.md`, with `inspect.md`, `show.md` and `mcp/tools.md`
+  referencing it.
+- **The marker is applied at emission, never recorded.** `doc` is FTS-indexed, so storing
+  `"(no docstring)"` would make `find docstring` match every undocumented symbol in the graph.
+  Verified after the change: that search returns 7 genuine matches, not hundreds. This mirrors
+  truncation, which is already emission-only for the same class of reason.
+- Two Validation criteria above were reworded, since they asserted the superseded behaviour. A
+  frozen record stating the wrong desired state is worse than an edited one.
+
+**`(no docstring)` states a different fact from `(signature unavailable)`.** The signature marker
+means introspection failed; this one means the symbol genuinely defines none. The names differ
+deliberately so the distinction survives.
+
+**No test was written for the `SCHEMA_VERSION` bump.** `tests/test_store.py` already has
+`test_schema_version_mismatch_rebuilds_tables`, exercising the identical
+`version != SCHEMA_VERSION` branch. A copy using `4` instead of `999` would assert nothing new.
+Verified live instead.
+
+### Pipeline friction
+
+First end-to-end `/create-feature` run. It held together, and two stage boundaries earned their
+keep: deferring the test run to 03 forced the 02 report's honest "unverified at this stage"
+section, and stage 04's "consider a new reference doc" prompt produced a real convention. The
+friction:
+
+- **Checkpoint 5 is vacuous when nothing breaks.** It gates step 4, "fix any broken tests", which
+  was a no-op. The gate should be conditional on that step having changed something.
+- **Checkpoints 11 and 13 review the same findings twice** - 11 gates conformance results, 13
+  gates the report restating them. Stage 03 asks for five approvals where two would do.
+- **A stage-04 design decision has no defined route back.** Replacing `""` with a marker rewrote
+  a spec, source, tests and two Validation criteria *after* stage 03 signed off. The pipeline is
+  linear and offers no re-entry, so verification was redone informally. Worth an explicit rule:
+  a stage-04 decision that changes behaviour returns to 01.
+- **No stage claims `evals.json`.** It is behaviour-expectation, not source. Updated in 03 on the
+  reasoning that a stale expectation is a failing test; the guidance should say so. It then
+  needed updating twice, because of the item above.
 
 ## Follow-ups
 
-Populated at closeout.
+- **Issue** - `venvaxi inspect fastmcp::Client.call_tool` raises `SymbolNotFoundError`; only the
+  home spelling `fastmcp.client.client::Client.call_tool` resolves, because class members are
+  keyed at the class's home module. Consistent with
+  `specs/behaviors/qualified-name-semantics.md`, but in tension with
+  [the agent's spelling wins](../specs/principles.md#the-agents-spelling-wins-over-the-internally-correct-one):
+  an agent that read `from fastmcp import Client` gets a not-found. Needs either a resolver
+  change or a spec amendment making the asymmetry explicit in `inspect.md`. Pre-existing, not
+  introduced here. **No issue number yet - not filed.**
+- **Tracked as** - `inspect.getdoc` remains at `_cache.py:152` and `_introspect.py:422`, both on
+  module objects, which cannot inherit docstrings. Behaviour-neutral to change, so left under
+  YAGNI; recorded so it does not read as an oversight.
+- **Tracked as** - the pipeline friction above. Acting on it means editing the stage `CONTEXT.md`
+  files, which is `spec-driven-icm`'s territory rather than this plan's.

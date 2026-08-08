@@ -50,6 +50,19 @@ NOTE: Distinct from every real signature, so an agent can tell
 TOON structural characters, so the encoder never has to quote it.
 """
 
+DOCSTRING_ABSENT = "(no docstring)"
+"""Marker emitted for a symbol that defines no docstring of its own.
+
+NOTE: AXI principle 5 (definitive empty states) - a bare `""` reads as
+silent blank output, leaving an agent unable to tell "defines none" from
+"something went wrong". States a different fact from
+`SIGNATURE_UNAVAILABLE`: absence by definition, not failed introspection.
+
+Applied at *emission* only. Recording it would put the literal text into
+the FTS index, so `find docstring` would match every undocumented symbol
+in the graph.
+"""
+
 
 @dataclass(frozen=True, slots=True)
 class SymbolInfo:
@@ -102,11 +115,14 @@ def summarize_doc(
         limit: The truncation limit. Defaults to 200.
 
     Returns:
-        `doc` unchanged, or its truncated first line.
+        `DOCSTRING_ABSENT` when `doc` is empty, else `doc` unchanged or
+        its truncated first line.
     """
+    if not doc:
+        return DOCSTRING_ABSENT
     if docstring:
         return doc
-    return truncate(doc.splitlines()[0] if doc else "", limit)
+    return truncate(doc.splitlines()[0], limit)
 
 
 def _own_doc(obj: Any) -> str:

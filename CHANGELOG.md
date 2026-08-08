@@ -16,6 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > - `Fixed` for any bug fixes.
 > - `Security` in case of vulnerabilities.
 
+## [Unreleased]
+
+### Fixed
+
+- `inspect`, `show --api` and the MCP symbol tools reported an inherited docstring as a symbol's
+  own - an undocumented class or an override method surfaced its base class's text (e.g.
+  `fastmcp::FastMCP` returned `AggregateProvider`'s docstring). Such symbols now report
+  `(no docstring)`.
+- Cached symbol graphs holding the incorrect docstrings are rebuilt automatically. No `--refresh`
+  is needed; the first command after upgrading is slower.
+
 ## [v0.1.0rc2] - 2026-08-08
 
 ### Added

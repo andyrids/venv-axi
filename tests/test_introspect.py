@@ -12,6 +12,7 @@ from unittest import mock
 import pytest
 
 from venvaxi._introspect import (
+    DOCSTRING_ABSENT,
     SIGNATURE_UNAVAILABLE,
     _doc_of,
     _own_doc,
@@ -24,6 +25,7 @@ from venvaxi._introspect import (
     get_public_api,
     get_symbol,
     show_module,
+    summarize_doc,
     truncate,
 )
 from venvaxi._store import NodeKind, SymbolStore
@@ -203,6 +205,32 @@ def test_doc_of_inherited_method_returns_base_docstring() -> None:
 def test_doc_of_attribute_ignores_type_docstring() -> None:
     """A module-level constant is not recorded with its type's docstring."""
     assert _doc_of({"key": "value"}, NodeKind.ATTRIBUTE) == ""
+
+
+def test_summarize_doc_absent_returns_marker() -> None:
+    """An absent docstring emits the marker, not a silent blank."""
+    assert summarize_doc("") == DOCSTRING_ABSENT
+
+
+def test_summarize_doc_absent_returns_marker_in_full_mode() -> None:
+    """The marker is emitted under `docstring=True` too."""
+    assert summarize_doc("", docstring=True) == DOCSTRING_ABSENT
+
+
+def test_summarize_doc_present_is_unaffected_by_marker() -> None:
+    """A real docstring is still reduced to its first line."""
+    assert summarize_doc("First line.\n\nBody.") == "First line."
+
+
+def test_doc_of_does_not_record_the_absent_marker() -> None:
+    """The marker is emission-only - recording it would put its text into
+    the FTS index and make every undocumented symbol match a search."""
+
+    class Bare:
+        pass
+
+    assert _doc_of(Bare, NodeKind.CLASS) == ""
+    assert DOCSTRING_ABSENT not in _doc_of(Bare, NodeKind.CLASS)
 
 
 def test_get_public_api_filters_private_and_non_callables(

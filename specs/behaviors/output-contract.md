@@ -58,9 +58,22 @@ concrete next step likely to produce results. Silent blank output is forbidden.
 
 - Collection commands emit `count: 0`.
 - `inspect` on a module with no children emits the header object, then `children count: 0`.
+- A symbol defining no docstring of its own emits `doc: (no docstring)`.
 
 `count: 0` is a definitive answer, not a failure - it means the query resolved and matched
 nothing. An unresolvable name raises `SymbolNotFoundError` instead.
+
+The same reasoning governs scalar fields, which is why an absent docstring is a marker rather
+than `""`. A bare empty string is the silent blank this rule forbids: an agent cannot tell
+"defines none" from "something went wrong", and the plausible recovery - retry, or fall back to
+recalled documentation - is exactly the drift the AXI exists to prevent.
+
+`(no docstring)` states a different fact from `(signature unavailable)`. The signature marker
+means introspection failed; the docstring marker means the symbol genuinely defines none. Both
+are chosen to be distinct from any real value and to contain no TOON structural characters.
+
+Markers are applied at **emission**, never recorded. Storing one would put its literal text into
+the searchable index, so a `find` for its wording would match every symbol carrying it.
 
 ### Aggregates
 
