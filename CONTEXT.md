@@ -60,14 +60,18 @@ several directories rather than one `ICM/` workspace.
 
 ### Code Review
 
+Review against `specs/`, not against personal preference - the spec is the acceptance criteria.
+
 - **Navigate to**:
+  - `specs/`
+    - **Read**: `*` - the behavioural contract the code must conform to
   - `src/`
     - **Read**: `venvaxi/*`
   - `tests/`
     - **Read**: `*`
   - `ICM/_config/`
     - **Read**:
-      - `reference-toolchain-logging`
-      - `reference-toolchain-mypy`
-      - `reference-toolchain-ruff`
+      - `reference-toolchain-logging.md`
+      - `reference-toolchain-mypy.md`
+      - `reference-toolchain-ruff.md`
 - **Exclude**: * in `.gitignore`

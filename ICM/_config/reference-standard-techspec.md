@@ -5,9 +5,15 @@ context-hierarchy-role: Rules, conventions and guidelines
 
 # Technical Spec: [slug]
 
-## (1) Feature Overview
+The techspec is the *how*. It is ephemeral scratch, gitignored, and rebuilt per run.
 
-{{Concise summary of the feature being created, modified or removed.}}
+It does not carry the feature narrative - that belongs in `specs/**`, which is permanent - and it
+does not carry the acceptance criteria, which belong in a plan Validation checklist.
+
+## (1) Spec Delta
+
+{{Name the `specs/**` files created or amended, and summarise what is now declared true. Link the
+plan at `plans/[slug].md`. Do not restate the spec here - point at it.}}
 
 ## (2) Component Architecture
 
@@ -31,8 +37,10 @@ function flow.}}
 
 ## (6) Verification Requirements
 
-{{List specific functions or classes that require new unit test coverage to pass the
-03-verification stage.}}
+{{Do not restate acceptance criteria here - the Validation checklist in `plans/[slug].md` is the
+single source, and its checkbox text supplies the requirement identifiers 03-verification reports
+against. List only the specific functions or classes needing new unit test coverage, each mapped
+to the Validation criterion it serves.}}
 
 ## (7) References
 

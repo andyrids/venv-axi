@@ -10,7 +10,12 @@ Write Python code for the technical specification from the Specification stage.
 
 ## Inputs
 
-- `01-specification/output/[slug]-spec.md`
+- `01-specification/output/[slug]-spec.md` - the *how*
+- `plans/[slug].md` - scope, approach and Validation criteria
+- The `specs/**` files named in that plan's `specs:` field - what MUST be true
+
+Set the plan's `status` to `in-progress` before starting. If the spec turns out to be ambiguous
+or wrong, amend the spec - do not guess in code, and do not work around it.
 
 ## Reference Material
 

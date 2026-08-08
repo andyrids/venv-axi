@@ -12,6 +12,8 @@ exercise and standard compliance checks.
 ## Inputs
 
 - `02-implementation/output/[slug]-code.md`
+- `plans/[slug].md` - the Validation checklist is the requirement identifier set
+- The `specs/**` files named in that plan's `specs:` field
 
 ## Reference Material
 
@@ -41,12 +43,16 @@ process.
 7. Ensure Prek hooks still pass
 8. CHECKPOINT - await user review in accordance with acceptance criteria
 9. Exercise the affected CLI commands live (`uv run venvaxi ...`) against a real installed package
-10. CHECKPOINT - await user review in accordance with acceptance criteria
-11. Draft a verification report
-    - List requirement identifiers accounted for
-    - List requirement identifiers not covered by existing testing & compliance checks
+10. Check conformance against every `specs/**` file named in the plan's `specs:` field - each
+    Output Rule, Exit Code and Error, compared to observed behaviour. Divergence is a bug: fix
+    the code, or amend the spec if the spec is the thing that is wrong
+11. CHECKPOINT - await user review in accordance with acceptance criteria
+12. Draft a verification report
+    - List Validation criteria from `plans/[slug].md` accounted for, by checkbox text
+    - List Validation criteria not covered by existing testing & compliance checks
+    - List any spec/code divergence found in step 10, and how it was resolved
     - List unit test coverage percentage (if possible)
-12. CHECKPOINT - await user review in accordance with acceptance criteria
+13. CHECKPOINT - await user review in accordance with acceptance criteria
 
 ## Outputs
 

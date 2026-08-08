@@ -1,7 +1,7 @@
 ---
 context-hierarchy: Layer 0
 context-hierarchy-role: Global identity
-maximum-context-tokens: 800
+maximum-context-tokens: 900
 ---
 
 # Global Context
@@ -23,21 +23,9 @@ Venv-axi is developed with uv, which MUST be installed globally or in the venv.
 ## Navigation
 
 - `ICM/` <- Task workspaces
+- `specs/` <- Desired state - what MUST be true (see `specs/architecture.md` for the module map)
+- `plans/` <- Work in flight, frozen at closeout
 - `src/venvaxi/` <- Project sourcecode
-  - `__main__.py` <- CLI entry point
-  - `_ambient.py` <- Ambient context installation (`AGENTS.md`, MCP config)
-  - `_cache.py` <- On-disk symbol graph cache
-  - `_cli.py` <- Argparse CLI commands
-  - `_constants.py` <- TOON encoder constants
-  - `_core.py` <- `ExitCode`, `CLIContext`, project root resolution
-  - `_introspect.py` <- Live object introspection & symbol graph walking
-  - `_logging.py` <- Logging configuration
-  - `_mcp.py` <- Lazy FastMCP server
-  - `_packages.py` <- Dependency discovery & package resolution
-  - `_store.py` <- SQLite Node|Edge symbol store
-  - `_toon.py` <- TOON encoder
-  - `*.sql` <- `SymbolStore` schema & queries
-  - `exceptions.py` <- Custom exceptions
 - `tests/` <- Project unit tests
 - `.github/workflows/ci.yml` <- Project CI config
 - `.secrets.baseline` <- Secrets baseline (`detect-secrets`)
@@ -67,6 +55,24 @@ User prompt tasking and workspace routing information is in the project root `CO
 In Claude Code, the `/create-feature` command (`.claude/commands/`) is the preferred entry point.
 Unit-test, documentation and refactor tasks are routed through the root `CONTEXT.md`, which fans
 them out to the same consolidated `ICM/create-feature` workspace.
+
+## Spec-Driven Development
+
+`specs/` is the source of truth for what MUST be true. `plans/` is the work-in-flight record that
+bridges specs to merged code. The `icm-spec` skill carries the full methodology.
+
+- **Specs lead.** Before changing observable behaviour, change the spec; bring code into
+  conformance after. Spec/code drift is a bug, not debt.
+- **`plans/` is the planning system - not your built-in plan mode.** Every chunk of work lands as
+  a file in `plans/` that freezes to `done` as the durable record of what got built. Do not skip
+  it for "small" changes. Classic trap: an ephemeral plan of "write spec X, then build it" that
+  ends with neither a reviewed spec nor a plan file - split those into the two real artifacts.
+- **When to author a plan depends on intent:** mapping out a batch of specs -> finish the batch,
+  then propose a *set* of plans; one bounded feature -> spec and plan in tandem; unclear -> ask.
+- **A spec change ripples to its plans.** After editing a spec, review the plans implementing it
+  (`grep -l '<spec-path>' plans/*.md`) and offer to update them.
+
+Run `/audit-spec-drift` to compare `specs/` against the implementation.
 
 ## Token Efficiency
 

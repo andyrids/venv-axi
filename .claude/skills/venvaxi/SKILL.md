@@ -207,8 +207,9 @@ Notable CLI differences:
 
 - `uv run venvaxi <cmd> --help` is the authoritative flag source. If the table above ever
   disagrees with it, `--help` wins - and this file needs updating.
-- `ICM/_config/reference-standard-axi.md` covers the 10 AXI design principles, the measured
-  token-efficiency benchmarks and the symbol-graph qualified-name invariants. Read it when
-  modifying `src/venvaxi/` itself; it is not needed to *use* the CLI.
+- `specs/` covers what the CLI MUST do - `specs/principles.md` for the 10 AXI design principles
+  and the measured token-efficiency benchmarks, `specs/commands/<verb>.md` per command, and
+  `specs/behaviors/qualified-name-semantics.md` for the symbol-graph invariants. Read these when
+  modifying `src/venvaxi/` itself; they are not needed to *use* the CLI.
 - The always-on summary injected into `AGENTS.md` is generated from `src/venvaxi/ambient.md`
   and refreshed by `venvaxi setup`. Edit the markdown, not the Markdown block.
