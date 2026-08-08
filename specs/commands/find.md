@@ -53,8 +53,13 @@ Empty result hints are situational, and this distinction is load-bearing:
 
 ## Errors
 
+- `InvalidArgumentError` - an empty `query`, `--refresh` without `--package`, or a `--package`
+  value that is not a possible package name.
 - `PackageNotFoundError` - `--package` names a package not installed in the venv.
 - `PackageImportError` - the package cannot be imported for introspection.
+
+The three package classes are defined once in
+[Package resolution](../behaviors/package-resolution.md).
 
 ## Principles
 

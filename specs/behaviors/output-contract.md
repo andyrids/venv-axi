@@ -34,6 +34,12 @@ Every CLI command and every MCP tool.
 
 An empty result is **success**. `count: 0` exits `0`, never `1`.
 
+No user-supplied argument *value* may produce `EX_SYNTAX`. Exit 2 is reserved for venvaxi being
+broken, so a caller can treat it as a bug report rather than a prompt to retype. A value that
+cannot be honoured is an `Error` and exits `1` - see
+[Package resolution](package-resolution.md). Argparse rejecting an unknown flag or a missing
+positional is a separate, earlier failure and keeps argparse's own exit status.
+
 ### Error shape
 
 Any `venvaxi.exceptions.Error` is caught at the entry point and rendered as:

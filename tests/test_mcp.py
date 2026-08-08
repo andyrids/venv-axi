@@ -220,7 +220,12 @@ def test_get_inheritors_tool_empty_hint_names_both_causes() -> None:
 
 
 def test_tool_axi_error_returns_toon_error_block() -> None:
-    """An `AXIError` inside a tool returns a TOON error block."""
+    """An `AXIError` inside a tool returns a TOON error block.
+
+    NOTE: Also the arm-ordering regression guard - `Error` derives from
+    `Exception`, so a broad arm placed first would report every domain
+    error in the `Unexpected error:` shape.
+    """
     server = build_server()
     with mock.patch(
         f"{MCP}.get_symbol", side_effect=SymbolNotFoundError("nope")
@@ -229,6 +234,28 @@ def test_tool_axi_error_returns_toon_error_block() -> None:
         result = tool.fn(qualified_name="rich::Nope")
     assert "error: true" in result
     assert "nope" in result
+    assert "Unexpected error" not in result
+
+
+def test_tool_unexpected_error_returns_toon_error_block() -> None:
+    """A non-`Error` exception returns the CLI's `Unexpected error:`
+    block instead of escaping into FastMCP (previously: raised)."""
+    server = build_server()
+    with mock.patch(f"{MCP}.get_symbol", side_effect=ValueError("kaboom")):
+        tool = asyncio.run(server.get_tool(camel_case("get_symbol_tool")))
+        result = tool.fn(qualified_name="rich::Nope")
+    assert "error: true" in result
+    assert "Unexpected error: kaboom" in result
+
+
+def test_get_module_tree_tool_malformed_name_returns_toon_error() -> None:
+    """`getModuleTreeTool(".foo")` returns a TOON error block through the
+    real call path - no mock, so the boundary guard itself answers."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("get_module_tree_tool")))
+    result = tool.fn(name=".foo")
+    assert "error: true" in result
+    assert "Invalid package name `.foo`" in result
 
 
 def test_get_inheritors_tool_missing_base_returns_toon_error() -> None:

@@ -61,9 +61,14 @@ Rules binding both modes:
 
 - `SymbolNotFoundError` - the qualified name does not resolve in the store. This is distinct from
   a zero-children answer, which is a definitive success.
+- `InvalidArgumentError` - the name's top-level component is not a possible package name.
 - `PackageNotFoundError` - the owning package is not installed in the venv.
 - `PackageImportError` - the owning package is installed but cannot be imported to build the
   graph.
+
+The three package classes are defined once in
+[Package resolution](../behaviors/package-resolution.md). Only the top-level component is
+validated; a malformed tail resolves to `SymbolNotFoundError` above.
 
 ## Principles
 
