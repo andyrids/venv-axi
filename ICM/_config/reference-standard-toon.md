@@ -4,7 +4,7 @@ context-hierarchy-role: Rules, conventions and guidelines
 context-hierarchy-scope: Feature-scoped - read only when working on the axi TOON encoder (src/venvaxi)
 ---
 
-# Syntax Cheatsheet
+# Standard - TOON syntax
 
 Quick reference for mapping JSON to TOON format. For rigorous, normative syntax rules and edge
 cases, see the [Specification](https://toonformat.dev/reference/spec.md).
@@ -23,7 +23,7 @@ id: 1
 name: Ada
 ```
 
-## Nested Objects
+## Nested objects
 
 ```json [JSON]
 {
@@ -40,7 +40,7 @@ user:
   name: Ada
 ```
 
-## Primitive Arrays
+## Primitive arrays
 
 ```json [JSON]
 {
@@ -52,7 +52,7 @@ user:
 tags[3]: foo,bar,baz
 ```
 
-## Tabular Arrays
+## Tabular arrays
 
 ```json [JSON]
 {
@@ -69,7 +69,7 @@ items[2]{id,qty}:
   2,3
 ```
 
-## Mixed and Non-Uniform Arrays
+## Mixed and non-uniform arrays
 
 ```json [JSON]
 {
@@ -104,7 +104,7 @@ items[1]:
       2,Bob
 ```
 
-## Arrays of Arrays
+## Arrays of arrays
 
 ```json [JSON]
 {
@@ -118,7 +118,7 @@ pairs[2]:
   - [2]: 3,4
 ```
 
-## Root Arrays
+## Root arrays
 
 ```json [JSON]
 ["x", "y", "z"]
@@ -128,7 +128,7 @@ pairs[2]:
 [3]: x,y,z
 ```
 
-## Empty Containers
+## Empty containers
 
 ```json [Empty Object]
 {}
@@ -148,9 +148,9 @@ pairs[2]:
 items: []
 ```
 
-## Quoting Special Cases
+## Quoting special cases
 
-### Strings That Look Like Literals
+### Strings that look like literals
 
 ```json [JSON]
 {
@@ -166,7 +166,7 @@ enabled: "true"
 
 These strings must be quoted because they look like numbers/booleans.
 
-### Strings Containing Delimiters
+### Strings containing delimiters
 
 ```json [JSON]
 {
@@ -181,7 +181,7 @@ note: "hello, world"
 Strings must be quoted when they contain the active delimiter (inside an array scope) or the
 document delimiter (object field values, comma by default).
 
-### Strings with Leading/Trailing Spaces
+### Strings with leading/trailing spaces
 
 ```json [JSON]
 {
@@ -193,7 +193,7 @@ document delimiter (object field values, comma by default).
 message: " padded "
 ```
 
-### Empty String
+### Empty string
 
 ```json [JSON]
 {
@@ -205,7 +205,7 @@ message: " padded "
 name: ""
 ```
 
-## Quoting Rules Summary
+## Quoting rules summary
 
 Strings **must** be quoted if they:
 
@@ -227,7 +227,7 @@ message: Hello 世界 👋
 note: This has inner spaces
 ```
 
-## Escape Sequences
+## Escape sequences
 
 Six escape sequences are valid in quoted strings:
 
@@ -243,9 +243,9 @@ Six escape sequences are valid in quoted strings:
 Other escapes (e.g. `\x`, `\0`, `\b`) are invalid, and lone-surrogate `\uXXXX` values
 (U+D800-U+DFFF) are rejected.
 
-## Array Headers
+## Array headers
 
-### Basic Header
+### Basic header
 
 ```text
 key[N]:
@@ -254,7 +254,7 @@ key[N]:
 * `N` = array length
 * Default delimiter: comma
 
-### Tabular Header
+### Tabular header
 
 ```text
 key[N]{field1,field2,field3}:
@@ -264,7 +264,7 @@ key[N]{field1,field2,field3}:
 * `{fields}` = column names
 * Default delimiter: comma
 
-### Nested Field Groups
+### Nested field groups
 
 ```text
 key[N]{id,customer{name,country},total}:
@@ -276,7 +276,7 @@ key[N]{id,customer{name,country},total}:
 See [Format Overview::Nested Field Groups](https://toonformat.dev/guide/format-overview.html#nested-field-groups)
 for details.
 
-### Alternative Delimiters
+### Alternative delimiters
 
 ```yaml [Tab Delimiter]
 items[2 ]{id  name}:
@@ -292,7 +292,7 @@ items[2|]{id|name}:
 
 The delimiter symbol appears inside the brackets and braces.
 
-## Keyed Tabular Objects
+## Keyed tabular objects
 
 An object of uniform objects collapses into a keyed header with one entry row per entry:
 
@@ -314,7 +314,7 @@ Lines whose first non-space character is `#` are stripped before decoding:
 host: example.com
 ```
 
-## Type Conversions
+## Type conversions
 
 | Input | Output |
 |-------|--------|

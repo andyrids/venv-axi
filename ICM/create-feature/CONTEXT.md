@@ -4,7 +4,7 @@ context-hierarchy-role: Workspace control point
 maximum-context-tokens: 300
 ---
 
-# Create Feature
+# Create feature
 
 ## Overview
 
@@ -16,22 +16,22 @@ work in flight and freezes at closeout; stage `output/` is ephemeral scratch. Re
 
 ## Routing
 
-### Specification Stage
+### Specification stage
 
 - **Navigate to**: stages/01-specification
 - **Read**: CONTEXT.md
 
-### Implementation Stage
+### Implementation stage
 
 - **Navigate to**: stages/02-implementation
 - **Read**: CONTEXT.md
 
-### Verification Stage
+### Verification stage
 
 - **Navigate to**: stages/03-verification
 - **Read**: CONTEXT.md
 
-### Documentation Stage
+### Documentation stage
 
 - **Navigate to**: stages/04-documentation
 - **Read**: CONTEXT.md
@@ -78,16 +78,16 @@ delta, and record the re-entry in the plan's Notes.
 A linear pass that quietly patches an earlier stage's output is how a spec and its implementation
 drift apart inside a single run.
 
-## Acceptance Criteria
+## Acceptance criteria
 
 - Artifact creation in accordance with stage guidance
 - Adhere to naming convention standards
 - Stage checkpoint review, over each output artifact and any modified or created sourcecode
 - User review & acceptance MUST be explicit before continuation:
-  - "approved" or "continue" - proceed as presented
+  - 'approved' or 'continue' - proceed as presented
   - approval carrying changes - apply them, and where they change observable behaviour,
     follow the re-entry rule above
 
 A checkpoint marked *only if* is conditional. Its condition MUST be discharged with evidence in
-the visible response ("216 passed, 0 failed - no gate"), so a skip is announced and can be
+the visible response ('216 passed, 0 failed - no gate'), so a skip is announced and can be
 objected to. An unannounced skip is worse than the vacuous gate it replaces.

@@ -4,16 +4,16 @@ context-hierarchy-role: Global identity
 maximum-context-tokens: 900
 ---
 
-# Global Context
+# Global context
 
 You are an expert Python software engineer acting as a developer for the venv-axi project - an
 Agent eXperience Interface (AXI) CLI for token-efficient querying of venv dependencies.
 
-## General Guidance
+## General guidance
 
 - Read `ICM/_config/reference-standard-yagni.md`
 
-## Environment and Toolchain
+## Environment and toolchain
 
 Venv-axi is developed with uv, which MUST be installed globally or in the venv.
 
@@ -56,7 +56,7 @@ In Claude Code, the `/create-feature` command (`.claude/commands/`) is the prefe
 Unit-test, documentation and refactor tasks are routed through the root `CONTEXT.md`, which fans
 them out to the same consolidated `ICM/create-feature` workspace.
 
-## Spec-Driven Development
+## Spec-driven development
 
 `specs/` is the source of truth for what MUST be true. `plans/` is the work-in-flight record that
 bridges specs to merged code. The `icm-spec` skill carries the full methodology.
@@ -65,7 +65,7 @@ bridges specs to merged code. The `icm-spec` skill carries the full methodology.
   conformance after. Spec/code drift is a bug, not debt.
 - **`plans/` is the planning system - not your built-in plan mode.** Every chunk of work lands as
   a file in `plans/` that freezes to `done` as the durable record of what got built. Do not skip
-  it for "small" changes. Classic trap: an ephemeral plan of "write spec X, then build it" that
+  it for 'small' changes. Classic trap: an ephemeral plan of 'write spec X, then build it' that
   ends with neither a reviewed spec nor a plan file - split those into the two real artifacts.
 - **When to author a plan depends on intent:** mapping out a batch of specs -> finish the batch,
   then propose a *set* of plans; one bounded feature -> spec and plan in tandem; unclear -> ask.
@@ -74,9 +74,9 @@ bridges specs to merged code. The `icm-spec` skill carries the full methodology.
 
 Run `/audit-spec-drift` to compare `specs/` against the implementation.
 
-## Token Efficiency
+## Token efficiency
 
-- Each task is performed within a specific, compartmentalised ICM workspace
+- Each task is performed within a specific, compartmentalized ICM workspace
 - Each workspace `CONTEXT.md` provides necessary context
 - Avoid unnecessary files listed in `.gitignore`
 

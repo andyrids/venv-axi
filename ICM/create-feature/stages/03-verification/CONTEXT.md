@@ -17,7 +17,7 @@ exercise and standard compliance checks.
 - `.claude/skills/venvaxi/evals/evals.json` - behaviour expectation, not source. An eval encoding
   superseded behaviour is a failing test, so it is checked and updated here
 
-## Reference Material
+## Reference material
 
 Material tagged 'COULD' should be read if relevant to the implementation output or verification
 process.

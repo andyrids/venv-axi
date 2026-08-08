@@ -13,7 +13,7 @@ venvaxi serve
 
 No arguments. Runs a dedicated AXI MCP server over STDIO.
 
-## Data Requirements
+## Data requirements
 
 Requires the `venv-axi[mcp]` extra (`fastmcp>=0.1.0`).
 
@@ -24,14 +24,14 @@ error, instead of being misreported as a missing extra.
 `fastmcp` is imported lazily inside the handler, never at module scope, so the rest of the CLI
 works without the extra installed.
 
-## Output Rules
+## Output rules
 
 On success, STDIO belongs to the MCP protocol for the lifetime of the process. The TOON output
 contract does not apply to the served stream.
 
 The server is named `VenvAXI` and exposes the tools in [MCP tools](../mcp/tools.md).
 
-## Exit Codes
+## Exit codes
 
 - `EX_OK` on clean shutdown.
 - `EX_FAILURE` when the `mcp` extra is missing. The message MUST name the extra

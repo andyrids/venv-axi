@@ -22,7 +22,7 @@ venvaxi setup [--skill]
 **This command writes files. It is not a diagnostic.** A caller reaching for it to check
 installation state will mutate the repo instead.
 
-## Data Requirements
+## Data requirements
 
 The consuming project root, and whether `fastmcp` is importable in the venv.
 
@@ -50,7 +50,7 @@ is not gated.
 Writes are atomic - a same-directory temp file plus rename - so an interrupted run leaves the
 target untouched.
 
-## Output Rules
+## Output rules
 
 A flat TOON object mapping each artifact to whether it was created or modified, keyed
 `AGENTS.md`, `.vscode`, `.mcp.json`, `SKILL.md`. The `SKILL.md` key is always present, and is
@@ -59,7 +59,7 @@ only ever true when `--skill` was requested.
 Footer names `venvaxi` to confirm ambient context is live, plus `uv add venv-axi[mcp]` when the
 extra is missing.
 
-## Exit Codes
+## Exit codes
 
 `EX_OK`. `EX_FAILURE` on `AmbientContextError`.
 

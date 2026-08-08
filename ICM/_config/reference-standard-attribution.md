@@ -3,7 +3,7 @@ context-hierarchy: Layer 3
 context-hierarchy-role: Rules, conventions and guidelines
 ---
 
-# Attribution
+# Standard - attribution
 
 When blending direct code snippets with architectural concepts, open-source etiquette mandates
 both legal compliance and community gratitude.
@@ -11,7 +11,7 @@ both legal compliance and community gratitude.
 Assuming permissive licenses such as MIT and Apache 2.0, there are three ways attribution can be
 implemented, which are detailed below.
 
-## (1) Module-Level Docstrings
+## (1) Module-level docstrings
 
 When a whole file or core concept is adapted, include a clear `Attribution` in the module
 docstring.
@@ -45,12 +45,12 @@ Attribution:
 """
 ```
 
-## (2) Inline Comments (For Specific Functions)
+## (2) Inline comments (for specific functions)
 
 If a new function is written, but the logic or algorithm is pulled directly from the other
 projects, a comment above the function can be added.
 
-## (3) Preserving Copyright Notices
+## (3) Preserving copyright notices
 
 A copy-paste of substantial chunks of actual source code results in adherence to permissive
 licenses like MIT and Apache, which require you to preserve their copyright notice.
@@ -60,6 +60,6 @@ licenses like MIT and Apache, which require you to preserve their copyright noti
    - Include full license text all projects
    - State which files use them
 
-## (4) README Acknowledgements
+## (4) README acknowledgements
 
 Add an `Acknowledgements` section to the project `README`.

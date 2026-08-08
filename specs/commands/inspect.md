@@ -19,7 +19,7 @@ venvaxi inspect <qualified_name> [--docstring] [--refresh]
 
 `qualified_name` accepts `module::Symbol`, `module::Class.method`, or a bare/dotted module name.
 
-## Data Requirements
+## Data requirements
 
 The cached symbol graph. Dispatch is on the **argument shape**, not on a flag: a qualified symbol
 name always contains `::`, and a bare or dotted module name never does.
@@ -28,7 +28,7 @@ Both modes answer with **facade-keyed** data - the module the symbol was recorde
 the spelling the caller will import. See
 [Qualified name semantics](../behaviors/qualified-name-semantics.md).
 
-## Output Rules
+## Output rules
 
 **Symbol mode** (`::` present) - a flat TOON object of `qualified_name`, `kind`, `signature`,
 `doc`.
@@ -48,12 +48,12 @@ Rules binding both modes:
   bare `""` is insufficient.
 - `signature` is the real signature from live introspection. Where `inspect.signature` fails on a
   callable, the marker `(signature unavailable)` is recorded - distinct from every real
-  signature, so "introspection failed" is never confused with "takes no arguments".
+  signature, so 'introspection failed' is never confused with 'takes no arguments'.
 - Docstrings truncate at 200 characters unless `--docstring` is set; the footer suggests
   `--docstring` only when it is not already set.
 - Empty module: header object then `children count: 0`, with a hint naming `venvaxi tree`.
 
-## Exit Codes
+## Exit codes
 
 `EX_OK`, including a module with no children. `EX_FAILURE` on any raised `Error`.
 

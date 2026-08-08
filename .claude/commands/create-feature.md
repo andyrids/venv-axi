@@ -2,7 +2,7 @@
 description: Run the ICM create-feature pipeline
 ---
 
-# Create Feature
+# Create feature
 
 Feature request: $ARGUMENTS
 

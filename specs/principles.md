@@ -17,7 +17,7 @@ would rot.
 
 ## The 10 AXI Principles
 
-Source: [axi.md](https://axi.md/), "The 10 AXI Principles". These are the design contract every
+Source: [axi.md](https://axi.md/), 'The 10 AXI Principles'. These are the design contract every
 command output MUST satisfy.
 
 1. **Token-efficient output** - use TOON format for token savings over JSON.
@@ -39,7 +39,7 @@ command output MUST satisfy.
 
 ## Measured token efficiency beats the headline claim
 
-Principle 1's "~40%" is an external claim. Measured against the payload shapes `venvaxi` actually
+Principle 1's '~40%' is an external claim. Measured against the payload shapes `venvaxi` actually
 emits (`tests/test_toon_benchmark.py`, characters vs compact JSON):
 
 | Payload shape             | Command                    | Saving |
@@ -48,7 +48,7 @@ emits (`tests/test_toon_benchmark.py`, characters vs compact JSON):
 | Table with quoted `::` names | `venvaxi find`          | ~27%   |
 | Flat object, one large value | `venvaxi inspect <symbol>` | ~6% |
 
-The saving comes from amortising repeated JSON keys across a table header, so it scales with row
+The saving comes from amortizing repeated JSON keys across a table header, so it scales with row
 count and collapses on single-object output.
 
 **MUST NOT cite ~40% as a general figure.** On the `inspect` path, token efficiency has to come

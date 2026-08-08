@@ -17,13 +17,13 @@ venvaxi tree <package> [--max-depth N] [--refresh]
 | `--max-depth` | `2`      | Maximum submodule recursion depth   |
 | `--refresh`   | off      | Rebuild the cached graph first      |
 
-## Data Requirements
+## Data requirements
 
 The cached module graph for the package, built to at least `--max-depth`. A graph cached at a
 shallower depth MUST be rebuilt rather than answered from - see
 [Cache and refresh](../behaviors/cache-refresh.md).
 
-## Output Rules
+## Output rules
 
 - `count: <n>` and a `tree` table of `depth`, `qualified_name`, `kind`.
 - Depth is emitted as a column rather than as indentation, so the payload stays a uniform TOON
@@ -32,7 +32,7 @@ shallower depth MUST be rebuilt rather than answered from - see
 - Empty result: `count: 0` plus a hint naming `venvaxi list`, because the usual cause is a
   mistyped or uninstalled package.
 
-## Exit Codes
+## Exit codes
 
 `EX_OK`, including the empty case. `EX_FAILURE` on any raised `Error`.
 
@@ -47,5 +47,5 @@ shallower depth MUST be rebuilt rather than answered from - see
 
 - Principle 1, token-efficient output
   ([The 10 AXI Principles](../principles.md#the-10-axi-principles)) - the flat depth column is
-  what keeps this a table. Nesting would force per-row keys and lose the header amortisation the
+  what keeps this a table. Nesting would force per-row keys and lose the header amortization the
   encoding depends on.

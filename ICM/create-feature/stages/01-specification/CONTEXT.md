@@ -12,11 +12,12 @@ Declare what MUST be true, plan the work that gets there, then detail how.
 
 - User feature request prompt
 
-## Reference Material
+## Reference material
 
 Material tagged 'COULD' should be read if relevant for the user prompt and context.
 
 - Read (MUST):
+  - `ICM/_config/reference-standard-markdown.md`
   - `ICM/_config/reference-standard-naming.md`
   - `ICM/_config/reference-standard-spec.md`
   - `ICM/_config/reference-standard-techspec.md`

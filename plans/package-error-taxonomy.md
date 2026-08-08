@@ -22,8 +22,8 @@ Surfaced by the first `/audit-spec-drift` run against the new spec tree, and abs
 ## Implements
 
 `specs/commands/find.md`, `specs/commands/tree.md` and `specs/commands/show.md` - each documents
-`PackageNotFoundError` as "not installed in the venv" and `PackageImportError` as "installed but
-cannot be imported for introspection". The specs state the desired state and stay as written;
+`PackageNotFoundError` as 'not installed in the venv' and `PackageImportError` as 'installed but
+cannot be imported for introspection'. The specs state the desired state and stay as written;
 the code is what diverges.
 
 ## Approach
@@ -46,13 +46,13 @@ rather than a missing one.
 Add an installed check ahead of the import attempt, reusing the resolution `_packages` already
 performs for metadata mode rather than writing a second one. Take care with the distinction the
 codebase already draws between distribution names and import names (`_resolve_import_name`
-handles dash/underscore and case normalisation) - a package can be importable without its
+handles dash/underscore and case normalization) - a package can be importable without its
 distribution name matching, and vice versa, so the check must not reject a legitimately
 importable module just because no distribution claims that exact name.
 
 ## Validation
 
-- [ ] `venvaxi tree <not-installed>` reports "not installed in the active venv"
+- [ ] `venvaxi tree <not-installed>` reports 'not installed in the active venv'
 - [ ] `venvaxi find X --package <not-installed>` reports the same
 - [ ] `venvaxi show <not-installed> --api` reports the same
 - [ ] A package that *is* installed but raises on import still reports `PackageImportError`
@@ -66,8 +66,8 @@ importable module just because no distribution claims that exact name.
 
 - **The distinction is not always clean.** A namespace package, a stdlib module, or a local
   module on `sys.path` is importable with no installed distribution at all. Decide whether those
-  count as "installed" - the spec's intent is that an agent can tell "install it" from
-  "investigate it", so importable-but-undistributed should probably read as installed.
+  count as 'installed' - the spec's intent is that an agent can tell 'install it' from
+  'investigate it', so importable-but-undistributed should probably read as installed.
 - **An extra metadata lookup on every call.** Small, but it sits on the hot path for `find`,
   which is the most-invoked command.
 

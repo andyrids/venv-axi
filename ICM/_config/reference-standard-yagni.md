@@ -3,9 +3,9 @@ context-hierarchy: Layer 3
 context-hierarchy-role: Rules, conventions and guidelines
 ---
 
-# YAGNI
+# Standard - YAGNI
 
-"You Aren't Gonna Need It" - avoid speculative complexity. Implement only what the current task
+'You Aren't Gonna Need It' - avoid speculative complexity. Implement only what the current task
 requires.
 
 ## Principles
@@ -20,7 +20,7 @@ requires.
   stays readable
 - SHOULD NOT create a helper or abstraction for a one-time operation
 
-## Technical Decisions
+## Technical decisions
 
 When a decision trades simplicity against development cost:
 

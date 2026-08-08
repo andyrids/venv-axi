@@ -18,8 +18,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `ICM/_config/reference-standard-markdown.md` - typographical and stylistic conventions for
+  Markdown, based on the *New Oxford Style Manual* (*New Hart's Rules*). Covers heading case,
+  quotation, list punctuation, numbers and frontmatter, with exemptions for verbatim content,
+  Keep a Changelog section names and frozen plans.
+
 ### Changed
 
+- Project documentation brought into conformance with the markdown standard: 123 headings to
+  sentence case across 37 files, prose quotation to single marks, and Oxford `-ize` spellings.
+- Spec templates in `ICM/_config/reference-standard-spec.md` now specify sentence-case section
+  headings, so newly authored specs no longer reintroduce Title Case.
 - The `ICM/create-feature` pipeline now gates on decisions rather than on step completion. Two
   test-outcome checkpoints fold into one that fires only on a failure, the verification report's
   gate is conditional on the conformance gate having produced changes, and a cross-stage re-entry
@@ -78,7 +89,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional extra - `venv-axi[mcp]`.
 - Symbol-graph cache - `~/.pkgdx/axi/` -> `~/.venvaxi/`.
 - Ambient context markers - `<!-- venvaxi:begin/end -->`.
-- Exceptions now derive from `venvaxi.exceptions.Error`
+- Exceptions now derive from `venvaxi.exceptions.Error`.
 
 ### Removed
 

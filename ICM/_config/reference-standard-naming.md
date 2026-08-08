@@ -3,7 +3,7 @@ context-hierarchy: Layer 3
 context-hierarchy-role: Rules, conventions and guidelines
 ---
 
-# Standard - Naming Conventions
+# Standard - naming conventions
 
 ## References
 
@@ -13,7 +13,7 @@ context-hierarchy-role: Rules, conventions and guidelines
 | Cookbook       | `reference-cookbook-[package].md` | `reference-cookbook-rich.md`     |
 | Standard       | `reference-standard-[name].md`    | `reference-standard-techspec.md` |
 
-## Tracked Artifacts
+## Tracked artifacts
 
 Permanent, version-controlled. See `specs/README.md` for the state vs motion split.
 

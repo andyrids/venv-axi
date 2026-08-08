@@ -18,7 +18,7 @@ venvaxi inherits <qualified_name> [--refresh]
 
 There is no `--docstring` flag; the output carries no `doc` column.
 
-## Data Requirements
+## Data requirements
 
 `INHERITS` edges from the cached graph. **Direct** subclasses only - not the transitive closure.
 
@@ -30,7 +30,7 @@ consumer of that resolution. See
 Build depth is derived from the canonical name, so facade and home spellings agree on a fresh
 cache.
 
-## Output Rules
+## Output rules
 
 - `count: <n>` and an `inheritors` table of `name`, `kind`, `qualified_name`.
 - Footer names `venvaxi inspect <qualified_name>`.
@@ -47,7 +47,7 @@ Answers may legitimately **grow** as build depth grows. A subclass homed deeper 
 build stays undiscovered until some query builds that deep - the lazy-depth model in
 [Cache and refresh](../behaviors/cache-refresh.md).
 
-## Exit Codes
+## Exit codes
 
 `EX_OK`, including the empty case. `EX_FAILURE` on any raised `Error`.
 
