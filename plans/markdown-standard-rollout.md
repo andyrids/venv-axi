@@ -1,9 +1,9 @@
 ---
-status: in-progress
+status: done
 depends: []
 specs: []
 issues: []
-pr:
+pr: 21
 ---
 
 # Plan: Roll out the markdown standard and fix the drift
@@ -99,6 +99,19 @@ that inspected only each item's **first** line; most flagged items were already 
 punctuated on their continuation lines. Re-measured against item end-lines, the real drift was a
 single missing full stop in `CHANGELOG.md`. The remaining eight flagged blocks are colon-stems
 introducing sub-lists, which are correct.
+
+The templates in `reference-standard-spec.md` were the drift's actual source and were not in the
+original scope. Sweeping the nine command specs without fixing them would have reintroduced Title
+Case on the next spec authored - the sweep would have looked complete and silently regressed. A
+rollout of a documentation standard SHOULD fix whatever generates the documents before fixing the
+documents.
+
+Measuring drift by regex over headings needs an acronym allowlist, or it reports proper nouns and
+cited titles as violations. The allowlist that took the count from 123 to 0 is not reusable as a
+gate without being maintained, which is part of why no automated check was added.
+
+Delivered as a single commit, `941afac`, rather than one commit per sweep. The sweeps are
+independent and would have bisected more cleanly split apart.
 
 ## Follow-ups
 
