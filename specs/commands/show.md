@@ -50,9 +50,14 @@ API usually means the symbols are one level down rather than absent.
 
 ## Errors
 
-- `InvalidArgumentError` - an unknown `--fields` entry.
+- `InvalidArgumentError` - an unknown `--fields` entry, or a `package` argument whose spelling is
+  malformed rather than merely absent.
 - `PackageNotFoundError` - the package is not installed in the venv.
 - `PackageImportError` - the package is installed but cannot be imported for introspection.
+
+A malformed name and a missing one are different answers. `../etc/passwd` is not a package name
+that failed to resolve; it is not a package name at all, and reporting it as 'not installed'
+would invite the caller to try installing it.
 
 ## Principles
 

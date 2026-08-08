@@ -61,7 +61,9 @@ Rules binding both modes:
 
 - `SymbolNotFoundError` - the qualified name does not resolve in the store. This is distinct from
   a zero-children answer, which is a definitive success.
-- `PackageImportError` - the owning package cannot be imported to build the graph.
+- `PackageNotFoundError` - the owning package is not installed in the venv.
+- `PackageImportError` - the owning package is installed but cannot be imported to build the
+  graph.
 
 ## Principles
 

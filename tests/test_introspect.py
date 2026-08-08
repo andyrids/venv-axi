@@ -15,6 +15,7 @@ from venvaxi._introspect import (
     DOCSTRING_ABSENT,
     SIGNATURE_UNAVAILABLE,
     _doc_of,
+    _ensure_installed,
     _own_doc,
     _resolve_import_name,
     _signature_of,
@@ -273,14 +274,19 @@ def test_get_public_api_full_returns_complete_docstring(
 
 
 def test_get_public_api_invalid_name_raises() -> None:
-    """An invalid package name raises `PackageNotFoundError`."""
-    with pytest.raises(PackageNotFoundError):
+    """A malformed package name raises `InvalidArgumentError`.
+
+    NOTE: Distinct from `PackageNotFoundError` - `../etc/passwd` is not
+    a package name that failed to resolve, so reporting it as missing
+    would invite the caller to try installing it.
+    """
+    with pytest.raises(InvalidArgumentError):
         get_public_api("../etc/passwd")
 
 
-def test_get_public_api_import_error_raises() -> None:
-    """A non-importable package raises `PackageImportError`."""
-    with pytest.raises(PackageImportError):
+def test_get_public_api_not_installed_raises() -> None:
+    """An uninstalled package raises `PackageNotFoundError`."""
+    with pytest.raises(PackageNotFoundError, match="not installed"):
         get_public_api("this-package-does-not-exist-xyz")
 
 
@@ -325,20 +331,115 @@ def test_show_module_includes_reexports_with_all(fake_package: str) -> None:
     assert "util" in [child.name for child in children]
 
 
-def test_get_module_tree_unimportable_raises(
+def test_get_module_tree_not_installed_raises(
     isolated_cache: Path,
 ) -> None:
-    """A non-importable module name raises `PackageImportError`
-    (previously: a raw `ModuleNotFoundError` traceback)."""
-    with pytest.raises(PackageImportError):
+    """An uninstalled module name raises `PackageNotFoundError`."""
+    with pytest.raises(PackageNotFoundError, match="not installed"):
         get_module_tree("this_module_does_not_exist_xyz")
 
 
-def test_get_symbol_unimportable_raises(isolated_cache: Path) -> None:
-    """A qualified name under a non-importable module raises
-    `PackageImportError` (previously: a raw `ModuleNotFoundError`)."""
-    with pytest.raises(PackageImportError):
+def test_get_symbol_not_installed_raises(isolated_cache: Path) -> None:
+    """A qualified name under an uninstalled package raises
+    `PackageNotFoundError`, naming the package rather than the whole
+    qualified name."""
+    with pytest.raises(PackageNotFoundError) as excinfo:
         get_symbol("this_module_does_not_exist_xyz::Nope")
+    assert "::Nope" not in str(excinfo.value)
+
+
+def test_get_inheritors_not_installed_raises(isolated_cache: Path) -> None:
+    """An uninstalled package raises `PackageNotFoundError` for
+    `inherits`, which shares the builder with `inspect`."""
+    with pytest.raises(PackageNotFoundError, match="not installed"):
+        get_inheritors("this_module_does_not_exist_xyz::Nope")
+
+
+def test_find_symbol_not_installed_raises(isolated_cache: Path) -> None:
+    """`--package` naming an uninstalled package raises
+    `PackageNotFoundError`."""
+    with pytest.raises(PackageNotFoundError, match="not installed"):
+        find_symbol("Nope", package="this_module_does_not_exist_xyz")
+
+
+def test_ensure_installed_accepts_undistributed_module() -> None:
+    """An importable module with no installed distribution passes.
+
+    NOTE: A stdlib module is claimed by no distribution at all, and
+    'install it' is the wrong advice for one - the check asks the import
+    system, not `importlib.metadata`.
+    """
+    _ensure_installed("json", "json")
+
+
+def test_ensure_installed_accepts_specless_module(
+    fake_module: types.ModuleType,
+) -> None:
+    """A `sys.modules` entry with no `__spec__` passes.
+
+    NOTE: `importlib.util.find_spec` *raises* on such a module rather
+    than returning, so the `sys.modules` short-circuit is what keeps a
+    bare `types.ModuleType` from reading as uninstalled.
+    """
+    assert fake_module.__spec__ is None
+    _ensure_installed(fake_module.__name__, fake_module.__name__)
+
+
+def test_ensure_installed_accepts_dashed_distribution_name() -> None:
+    """A dashed distribution name resolves to its import name first."""
+    import_name = _resolve_import_name("detect-secrets")
+    assert import_name == "detect_secrets"
+    _ensure_installed(import_name, "detect-secrets")
+
+
+def test_ensure_installed_survives_a_raising_finder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A `sys.meta_path` finder that raises reads as 'not located'.
+
+    NOTE: `find_spec` may raise rather than return None; the failure
+    must fall through to the distribution check, not escape as an
+    unhandled error.
+    """
+
+    def _raise(name: str) -> None:
+        msg = f"finder blew up on {name}"
+        raise ImportError(msg)
+
+    monkeypatch.setattr("venvaxi._introspect.importlib.util.find_spec", _raise)
+    with pytest.raises(PackageNotFoundError, match="not installed"):
+        _ensure_installed("nothing_claims_this_xyz", "nothing_claims_this_xyz")
+
+
+def test_ensure_installed_defers_to_import_for_installed_package(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An installed distribution that cannot be located passes the check.
+
+    NOTE: Installed-but-broken is an investigate-it answer, so the guard
+    falls through and lets the caller's import attempt report
+    `PackageImportError` instead.
+    """
+    monkeypatch.setattr(
+        "venvaxi._introspect.importlib.util.find_spec", lambda _: None
+    )
+    monkeypatch.delitem(sys.modules, "detect_secrets", raising=False)
+    _ensure_installed("detect_secrets", "detect-secrets")
+
+
+def test_build_store_for_installed_but_broken_raises_import_error(
+    isolated_cache: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An installed package raising on import still reports
+    `PackageImportError`, not `PackageNotFoundError`."""
+
+    def _raise(name: str) -> types.ModuleType:
+        msg = f"boom: {name}"
+        raise ImportError(msg)
+
+    monkeypatch.setattr("importlib.import_module", _raise)
+    with pytest.raises(PackageImportError):
+        get_module_tree("rich")
 
 
 def test_walk_module_handles_none_module_attribute(
