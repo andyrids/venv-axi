@@ -2,7 +2,9 @@
 
 import argparse
 import pathlib
-from collections.abc import Callable
+import shutil
+import sys
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import pytest
@@ -23,6 +25,30 @@ def isolated_cache(
     """
     monkeypatch.setattr("venvaxi._cache.get_cache_dir", lambda: tmp_path)
     return tmp_path
+
+
+@pytest.fixture
+def fake_package(
+    isolated_cache: pathlib.Path, tmp_path_factory: pytest.TempPathFactory
+) -> Iterator[str]:
+    """Register a real on-disk package with a submodule and a subclass."""
+    from tests.resources import package
+
+    src_test = tmp_path_factory.mktemp("src_test")
+    shutil.copytree(
+        pathlib.Path(package.__file__).parent,
+        src_test / "package",
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
+
+    sys.path.insert(0, str(src_test))
+    try:
+        yield "package"
+    finally:
+        sys.path.remove(str(src_test))
+        for name in list(sys.modules):
+            if name.startswith("package"):
+                del sys.modules[name]
 
 
 @pytest.fixture
