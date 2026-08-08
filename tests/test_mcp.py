@@ -67,6 +67,37 @@ def test_list_packages_tool_returns_toon(
     assert "rich|15.0.0" in result
 
 
+def test_list_packages_tool_hint_describes_metadata_tool(
+    tmp_path: Path, make_package_info: PackageFactory
+) -> None:
+    """The list hint describes what the tool it names actually returns."""
+    server = build_server()
+    with (
+        mock.patch(f"{MCP}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.list_packages", return_value=[make_package_info()]),
+    ):
+        tool = asyncio.run(server.get_tool(camel_case("list_packages_tool")))
+        result = tool.fn()
+    assert "showPackageTool" in result
+    assert "public API" not in result
+
+
+def test_list_packages_tool_empty_hint_names_camel_case(
+    tmp_path: Path,
+) -> None:
+    """No packages hints at the tool by its registered camelCase name."""
+    server = build_server()
+    with (
+        mock.patch(f"{MCP}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.list_packages", return_value=[]),
+    ):
+        tool = asyncio.run(server.get_tool(camel_case("list_packages_tool")))
+        result = tool.fn()
+    assert result.startswith("count: 0")
+    assert "listPackagesTool" in result
+    assert "list_packages_tool" not in result
+
+
 def test_show_package_tool_returns_toon(
     make_package_info: PackageFactory,
 ) -> None:
@@ -175,6 +206,19 @@ def test_get_inheritors_tool_returns_toon(
     assert 'Dog|class|"rich::Dog"' in result
 
 
+def test_get_inheritors_tool_empty_hint_names_both_causes() -> None:
+    """No subclasses hints at both an unindexed package and depth."""
+    server = build_server()
+    with mock.patch(f"{MCP}.get_inheritors", return_value=[]):
+        tool = asyncio.run(server.get_tool(camel_case("get_inheritors_tool")))
+        result = tool.fn(qualified_name="rich::Animal")
+    assert result.startswith("count: 0")
+    assert "unindexed packages" in result
+    assert "built depth" in result
+    assert "findSymbolTool" in result
+    assert "find_symbol_tool" not in result
+
+
 def test_tool_axi_error_returns_toon_error_block() -> None:
     """An `AXIError` inside a tool returns a TOON error block."""
     server = build_server()
@@ -224,3 +268,15 @@ def test_get_module_tree_tool_returns_toon(
         result = tool.fn(name="rich")
     assert "count: 2" in result
     assert "1|rich.table|module" in result
+
+
+def test_get_module_tree_tool_empty_hint_names_list_tool() -> None:
+    """No tree hints at the tool that lists packages, not the module one."""
+    server = build_server()
+    with mock.patch(f"{MCP}.get_module_tree", return_value=[]):
+        tool = asyncio.run(server.get_tool(camel_case("get_module_tree_tool")))
+        result = tool.fn(name="nope")
+    assert result.startswith("count: 0")
+    assert "listPackagesTool" in result
+    assert "showModuleTool" not in result
+    assert "list_packages_tool" not in result

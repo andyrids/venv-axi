@@ -59,6 +59,9 @@ and mixing the two teaches the wrong invocation surface.
 Hints reference other tools by deriving the camelCase name from the function, so a rename cannot
 leave a stale hint pointing at a tool that no longer exists.
 
+A hint MUST name the tool that performs the action its sentence describes. Deriving the name
+correctly from the wrong function passes the rule above and still misdirects the caller.
+
 ## Principles
 
 **Inherited** - project principles that especially bite here:
