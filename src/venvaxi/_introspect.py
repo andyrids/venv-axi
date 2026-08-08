@@ -524,7 +524,7 @@ def _walk_submodules(
                 name=submodule.__name__.rsplit(".", 1)[-1],
                 module=module.__name__,
                 signature="",
-                doc=inspect.getdoc(submodule) or "",
+                doc=_own_doc(submodule),
                 package=package,
                 version=version,
                 home_qualified_name=submodule.__name__,
@@ -747,6 +747,45 @@ def show_module(
         return node, store.get_children(resolved)
 
 
+def _resolve_facade_member(
+    store: SymbolStore, resolved: str
+) -> SymbolNode | None:
+    """Resolve a facade-spelled class member to its home-keyed node.
+
+    NOTE: Member nodes are keyed at their owner class's *home* module
+    only (`_walk_class_members`), so a facade spelling such as
+    `fastmcp::Client.call_tool` has no row of its own - unlike classes
+    and functions, which are keyed at every containing module. The
+    owner resolves via `canonical_name`; the answer is the home row
+    as stored, per `specs/behaviors/qualified-name-semantics.md`.
+
+    NOTE: No depth guard, unlike `get_inheritors` - member `CONTAINS`
+    rows are written by the same class walk that wrote the owner node,
+    keyed at home regardless of build depth, so a found owner implies
+    its member rows exist and a candidate miss is definitive.
+
+    Args:
+        store: The open `SymbolStore` to resolve against.
+        resolved: The import-name-resolved qualified name.
+
+    Returns:
+        The home-keyed member `SymbolNode`, or `None` on a genuine miss.
+    """
+    _, separator, symbol_part = resolved.partition("::")
+    if not separator or "." not in symbol_part:
+        return None
+    # NOTE: Last-dot split, matching member key shape (`Class.member`) -
+    # a nested-class owner (`mod::Outer.Inner`) stays intact.
+    owner, _, member = resolved.rpartition(".")
+    canonical = store.canonical_name(owner)
+    if canonical == owner:
+        # NOTE: Owner absent, or already home-keyed - a genuine miss.
+        return None
+    # NOTE: Concatenation, not `qualify()` - `canonical` already
+    # carries its `::` separator.
+    return store.get_node(f"{canonical}.{member}")
+
+
 def get_symbol(qualified_name: str, *, refresh: bool = False) -> SymbolNode:
     """Fetch a single symbol node by its qualified name.
 
@@ -767,6 +806,8 @@ def get_symbol(qualified_name: str, *, refresh: bool = False) -> SymbolNode:
         refresh=refresh,
     ) as store:
         node = store.get_node(resolved)
+        if node is None:
+            node = _resolve_facade_member(store, resolved)
         if node is None:
             msg = f"Symbol `{qualified_name}` not found"
             raise SymbolNotFoundError(msg)
