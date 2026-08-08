@@ -45,8 +45,8 @@ help[1]:
   Run `venvaxi --help` for available commands
 ```
 
-Unexpected exceptions render the same shape with an `Unexpected error:` prefix, are logged with
-a traceback at `EXCEPTION` level to STDERR, and exit `2`.
+Unexpected exceptions render the same shape with an `Unexpected error:` prefix, are logged to
+STDERR at `ERROR` level with the traceback attached (`logger.exception`), and exit `2`.
 
 MCP tools mirror this exactly: `Error` is caught and returned as the same TOON block rather than
 escaping into FastMCP's generic error path.

@@ -39,6 +39,13 @@ grep -l 'specs/commands/<verb>.md' plans/*.md   # what a spec change ripples int
 Use a placeholder when documenting these queries - a real spec path written into prose here
 makes this file a false positive in every ripple check that greps for it.
 
+**Two different questions, two different queries.** The ripple check above is deliberately broad:
+after editing a spec you want every plan that so much as mentions it. The *coverage* check behind
+Invariant 1 in `specs/README.md` is the opposite - it must read only the frontmatter `specs:`
+block, because a plan's prose routinely names specs it does not implement, and counting those as
+coverage lets the invariant pass on specs nothing owns. Never answer "is this spec covered?" with
+a whole-file grep.
+
 ## Frontmatter
 
 ```yaml
@@ -51,6 +58,19 @@ issues: []             # issue numbers
 pr:                    # PR number, set at closeout
 ---
 ```
+
+### `specs:` means conformance, not authorship
+
+List only the specs this plan brings **code** into conformance with. A plan that *writes* a spec
+without changing behaviour lists nothing - `specs: []` is correct and common.
+
+This is the field's one real trap, and the methodology walked into it on its first use: the plan
+that created this directory listed all 16 spec files, having authored them. Every spec then had a
+covering plan by `grep`, so Invariant 1 in `specs/README.md` could never fail and the drift
+auditor's Table 1 was silently useless. The check was built and defeated in the same commit.
+
+The invariant is only worth having if a spec can fail it. Over-listing here is how it quietly
+stops being able to.
 
 ## Body
 

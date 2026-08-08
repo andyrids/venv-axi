@@ -57,6 +57,7 @@ Rules binding both modes:
 
 - `SymbolNotFoundError` - the qualified name does not resolve in the store. This is distinct from
   a zero-children answer, which is a definitive success.
+- `PackageImportError` - the owning package cannot be imported to build the graph.
 
 ## Principles
 

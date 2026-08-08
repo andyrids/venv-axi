@@ -55,6 +55,14 @@ Note `.claude/skills/venvaxi/evals/evals.json` currently encodes this bug **as a
 (`fastmcp-instructions-kwarg`). That eval must be updated in the same change, or it will fail
 once the bug is fixed.
 
+**Absorbed from [spec-driven-icm](spec-driven-icm.md)**: drive this plan through the full
+`/create-feature` pipeline rather than fixing it directly. That plan closed with one Validation
+criterion unticked - no end-to-end pipeline run had been performed - and this is the designated
+first exercise of it. Every stage gate applies: 01 amends `specs/commands/inspect.md` if the
+method/function question below changes the rule, opens the plan; 02 implements; 03 checks
+conformance against the spec and exercises the CLI live; 04 closes this plan out. Treat a stage
+that feels awkward as a finding about the pipeline, and record it in Notes at closeout.
+
 ## Validation
 
 - [ ] `venvaxi inspect fastmcp::FastMCP` emits an empty `doc`, not `AggregateProvider`'s text
@@ -64,6 +72,10 @@ once the bug is fixed.
 - [ ] The `fastmcp-instructions-kwarg` eval is updated to expect the corrected output
 - [ ] `uv run coverage run -m pytest` green; new unit test covers the inherited-docstring case
 - [ ] `uv run -m prek run --all-files` passes
+- [ ] Executed end to end through `/create-feature`, all four stages with their checkpoints,
+  producing a techspec, a spec reconciliation and a closeout - this closes the criterion
+  [spec-driven-icm](spec-driven-icm.md) left unticked
+- [ ] Any friction found in the pipeline itself is recorded in Notes at closeout
 
 ## Risks / unknowns
 

@@ -54,6 +54,7 @@ build stays undiscovered until some query builds that deep - the lazy-depth mode
 ## Errors
 
 - `SymbolNotFoundError` - the base class name does not resolve.
+- `PackageImportError` - the owning package cannot be imported to build the graph.
 
 ## Principles
 

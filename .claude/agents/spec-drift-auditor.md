@@ -70,11 +70,12 @@ Then, separately, for each **principle**: check whether the implementation honou
 principle violation is drift even when every enumerated rule matches. This needs judgement - say
 so when you are uncertain rather than asserting.
 
-Classify each Table 1 gap using the plan frontmatter:
+Classify each Table 1 gap using the plan frontmatter.
 
-```sh
-grep -l '<spec-path>' plans/*.md
-```
+**Read each plan's frontmatter `specs:` block directly. Do NOT whole-file `grep`.** A plan's
+prose - Scope, Approach, Notes - routinely names spec files it does not implement, and a
+whole-file grep counts those as coverage. That produces false "expected motion" classifications
+and silently disarms this entire phase. Only a path listed under the `specs:` key counts.
 
 - A gap claimed by a `planned`, `in-progress` or `blocked` plan is **expected motion**. Cite the
   plan slug.

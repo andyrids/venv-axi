@@ -52,9 +52,9 @@ target untouched.
 
 ## Output Rules
 
-A flat TOON object mapping each artifact (`AGENTS.md`, `.vscode`, `.mcp.json`, `skill`) to
-whether it was created or modified. The `skill` key is always present, and is only ever true when
-`--skill` was requested.
+A flat TOON object mapping each artifact to whether it was created or modified, keyed
+`AGENTS.md`, `.vscode`, `.mcp.json`, `SKILL.md`. The `SKILL.md` key is always present, and is
+only ever true when `--skill` was requested.
 
 Footer names `venvaxi` to confirm ambient context is live, plus `uv add venv-axi[mcp]` when the
 extra is missing.

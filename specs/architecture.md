@@ -45,12 +45,31 @@ AST parsing. This is the decisive difference from the projects it is adapted fro
 ever describes packages actually installed in the consuming venv, so it reports what will really
 be imported at runtime, including C extensions and dynamically-constructed attributes.
 
-- **Nodes** are symbols (package, module, class, function, attribute).
-- **Edges** are `CONTAINS` and `INHERITS`.
-- Keying differs between the two edge kinds - see
-  [Qualified name semantics](behaviors/qualified-name-semantics.md).
-- The `nodes` table backs an external-content FTS5 index, which constrains how it may be
-  rewritten.
+**Node kinds** - `package`, `module`, `class`, `function`, `method`, `attribute`.
+
+**Edge kinds** - five are declared; only two are read:
+
+| Kind           | Written                                            | Read by            |
+| -------------- | -------------------------------------------------- | ------------------ |
+| `CONTAINS`     | Module or class -> each symbol it holds             | `inspect`, `tree`  |
+| `INHERITS`     | Subclass -> base class                              | `inherits`         |
+| `EXPORTS`      | Module -> a symbol whose home module differs        | nothing            |
+| `IMPORTS_FROM` | Module -> the home module it re-exports from        | nothing            |
+| `DEPENDS_ON`   | never                                               | nothing            |
+
+`EXPORTS` and `IMPORTS_FROM` are the **re-export record**: both are written together whenever a
+walked symbol's home module differs from the module recording it, capturing the facade-to-home
+relationship as graph edges rather than only as a node field. No query consumes them today - they
+exist so a future feature (re-export provenance, "where does this really come from") can be built
+without a cache rebuild, since the edges are already being accumulated.
+
+`DEPENDS_ON` is declared but never written or read. It is dead, and should either gain a purpose
+or be removed under YAGNI.
+
+Keying differs between `CONTAINS` and `INHERITS` - see
+[Qualified name semantics](behaviors/qualified-name-semantics.md).
+
+The `nodes` table backs an external-content FTS5 index, which constrains how it may be rewritten.
 
 ## Cache location
 
@@ -70,4 +89,6 @@ The consuming project root is the nearest ancestor of the working directory cont
   repos by `venvaxi setup --skill`
 - `.claude/skills/venvaxi/SKILL.md` - a hand-maintained dev-facing fork for this repo
 
-`setup --skill` MUST NOT be run inside this repo; it would clobber the dev-facing copy.
+Do not run `setup --skill` inside this repo - it would clobber the dev-facing copy. This is
+operational caution, not an enforced rule: `install_skill` overwrites unconditionally for any
+project root, and nothing detects that the target is `venv-axi` itself.
