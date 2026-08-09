@@ -10,7 +10,10 @@ from unittest import mock
 
 import pytest
 
+from venvaxi._cache import get_cache_db_path
+from venvaxi._core import get_project_root
 from venvaxi._introspect import (
+    DEFAULT_MAX_DEPTH,
     DOCSTRING_ABSENT,
     SIGNATURE_UNAVAILABLE,
     _doc_of,
@@ -323,6 +326,32 @@ def test_get_public_api_space_name_raises() -> None:
     `PackageNotFoundError`)."""
     with pytest.raises(InvalidArgumentError, match="Invalid package name"):
         get_public_api("a b")
+
+
+def test_get_public_api_derives_build_depth(fake_package: str) -> None:
+    """A dotted module deeper than `DEFAULT_MAX_DEPTH` answers from a
+    graph built to its own depth.
+
+    NOTE: `refresh=True` is load-bearing - it pins the answer against a
+    *rebuilt* cache, so this test cannot pass merely because an earlier
+    query deepened the shared graph, and fails if the depth derivation
+    is dropped again (`specs/behaviors/cache-refresh.md`, Validity).
+    """
+    symbols = get_public_api(f"{fake_package}.subpkg.inner.leaf", refresh=True)
+    assert [symbol.name for symbol in symbols] == ["Widget", "ping"]
+
+
+def test_get_public_api_top_level_keeps_default_depth(
+    fake_package: str,
+) -> None:
+    """A top-level package still builds at `DEFAULT_MAX_DEPTH` - the
+    depth derivation must not trigger a deeper build it does not need."""
+    symbols = get_public_api(fake_package)
+    assert [symbol.name for symbol in symbols] == ["Animal", "Cat", "Dog"]
+    with SymbolStore(get_cache_db_path(get_project_root())) as store:
+        build = store.get_build(fake_package)
+    assert build is not None
+    assert build[1] == DEFAULT_MAX_DEPTH
 
 
 def test_show_module_returns_node_and_children(fake_package: str) -> None:

@@ -941,8 +941,13 @@ def get_public_api(
 
     NOTE: Compatibility shim over the `SymbolStore` introspection engine.
 
+    NOTE: Build depth derives from the resolved name's module offset,
+    mirroring `get_symbol` - a dotted module deeper than
+    `DEFAULT_MAX_DEPTH` must not answer from whatever depth the cache
+    happens to hold. See `specs/behaviors/cache-refresh.md` (Validity).
+
     Args:
-        name: The package (distribution) name.
+        name: The package (distribution) name, or a dotted module path.
         docstring: Return complete docstrings instead of the truncated
             first line.
         limit: The docstring truncation limit.
@@ -961,16 +966,24 @@ def get_public_api(
     """
     _ensure_valid_name(name, name)
 
-    import_name = _resolve_import_name(name)
-    _ensure_installed(import_name, name)
+    # NOTE: `_resolve_qualified_name`, not `_resolve_import_name` - the
+    # store is keyed by root-resolved import names, and whole-argument
+    # resolution would fall through to a dash replacement that repairs
+    # the tail, which validation must never see repaired.
+    resolved = _resolve_qualified_name(name)
+    _ensure_installed(resolved, name)
     try:
-        importlib.import_module(import_name)
+        importlib.import_module(resolved)
     except ImportError as err:
-        msg = f"Failed to import `{import_name}` (from `{name}`)"
+        msg = f"Failed to import `{resolved}` (from `{name}`)"
         raise PackageImportError(msg) from err
 
-    with _build_store_for(name, refresh=refresh) as store:
-        children = store.get_children(import_name)
+    with _build_store_for(
+        name,
+        max_depth=max(DEFAULT_MAX_DEPTH, _module_offset(resolved)),
+        refresh=refresh,
+    ) as store:
+        children = store.get_children(resolved)
 
     symbols: list[SymbolInfo] = []
     for node in children:

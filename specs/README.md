@@ -38,6 +38,7 @@ specs/
 ├── behaviors/                         <- cross-cutting invariants
 │   ├── output-contract.md
 │   ├── qualified-name-semantics.md
+│   ├── package-resolution.md
 │   └── cache-refresh.md
 └── mcp/
     └── tools.md                       <- MCP tool contracts
