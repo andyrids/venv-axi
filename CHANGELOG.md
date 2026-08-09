@@ -50,6 +50,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `inspect`, `show --api` and the MCP symbol tools reported an inherited docstring.
 - Cached symbol graphs holding the incorrect docstrings are rebuilt automatically.
 - MCP next-step hints named the wrong tool or dropped half an explanation.
+- `show <dotted.module> --api` and `showPackageApiTool` build the symbol graph to the named
+  module's own depth. The answer no longer depends on which queries ran before, and `--refresh`
+  no longer rebuilds too shallow and destroys a deeper cached answer.
+- False spec statements corrected before the v0.1.0 freeze: `specs/commands/inherits.md` no
+  longer claims sole consumership of home-module resolution,
+  `specs/behaviors/package-resolution.md` states the per-command malformed-tail behaviour, and
+  `specs/README.md` lists all four `behaviors/` files.
 
 ### Changed
 
