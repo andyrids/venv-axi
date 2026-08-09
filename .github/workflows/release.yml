@@ -1,14 +1,7 @@
 name: Release
 
-# Builds and publishes `venv-axi` to PyPI via Trusted Publishing (OIDC) when
-# a `v*` tag is pushed. Split into `build` (no credentials) and `publish`
-# (id-token: write only) jobs, per Astral's recommended pattern, so the
-# OIDC-credentialed job carries the smallest possible blast radius.
-
+# Builds & publishes `venv-axi` to PyPI via Trusted Publishing (OIDC)
 on:
-  push:
-    tags:
-      - "v*"
   release:
     # Prerelease & Published only
     types: [published, prerelease]
@@ -19,9 +12,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      # NOTE: `fetch-depth: 0` - `hatch-vcs` derives the version from git
-      # tags, which a shallow clone does not carry.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -37,7 +28,7 @@ jobs:
 
       - run: uv build
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v8
         with:
           name: dist
           path: dist/
@@ -51,8 +42,10 @@ jobs:
       id-token: write
     steps:
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          enable-cache: false
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/
