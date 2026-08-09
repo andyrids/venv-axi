@@ -60,8 +60,20 @@ merely because its import name differs. See
 ### Scope of the malformed check
 
 For a dotted or qualified name, only the **top-level component** is validated - it is the part
-that has to name something installable. A malformed tail resolves to `SymbolNotFoundError`
-through the normal lookup, which is already the correct answer for 'that symbol is not there'.
+that has to name something installable. What a malformed tail reports then differs by command,
+because each asks its lookup a different question:
+
+- `inspect` and `inherits` resolve the tail through the normal symbol lookup, so a malformed
+  tail raises `SymbolNotFoundError` - already the correct answer for 'that symbol is not there'.
+- `show --api` validates the **whole** argument and raises `InvalidArgumentError`, because in
+  API mode the whole argument *is* the module path under inspection - there is no symbol tail
+  for a lookup to answer about. The error list in [show](../commands/show.md) states this.
+- `tree` reports `count: 0` and exits `EX_OK` - a malformed tail is indistinguishable from a
+  submodule with no node, which is its specified definitive empty state (see
+  [tree](../commands/tree.md)).
+- `find --package` uses the name only to select the package to index and scope the search to;
+  components below the top level do not participate in the search, so a malformed tail changes
+  nothing.
 
 ### Metadata mode
 

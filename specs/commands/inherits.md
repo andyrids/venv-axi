@@ -22,9 +22,10 @@ There is no `--docstring` flag; the output carries no `doc` column.
 
 `INHERITS` edges from the cached graph. **Direct** subclasses only - not the transitive closure.
 
-Unlike `inspect` and `find`, this command resolves through `SymbolStore.canonical_name` to the
-class's *home* module, because `INHERITS` edges are keyed at the home frame. It is the only
-consumer of that resolution. See
+This command resolves through `SymbolStore.canonical_name` to the class's *home* module for
+**every** input, because `INHERITS` edges are always keyed at the home frame. `inspect` shares
+that resolution, but only through its class-member carve-out - a facade-spelled member with no
+row of its own; `find` never resolves. See
 [Qualified name semantics](../behaviors/qualified-name-semantics.md).
 
 Build depth is derived from the canonical name, so facade and home spellings agree on a fresh
