@@ -14,8 +14,8 @@ metadata:
 
 ## Overview
 
-`venvaxi` is an Agent eXperience Interface (AXI), which answers "does this exist, and what is its
-exact shape in the version I have installed?"
+`venvaxi` is an Agent eXperience Interface (AXI), which answers 'does this exist, and what is its
+exact shape in the version I have installed?'
 
 The AXI imports the venv package, introspects it, caches the result as a per-project SQLite symbol
 graph and prints TOON - a compact tabular text format.
@@ -169,7 +169,7 @@ Notable CLI differences:
 - **`find` without `--package` only searches what is already cached.** On a cold cache that
   is nothing, and you get `count: 0`. Always pass `--package` on the first lookup for a
   package - it indexes and scopes in one step. `--refresh` without `--package` is a hard
-  error ("`--refresh` requires `--package` to name the graph to rebuild").
+  error ('`--refresh` requires `--package` to name the graph to rebuild').
 - **`count: 0` is a definitive empty state, not a failure.** Unresolvable names raise, so a
   zero count means the query resolved and genuinely matched nothing. For `inherits`
   specifically it means the base class resolved with zero *indexed* subclasses - subclasses
@@ -186,11 +186,11 @@ Notable CLI differences:
 - **`tree` defaults to `--max-depth 2`.** Deep packages are silently shallow at the default;
   raise it when you are hunting for a submodule rather than surveying.
 - **MCP needs the extra.** `serve` requires `fastmcp` (`uv add venv-axi[mcp]`) and exits `1`
-  with a "requires the `venv-axi[mcp]` extra" log line without it. `setup` deliberately *omits*
+  with a 'requires the `venv-axi[mcp]` extra' log line without it. `setup` deliberately *omits*
   the MCP entry from `.mcp.json` / `.vscode/mcp.json` when `fastmcp` is missing, so an absent
   server entry after `setup` means the extra is not installed.
 - **`setup` writes files - it is not a diagnostic command.** It rewrites `AGENTS.md`'s ambient
-  block and `.mcp.json`/`.vscode/mcp.json` every time it runs. "Idempotent" here only means
+  block and `.mcp.json`/`.vscode/mcp.json` every time it runs. 'Idempotent' here only means
   repeated runs converge on the same result, not that a run is side-effect-free - it still
   touches tracked files. Diagnosing *whether* `fastmcp` is available is a read-only question:
   answer it with `venvaxi show fastmcp` (raises `PackageNotFoundError` if absent) rather than
@@ -199,7 +199,7 @@ Notable CLI differences:
   registration - never as a way to confirm or explain a fix while investigating.
 - **Token savings are payload-shaped, not a flat ~40%.** Measured against compact JSON
   (`tests/test_toon_benchmark.py`): `venvaxi list` ~45%, `venvaxi find` ~27%, `venvaxi inspect
-  <symbol>` ~6%. The saving comes from amortising repeated JSON keys across a table header,
+  <symbol>` ~6%. The saving comes from amortizing repeated JSON keys across a table header,
   so it scales with row count and collapses on single-object output. Do not budget for a
   general ~40%; on the `inspect` path, efficiency comes from truncation instead.
 
@@ -207,8 +207,9 @@ Notable CLI differences:
 
 - `uv run venvaxi <cmd> --help` is the authoritative flag source. If the table above ever
   disagrees with it, `--help` wins - and this file needs updating.
-- `ICM/_config/reference-standard-axi.md` covers the 10 AXI design principles, the measured
-  token-efficiency benchmarks and the symbol-graph qualified-name invariants. Read it when
-  modifying `src/venvaxi/` itself; it is not needed to *use* the CLI.
+- `specs/` covers what the CLI MUST do - `specs/principles.md` for the 10 AXI design principles
+  and the measured token-efficiency benchmarks, `specs/commands/<verb>.md` per command, and
+  `specs/behaviors/qualified-name-semantics.md` for the symbol-graph invariants. Read these when
+  modifying `src/venvaxi/` itself; they are not needed to *use* the CLI.
 - The always-on summary injected into `AGENTS.md` is generated from `src/venvaxi/ambient.md`
   and refreshed by `venvaxi setup`. Edit the markdown, not the Markdown block.

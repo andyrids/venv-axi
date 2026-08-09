@@ -2,7 +2,6 @@
 
 import importlib
 import logging
-import shutil
 import sys
 import types
 from collections.abc import Iterator
@@ -11,8 +10,16 @@ from unittest import mock
 
 import pytest
 
+from venvaxi._cache import get_cache_db_path
+from venvaxi._core import get_project_root
 from venvaxi._introspect import (
+    DEFAULT_MAX_DEPTH,
+    DOCSTRING_ABSENT,
     SIGNATURE_UNAVAILABLE,
+    _doc_of,
+    _ensure_installed,
+    _ensure_valid_name,
+    _own_doc,
     _resolve_import_name,
     _signature_of,
     _walk_module,
@@ -22,6 +29,7 @@ from venvaxi._introspect import (
     get_public_api,
     get_symbol,
     show_module,
+    summarize_doc,
     truncate,
 )
 from venvaxi._store import NodeKind, SymbolStore
@@ -62,30 +70,6 @@ def fake_module(
 
 
 @pytest.fixture
-def fake_package(
-    isolated_cache: Path, tmp_path_factory: pytest.TempPathFactory
-) -> Iterator[str]:
-    """Register a real on-disk package with a submodule and a subclass."""
-    from tests.resources import package
-
-    src_test = tmp_path_factory.mktemp("src_test")
-    shutil.copytree(
-        Path(package.__file__).parent,
-        src_test / "package",
-        ignore=shutil.ignore_patterns("__pycache__"),
-    )
-
-    sys.path.insert(0, str(src_test))
-    try:
-        yield "package"
-    finally:
-        sys.path.remove(str(src_test))
-        for name in list(sys.modules):
-            if name.startswith("package"):
-                del sys.modules[name]
-
-
-@pytest.fixture
 def fake_module_with_none_module_attr(
     isolated_cache: Path,
 ) -> Iterator[types.ModuleType]:
@@ -118,6 +102,115 @@ def test_truncate_long_text_appends_hint() -> None:
     result = truncate("x" * 20, limit=5)
     assert result.startswith("xxxxx... truncated, 20 chars total")
     assert "use --docstring to see complete body" in result
+
+
+def test_own_doc_normalises_whitespace() -> None:
+    """An own docstring is returned dedented, as `getdoc` would."""
+
+    class Documented:
+        """Summary.
+
+        Indented body.
+        """
+
+    assert _own_doc(Documented) == "Summary.\n\nIndented body."
+
+
+def test_own_doc_absent_returns_empty() -> None:
+    """An object with no docstring of its own yields an empty string."""
+
+    class Bare:
+        pass
+
+    assert _own_doc(Bare) == ""
+
+
+def test_own_doc_non_string_returns_empty() -> None:
+    """A non-string `__doc__` yields an empty string rather than raising."""
+    assert _own_doc(types.SimpleNamespace(__doc__=42)) == ""
+
+
+def test_doc_of_undocumented_class_ignores_base_docstring() -> None:
+    """A class with no docstring does not inherit its base class's."""
+
+    class Base:
+        """Base docstring."""
+
+    class Derived(Base):
+        pass
+
+    assert _doc_of(Derived, NodeKind.CLASS) == ""
+
+
+def test_doc_of_documented_class_returns_own_docstring() -> None:
+    """A class that defines a docstring still reports it."""
+
+    class Documented:
+        """Own docstring."""
+
+    assert _doc_of(Documented, NodeKind.CLASS) == "Own docstring."
+
+
+def test_doc_of_override_without_docstring_returns_empty() -> None:
+    """An override with no docstring does not inherit the base method's."""
+
+    class Base:
+        def run(self) -> None:
+            """Run the base implementation."""
+
+    class Derived(Base):
+        def run(self) -> None:
+            pass
+
+    assert _doc_of(Derived.run, NodeKind.METHOD) == ""
+
+
+def test_doc_of_inherited_method_returns_base_docstring() -> None:
+    """An un-overridden method is the same object, so the base's docstring
+    is genuinely its own and is reported."""
+
+    class Base:
+        def run(self) -> None:
+            """Run the base implementation."""
+
+    class Derived(Base):
+        pass
+
+    assert Derived.run is Base.run
+    assert (
+        _doc_of(Derived.run, NodeKind.METHOD) == "Run the base implementation."
+    )
+
+
+def test_doc_of_attribute_ignores_type_docstring() -> None:
+    """A module-level constant is not recorded with its type's docstring."""
+    assert _doc_of({"key": "value"}, NodeKind.ATTRIBUTE) == ""
+
+
+def test_summarize_doc_absent_returns_marker() -> None:
+    """An absent docstring emits the marker, not a silent blank."""
+    assert summarize_doc("") == DOCSTRING_ABSENT
+
+
+def test_summarize_doc_absent_returns_marker_in_full_mode() -> None:
+    """The marker is emitted under `docstring=True` too."""
+    assert summarize_doc("", docstring=True) == DOCSTRING_ABSENT
+
+
+def test_summarize_doc_present_is_unaffected_by_marker() -> None:
+    """A real docstring is still reduced to its first line."""
+    assert summarize_doc("First line.\n\nBody.") == "First line."
+
+
+def test_doc_of_does_not_record_the_absent_marker() -> None:
+    """The marker is emission-only - recording it would put its text into
+    the FTS index and make every undocumented symbol match a search."""
+
+    class Bare:
+        pass
+
+    assert _doc_of(Bare, NodeKind.CLASS) == ""
+    assert DOCSTRING_ABSENT not in _doc_of(Bare, NodeKind.CLASS)
 
 
 def test_get_public_api_filters_private_and_non_callables(
@@ -160,15 +253,105 @@ def test_get_public_api_full_returns_complete_docstring(
 
 
 def test_get_public_api_invalid_name_raises() -> None:
-    """An invalid package name raises `PackageNotFoundError`."""
-    with pytest.raises(PackageNotFoundError):
+    """A malformed package name raises `InvalidArgumentError`.
+
+    NOTE: Distinct from `PackageNotFoundError` - `../etc/passwd` is not
+    a package name that failed to resolve, so reporting it as missing
+    would invite the caller to try installing it.
+    """
+    with pytest.raises(InvalidArgumentError):
         get_public_api("../etc/passwd")
 
 
-def test_get_public_api_import_error_raises() -> None:
-    """A non-importable package raises `PackageImportError`."""
-    with pytest.raises(PackageImportError):
+def test_get_public_api_not_installed_raises() -> None:
+    """An uninstalled package raises `PackageNotFoundError`."""
+    with pytest.raises(PackageNotFoundError, match="not installed"):
         get_public_api("this-package-does-not-exist-xyz")
+
+
+@pytest.mark.parametrize(
+    "name",
+    [".foo", "...", "", "a b", "../etc/passwd", "foo/bar", "-x", "foo-", "."],
+)
+def test_ensure_valid_name_rejects_degenerate(name: str) -> None:
+    """A name that cannot possibly name a package raises
+    `InvalidArgumentError`, carrying the caller's spelling."""
+    with pytest.raises(InvalidArgumentError, match="Invalid package name"):
+        _ensure_valid_name(name, name)
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["rich.console", "detect-secrets", "zope.interface", "2to3", "_", "a"],
+)
+def test_ensure_valid_name_accepts_legitimate(name: str) -> None:
+    """Every legitimate name shape passes, including the single-character
+    and digit-leading forms the trailing regex group must not require."""
+    _ensure_valid_name(name, name)
+
+
+def test_get_module_tree_malformed_raises() -> None:
+    """A degenerate name raises `InvalidArgumentError`, not the
+    unhandled `ValueError` that produced `EX_SYNTAX` (previously:
+    `Unexpected error: A distribution name is required.`)."""
+    with pytest.raises(InvalidArgumentError, match="Invalid package name"):
+        get_module_tree(".foo")
+
+
+def test_get_symbol_malformed_raises() -> None:
+    """A qualified name with a malformed root raises
+    `InvalidArgumentError` naming the caller's full spelling - the root
+    of `.foo::Bar` is `""`, which names nothing the caller can fix."""
+    with pytest.raises(InvalidArgumentError) as excinfo:
+        get_symbol(".foo::Bar")
+    assert ".foo::Bar" in str(excinfo.value)
+
+
+def test_get_inheritors_malformed_raises() -> None:
+    """`inherits` shares the builder guard with `inspect`."""
+    with pytest.raises(InvalidArgumentError, match="Invalid package name"):
+        get_inheritors(".foo::Bar")
+
+
+def test_find_symbol_malformed_package_raises() -> None:
+    """`--package` with an impossible name raises `InvalidArgumentError`
+    rather than inviting an install that can never succeed (previously:
+    `PackageNotFoundError`)."""
+    with pytest.raises(InvalidArgumentError, match="Invalid package name"):
+        find_symbol("Nope", package="a b")
+
+
+def test_get_public_api_space_name_raises() -> None:
+    """A space-carrying name is malformed, not absent (previously:
+    `PackageNotFoundError`)."""
+    with pytest.raises(InvalidArgumentError, match="Invalid package name"):
+        get_public_api("a b")
+
+
+def test_get_public_api_derives_build_depth(fake_package: str) -> None:
+    """A dotted module deeper than `DEFAULT_MAX_DEPTH` answers from a
+    graph built to its own depth.
+
+    NOTE: `refresh=True` is load-bearing - it pins the answer against a
+    *rebuilt* cache, so this test cannot pass merely because an earlier
+    query deepened the shared graph, and fails if the depth derivation
+    is dropped again (`specs/behaviors/cache-refresh.md`, Validity).
+    """
+    symbols = get_public_api(f"{fake_package}.subpkg.inner.leaf", refresh=True)
+    assert [symbol.name for symbol in symbols] == ["Widget", "ping"]
+
+
+def test_get_public_api_top_level_keeps_default_depth(
+    fake_package: str,
+) -> None:
+    """A top-level package still builds at `DEFAULT_MAX_DEPTH` - the
+    depth derivation must not trigger a deeper build it does not need."""
+    symbols = get_public_api(fake_package)
+    assert [symbol.name for symbol in symbols] == ["Animal", "Cat", "Dog"]
+    with SymbolStore(get_cache_db_path(get_project_root())) as store:
+        build = store.get_build(fake_package)
+    assert build is not None
+    assert build[1] == DEFAULT_MAX_DEPTH
 
 
 def test_show_module_returns_node_and_children(fake_package: str) -> None:
@@ -212,20 +395,115 @@ def test_show_module_includes_reexports_with_all(fake_package: str) -> None:
     assert "util" in [child.name for child in children]
 
 
-def test_get_module_tree_unimportable_raises(
+def test_get_module_tree_not_installed_raises(
     isolated_cache: Path,
 ) -> None:
-    """A non-importable module name raises `PackageImportError`
-    (previously: a raw `ModuleNotFoundError` traceback)."""
-    with pytest.raises(PackageImportError):
+    """An uninstalled module name raises `PackageNotFoundError`."""
+    with pytest.raises(PackageNotFoundError, match="not installed"):
         get_module_tree("this_module_does_not_exist_xyz")
 
 
-def test_get_symbol_unimportable_raises(isolated_cache: Path) -> None:
-    """A qualified name under a non-importable module raises
-    `PackageImportError` (previously: a raw `ModuleNotFoundError`)."""
-    with pytest.raises(PackageImportError):
+def test_get_symbol_not_installed_raises(isolated_cache: Path) -> None:
+    """A qualified name under an uninstalled package raises
+    `PackageNotFoundError`, naming the package rather than the whole
+    qualified name."""
+    with pytest.raises(PackageNotFoundError) as excinfo:
         get_symbol("this_module_does_not_exist_xyz::Nope")
+    assert "::Nope" not in str(excinfo.value)
+
+
+def test_get_inheritors_not_installed_raises(isolated_cache: Path) -> None:
+    """An uninstalled package raises `PackageNotFoundError` for
+    `inherits`, which shares the builder with `inspect`."""
+    with pytest.raises(PackageNotFoundError, match="not installed"):
+        get_inheritors("this_module_does_not_exist_xyz::Nope")
+
+
+def test_find_symbol_not_installed_raises(isolated_cache: Path) -> None:
+    """`--package` naming an uninstalled package raises
+    `PackageNotFoundError`."""
+    with pytest.raises(PackageNotFoundError, match="not installed"):
+        find_symbol("Nope", package="this_module_does_not_exist_xyz")
+
+
+def test_ensure_installed_accepts_undistributed_module() -> None:
+    """An importable module with no installed distribution passes.
+
+    NOTE: A stdlib module is claimed by no distribution at all, and
+    'install it' is the wrong advice for one - the check asks the import
+    system, not `importlib.metadata`.
+    """
+    _ensure_installed("json", "json")
+
+
+def test_ensure_installed_accepts_specless_module(
+    fake_module: types.ModuleType,
+) -> None:
+    """A `sys.modules` entry with no `__spec__` passes.
+
+    NOTE: `importlib.util.find_spec` *raises* on such a module rather
+    than returning, so the `sys.modules` short-circuit is what keeps a
+    bare `types.ModuleType` from reading as uninstalled.
+    """
+    assert fake_module.__spec__ is None
+    _ensure_installed(fake_module.__name__, fake_module.__name__)
+
+
+def test_ensure_installed_accepts_dashed_distribution_name() -> None:
+    """A dashed distribution name resolves to its import name first."""
+    import_name = _resolve_import_name("detect-secrets")
+    assert import_name == "detect_secrets"
+    _ensure_installed(import_name, "detect-secrets")
+
+
+def test_ensure_installed_survives_a_raising_finder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A `sys.meta_path` finder that raises reads as 'not located'.
+
+    NOTE: `find_spec` may raise rather than return None; the failure
+    must fall through to the distribution check, not escape as an
+    unhandled error.
+    """
+
+    def _raise(name: str) -> None:
+        msg = f"finder blew up on {name}"
+        raise ImportError(msg)
+
+    monkeypatch.setattr("venvaxi._introspect.importlib.util.find_spec", _raise)
+    with pytest.raises(PackageNotFoundError, match="not installed"):
+        _ensure_installed("nothing_claims_this_xyz", "nothing_claims_this_xyz")
+
+
+def test_ensure_installed_defers_to_import_for_installed_package(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An installed distribution that cannot be located passes the check.
+
+    NOTE: Installed-but-broken is an investigate-it answer, so the guard
+    falls through and lets the caller's import attempt report
+    `PackageImportError` instead.
+    """
+    monkeypatch.setattr(
+        "venvaxi._introspect.importlib.util.find_spec", lambda _: None
+    )
+    monkeypatch.delitem(sys.modules, "detect_secrets", raising=False)
+    _ensure_installed("detect_secrets", "detect-secrets")
+
+
+def test_build_store_for_installed_but_broken_raises_import_error(
+    isolated_cache: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An installed package raising on import still reports
+    `PackageImportError`, not `PackageNotFoundError`."""
+
+    def _raise(name: str) -> types.ModuleType:
+        msg = f"boom: {name}"
+        raise ImportError(msg)
+
+    monkeypatch.setattr("importlib.import_module", _raise)
+    with pytest.raises(PackageImportError):
+        get_module_tree("rich")
 
 
 def test_walk_module_handles_none_module_attribute(
@@ -250,6 +528,98 @@ def test_get_symbol_raises_for_unknown_symbol(fake_package: str) -> None:
     """An unknown qualified name raises `SymbolNotFoundError`."""
     with pytest.raises(SymbolNotFoundError):
         get_symbol(f"{fake_package}::DoesNotExist")
+
+
+def test_get_symbol_resolves_facade_spelled_method(fake_package: str) -> None:
+    """A method spelled through a facade resolves to its home-keyed row,
+    answered as stored (the home spelling, never the caller's)."""
+    node = get_symbol(f"{fake_package}.api::Client.connect")
+    assert node.qualified_name == f"{fake_package}._impl::Client.connect"
+    assert node.kind is NodeKind.METHOD
+    assert node.module == f"{fake_package}._impl"
+
+
+def test_get_symbol_facade_member_miss_raises(fake_package: str) -> None:
+    """A facade-spelled member absent from the home row is a genuine
+    miss, keyed to the caller's spelling in the message."""
+    with pytest.raises(SymbolNotFoundError, match="api::Client.nosuchmethod"):
+        get_symbol(f"{fake_package}.api::Client.nosuchmethod")
+
+
+def test_get_symbol_home_keyed_member_miss_raises(fake_package: str) -> None:
+    """A missing member on an already home-keyed owner raises without
+    engaging the fallback (`canonical_name` is a no-op there)."""
+    with pytest.raises(SymbolNotFoundError):
+        get_symbol(f"{fake_package}._impl::Client.nosuchmethod")
+
+
+def test_get_symbol_resolves_facade_spelled_nested_class(
+    fake_package: str,
+) -> None:
+    """A nested class resolves through the fallback as an attribute
+    member of its outer class."""
+    node = get_symbol(f"{fake_package}.facade::Widget.Inner")
+    leaf = f"{fake_package}.subpkg.inner.leaf"
+    assert node.qualified_name == f"{leaf}::Widget.Inner"
+    assert node.kind is NodeKind.ATTRIBUTE
+
+
+def test_get_symbol_nested_class_member_missing_both_spellings(
+    fake_package: str,
+) -> None:
+    """Members of nested classes are not indexed - the not-found answer
+    is definitive under the facade and the home spelling alike."""
+    leaf = f"{fake_package}.subpkg.inner.leaf"
+    with pytest.raises(SymbolNotFoundError):
+        get_symbol(f"{fake_package}.facade::Widget.Inner.zoom")
+    with pytest.raises(SymbolNotFoundError):
+        get_symbol(f"{leaf}::Widget.Inner.zoom")
+
+
+def test_get_symbol_resolves_deep_home_member_without_rebuild(
+    fake_package: str,
+) -> None:
+    """A member homed deeper than the built depth (offset 3 against a
+    built depth of 2) resolves with no deeper rebuild - member rows are
+    written by the class walk at home keys regardless of build depth."""
+    from venvaxi import _introspect
+
+    with mock.patch.object(
+        _introspect,
+        "_build_store_for",
+        side_effect=_introspect._build_store_for,
+    ) as build_spy:
+        node = get_symbol(f"{fake_package}.facade::Widget.poke")
+    assert node.qualified_name == (
+        f"{fake_package}.subpkg.inner.leaf::Widget.poke"
+    )
+    assert node.kind is NodeKind.METHOD
+    assert build_spy.call_count == 1
+
+
+def test_get_symbol_module_level_miss_skips_fallback(
+    fake_package: str,
+) -> None:
+    """A dot-free tail takes the unchanged raise path - the fallback
+    disengages before any owner resolution."""
+    with (
+        mock.patch.object(
+            SymbolStore, "canonical_name", autospec=True
+        ) as canonical_spy,
+        pytest.raises(SymbolNotFoundError),
+    ):
+        get_symbol(f"{fake_package}::DoesNotExist")
+    canonical_spy.assert_not_called()
+
+
+def test_module_docs_route_through_own_doc(fake_package: str) -> None:
+    """`PACKAGE` and submodule node docs match each module's own
+    docstring after the `_own_doc` reroute - asserted against a real
+    on-disk package walked by the real builder, not a mock."""
+    package_node, _ = show_module(fake_package)
+    assert package_node.doc == "Fixture package."
+    submodule_node, _ = show_module(f"{fake_package}.module")
+    assert submodule_node.doc == "Fixture package submodule."
 
 
 def test_get_inheritors_returns_subclasses(fake_package: str) -> None:

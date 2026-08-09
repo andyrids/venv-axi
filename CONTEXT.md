@@ -4,13 +4,13 @@ context-hierarchy-role: Workspace task routing
 maximum-context-tokens: 300
 ---
 
-# Workspace Routing
+# Workspace routing
 
 ## Routing
 
 Each task category heading details necessary context and locations.
 
-### Create Feature
+### Create feature
 
 Consolidated (with Create Unit Test & Code Refactor) into the same `ICM/create-feature` workspace.
 
@@ -18,7 +18,7 @@ Consolidated (with Create Unit Test & Code Refactor) into the same `ICM/create-f
 - **Read**: `CONTEXT.md`
 - **Exclude**: * in `.gitignore`
 
-### Create Unit Test
+### Create unit test
 
 Consolidated (with Create Feature & Code Refactor) into the same `ICM/create-feature` workspace.
 
@@ -26,7 +26,7 @@ Consolidated (with Create Feature & Code Refactor) into the same `ICM/create-fea
 - **Read**: `CONTEXT.md`
 - **Exclude**: * in `.gitignore`
 
-### Code Refactor
+### Code refactor
 
 Consolidated (with Create Feature & Create Unit Test) into the same `ICM/create-feature` workspace.
 
@@ -34,7 +34,7 @@ Consolidated (with Create Feature & Create Unit Test) into the same `ICM/create-
 - **Read**: `CONTEXT.md`
 - **Exclude**: * in `.gitignore`
 
-### Create Documentation
+### Create documentation
 
 Multi-location route (unlike the single-workspace sections above); reads reference material from
 several directories rather than one `ICM/` workspace.
@@ -55,19 +55,24 @@ several directories rather than one `ICM/` workspace.
       - `reference-standard-attribution.md`
       - `reference-standard-changelog.md`
       - `reference-standard-docstrings.md`
+      - `reference-standard-markdown.md`
       - `reference-toolchain-pymarkdown.md`
 - **Exclude**: * in `.gitignore`
 
-### Code Review
+### Code review
+
+Review against `specs/`, not against personal preference - the spec is the acceptance criteria.
 
 - **Navigate to**:
+  - `specs/`
+    - **Read**: `*` - the behavioural contract the code must conform to
   - `src/`
     - **Read**: `venvaxi/*`
   - `tests/`
     - **Read**: `*`
   - `ICM/_config/`
     - **Read**:
-      - `reference-toolchain-logging`
-      - `reference-toolchain-mypy`
-      - `reference-toolchain-ruff`
+      - `reference-toolchain-logging.md`
+      - `reference-toolchain-mypy.md`
+      - `reference-toolchain-ruff.md`
 - **Exclude**: * in `.gitignore`

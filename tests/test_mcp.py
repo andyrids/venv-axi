@@ -67,6 +67,37 @@ def test_list_packages_tool_returns_toon(
     assert "rich|15.0.0" in result
 
 
+def test_list_packages_tool_hint_describes_metadata_tool(
+    tmp_path: Path, make_package_info: PackageFactory
+) -> None:
+    """The list hint describes what the tool it names actually returns."""
+    server = build_server()
+    with (
+        mock.patch(f"{MCP}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.list_packages", return_value=[make_package_info()]),
+    ):
+        tool = asyncio.run(server.get_tool(camel_case("list_packages_tool")))
+        result = tool.fn()
+    assert "showPackageTool" in result
+    assert "public API" not in result
+
+
+def test_list_packages_tool_empty_hint_names_camel_case(
+    tmp_path: Path,
+) -> None:
+    """No packages hints at the tool by its registered camelCase name."""
+    server = build_server()
+    with (
+        mock.patch(f"{MCP}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.list_packages", return_value=[]),
+    ):
+        tool = asyncio.run(server.get_tool(camel_case("list_packages_tool")))
+        result = tool.fn()
+    assert result.startswith("count: 0")
+    assert "listPackagesTool" in result
+    assert "list_packages_tool" not in result
+
+
 def test_show_package_tool_returns_toon(
     make_package_info: PackageFactory,
 ) -> None:
@@ -139,6 +170,19 @@ def test_get_symbol_tool_returns_toon(make_symbol_node: NodeFactory) -> None:
     assert "kind: class" in result
 
 
+def test_get_symbol_tool_resolves_facade_spelled_method(
+    fake_package: str,
+) -> None:
+    """`getSymbolTool` resolves a facade-spelled method through the real
+    call path, identically to the CLI - no mock, so parity is the
+    resolver's, not the test's."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("get_symbol_tool")))
+    result = tool.fn(qualified_name=f"{fake_package}.api::Client.connect")
+    assert f'"{fake_package}._impl::Client.connect"' in result
+    assert "kind: method" in result
+
+
 def test_find_symbol_tool_returns_toon(
     make_symbol_node: NodeFactory,
 ) -> None:
@@ -152,14 +196,27 @@ def test_find_symbol_tool_returns_toon(
     assert 'Console|class|"rich::Console"' in result
 
 
-def test_find_symbol_tool_empty() -> None:
-    """No matches reports a zero count."""
+def test_find_symbol_tool_empty_without_package_hints_indexing() -> None:
+    """No match without a package hints at re-calling with one."""
     server = build_server()
     with mock.patch(f"{MCP}.find_symbol", return_value=[]):
         tool = asyncio.run(server.get_tool(camel_case("find_symbol_tool")))
         result = tool.fn(query="nope")
     assert result.startswith("count: 0")
-    assert "help[1]:" in result
+    assert "Re-call with package=<package>" in result
+    assert "listPackagesTool" not in result
+
+
+def test_find_symbol_tool_empty_with_package_names_list_tool() -> None:
+    """No match with a package set hints at the package-list tool."""
+    server = build_server()
+    with mock.patch(f"{MCP}.find_symbol", return_value=[]):
+        tool = asyncio.run(server.get_tool(camel_case("find_symbol_tool")))
+        result = tool.fn(query="nope", package="rich")
+    assert result.startswith("count: 0")
+    assert "No match in `rich`" in result
+    assert "listPackagesTool" in result
+    assert "list_packages_tool" not in result
 
 
 def test_get_inheritors_tool_returns_toon(
@@ -175,8 +232,26 @@ def test_get_inheritors_tool_returns_toon(
     assert 'Dog|class|"rich::Dog"' in result
 
 
+def test_get_inheritors_tool_empty_hint_names_both_causes() -> None:
+    """No subclasses hints at both an unindexed package and depth."""
+    server = build_server()
+    with mock.patch(f"{MCP}.get_inheritors", return_value=[]):
+        tool = asyncio.run(server.get_tool(camel_case("get_inheritors_tool")))
+        result = tool.fn(qualified_name="rich::Animal")
+    assert result.startswith("count: 0")
+    assert "unindexed packages" in result
+    assert "built depth" in result
+    assert "findSymbolTool" in result
+    assert "find_symbol_tool" not in result
+
+
 def test_tool_axi_error_returns_toon_error_block() -> None:
-    """An `AXIError` inside a tool returns a TOON error block."""
+    """An `AXIError` inside a tool returns a TOON error block.
+
+    NOTE: Also the arm-ordering regression guard - `Error` derives from
+    `Exception`, so a broad arm placed first would report every domain
+    error in the `Unexpected error:` shape.
+    """
     server = build_server()
     with mock.patch(
         f"{MCP}.get_symbol", side_effect=SymbolNotFoundError("nope")
@@ -185,6 +260,28 @@ def test_tool_axi_error_returns_toon_error_block() -> None:
         result = tool.fn(qualified_name="rich::Nope")
     assert "error: true" in result
     assert "nope" in result
+    assert "Unexpected error" not in result
+
+
+def test_tool_unexpected_error_returns_toon_error_block() -> None:
+    """A non-`Error` exception returns the CLI's `Unexpected error:`
+    block instead of escaping into FastMCP (previously: raised)."""
+    server = build_server()
+    with mock.patch(f"{MCP}.get_symbol", side_effect=ValueError("kaboom")):
+        tool = asyncio.run(server.get_tool(camel_case("get_symbol_tool")))
+        result = tool.fn(qualified_name="rich::Nope")
+    assert "error: true" in result
+    assert "Unexpected error: kaboom" in result
+
+
+def test_get_module_tree_tool_malformed_name_returns_toon_error() -> None:
+    """`getModuleTreeTool(".foo")` returns a TOON error block through the
+    real call path - no mock, so the boundary guard itself answers."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("get_module_tree_tool")))
+    result = tool.fn(name=".foo")
+    assert "error: true" in result
+    assert "Invalid package name `.foo`" in result
 
 
 def test_get_inheritors_tool_missing_base_returns_toon_error() -> None:
@@ -224,3 +321,22 @@ def test_get_module_tree_tool_returns_toon(
         result = tool.fn(name="rich")
     assert "count: 2" in result
     assert "1|rich.table|module" in result
+
+
+def test_get_module_tree_tool_empty_hint_names_root_tree(
+    fake_package: str,
+) -> None:
+    """A missing submodule hints at the root package's own tree.
+
+    NOTE: Driven by a real input, not a mock on `get_module_tree` - the
+    branch is reached by a dotted name whose root imports but whose tail
+    has no node in the graph. See issue #16.
+    """
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("get_module_tree_tool")))
+    result = tool.fn(name=f"{fake_package}.nosuchmodule")
+    assert result.startswith("count: 0")
+    assert "getModuleTreeTool" in result
+    assert f"name={fake_package}" in result
+    assert "listPackagesTool" not in result
+    assert "get_module_tree_tool" not in result

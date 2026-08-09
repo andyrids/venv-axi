@@ -30,11 +30,13 @@ logger = logging.getLogger(__package__)
 
 
 def _toon_errors(fn: Callable[..., str]) -> Callable[..., str]:
-    """Wrap an MCP tool so `Error`s return a TOON error block.
+    """Wrap an MCP tool so no exception escapes into FastMCP.
 
-    NOTE: Mirrors the CLI error contract - without this, `Error`s
-    escape into FastMCP's generic error path instead of the same
-    `format_error` block the CLI emits on stdout.
+    NOTE: Mirrors the CLI error contract - `Error`s return the same
+    `format_error` block the CLI emits on stdout, and anything else
+    returns the CLI's `Unexpected error:` block. Without the broad arm,
+    a non-`Error` exception escapes into FastMCP's generic error path -
+    see `specs/mcp/tools.md`.
 
     Args:
         fn: The tool function to wrap.
@@ -47,8 +49,17 @@ def _toon_errors(fn: Callable[..., str]) -> Callable[..., str]:
     def wrapper(*args: Any, **kwargs: Any) -> str:
         try:
             return fn(*args, **kwargs)
+        # NOTE: Ordering is load-bearing - `Error` derives from
+        # `Exception`, so the broad arm placed first would swallow
+        # every domain error into the unexpected shape.
         except Error as err:
             return format_error(str(err))
+        except Exception as err:
+            # NOTE: Broad on purpose, mirroring `__main__.main` - the
+            # traceback is logged at ERROR so a genuine bug still fails
+            # loudly in the logs rather than vanishing into TOON.
+            logger.exception("Unexpected error")
+            return format_error(f"Unexpected error: {err}")
 
     return wrapper
 
@@ -86,8 +97,9 @@ def list_packages_tool(include_dev: bool = False) -> str:
     root = get_project_root()
     packages = list_packages(root, include_dev=include_dev)
     if not packages:
+        cname = camel_case(list_packages_tool.__name__)
         return _with_help(
-            "count: 0", ["Call `list_packages_tool` with include_dev=true"]
+            "count: 0", [f"Call `{cname}` with include_dev=true"]
         )
     rows = [asdict(package) for package in packages]
     table = encode_table("packages", rows, ["name", "version"])
@@ -95,7 +107,7 @@ def list_packages_tool(include_dev: bool = False) -> str:
     cname = camel_case(show_package_tool.__name__)
     return _with_help(
         f"count: {len(packages)}\n{table}",
-        [f"Call `{cname}` for a package's public API"],
+        [f"Call `{cname}` for package metadata"],
     )
 
 
@@ -218,7 +230,13 @@ def get_inheritors_tool(qualified_name: str) -> str:
         cname = camel_case(find_symbol_tool.__name__)
         return _with_help(
             "count: 0",
-            [f"Call `{cname}` to locate a base class's name"],
+            [
+                (
+                    "Subclasses may live in unindexed packages or below"
+                    f" the built depth - call `{cname}` with"
+                    " package=<package> to index one"
+                )
+            ],
         )
     rows = [node.as_row() for node in nodes]
     table = encode_table(
@@ -235,9 +253,19 @@ def get_module_tree_tool(name: str, max_depth: int = 2) -> str:
     """Show nested module tree for a module|package (TOON format)."""
     pairs = get_module_tree(name, max_depth)
     if not pairs:
-        cname = camel_case(show_module_tool.__name__)
+        # NOTE: Reached only by a dotted name whose tail has no graph
+        # node - a bad *package* raises upstream, so the root's own tree
+        # is the hint that shows what exists. See `specs/commands/tree.md`.
+        root = name.split(".", 1)[0]
+        cname = camel_case(get_module_tree_tool.__name__)
         return _with_help(
-            "count: 0", [f"Call `{cname}` for the venv package list"]
+            "count: 0",
+            [
+                (
+                    f"Call `{cname}` with name={root} for the"
+                    " submodules that exist"
+                )
+            ],
         )
     rows = [{"depth": depth, **node.as_row()} for depth, node in pairs]
     table = encode_table("tree", rows, ["depth", "qualified_name", "kind"])

@@ -11,7 +11,6 @@ consuming environment.
 import contextlib
 import hashlib
 import importlib
-import inspect
 import logging
 import sqlite3
 from importlib import metadata
@@ -149,7 +148,7 @@ def get_or_build_store(
                 name=package_name,
                 module=package_name,
                 signature="",
-                doc=inspect.getdoc(module) or "",
+                doc=_introspect._own_doc(module),
                 package=package_name,
                 version=installed_version,
                 home_qualified_name=package_name,

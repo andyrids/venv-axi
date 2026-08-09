@@ -12,10 +12,12 @@ Attribution:
 """
 
 import importlib
+import importlib.util
 import inspect
 import logging
 import pkgutil
 import re
+import sys
 from dataclasses import dataclass, fields
 from importlib import metadata
 from types import ModuleType
@@ -38,7 +40,9 @@ from venvaxi.exceptions import (
 
 logger = logging.getLogger(__package__)
 
-_VALID_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+# NOTE: The single-character alternative is load-bearing - `_`, `a` and
+# `2` are legal names, so the trailing group must be optional.
+_VALID_NAME_RE = re.compile(r"^[A-Za-z0-9_]([A-Za-z0-9._-]*[A-Za-z0-9_])?$")
 DEFAULT_TRUNCATE_LIMIT = 200
 DEFAULT_MAX_DEPTH = 2
 
@@ -48,6 +52,19 @@ SIGNATURE_UNAVAILABLE = "(signature unavailable)"
 NOTE: Distinct from every real signature, so an agent can tell
 "introspection failed" from "this callable takes `...`". Contains no
 TOON structural characters, so the encoder never has to quote it.
+"""
+
+DOCSTRING_ABSENT = "(no docstring)"
+"""Marker emitted for a symbol that defines no docstring of its own.
+
+NOTE: AXI principle 5 (definitive empty states) - a bare `""` reads as
+silent blank output, leaving an agent unable to tell "defines none" from
+"something went wrong". States a different fact from
+`SIGNATURE_UNAVAILABLE`: absence by definition, not failed introspection.
+
+Applied at *emission* only. Recording it would put the literal text into
+the FTS index, so `find docstring` would match every undocumented symbol
+in the graph.
 """
 
 
@@ -102,19 +119,41 @@ def summarize_doc(
         limit: The truncation limit. Defaults to 200.
 
     Returns:
-        `doc` unchanged, or its truncated first line.
+        `DOCSTRING_ABSENT` when `doc` is empty, else `doc` unchanged or
+        its truncated first line.
     """
+    if not doc:
+        return DOCSTRING_ABSENT
     if docstring:
         return doc
-    return truncate(doc.splitlines()[0] if doc else "", limit)
+    return truncate(doc.splitlines()[0], limit)
+
+
+def _own_doc(obj: Any) -> str:
+    """Extract an object's own docstring, never an inherited one.
+
+    NOTE: `inspect.getdoc` is `cleandoc` of the object's own `__doc__`
+    plus a `_finddoc` fallback that walks the MRO - so an undocumented
+    class, or a method overriding a documented one, is handed its base's
+    docstring as if it were its own. Reading `__doc__` directly drops
+    only that fallback, keeping `cleandoc`'s whitespace normalisation.
+
+    Args:
+        obj: The object to document.
+
+    Returns:
+        The object's own, whitespace-normalised docstring, or `""`.
+    """
+    doc = getattr(obj, "__doc__", None)
+    return inspect.cleandoc(doc) if isinstance(doc, str) else ""
 
 
 def _doc_of(obj: Any, kind: NodeKind) -> str:
     """Extract an object's own docstring.
 
-    NOTE: `inspect.getdoc` falls back to an instance's *type* docstring,
-    so a module-level `dict`/`str` constant would otherwise be recorded
-    carrying the builtin's docstring as its own.
+    NOTE: An instance's `__doc__` *is* its type's, so a module-level
+    `dict`/`str` constant would otherwise be recorded carrying the
+    builtin's docstring as its own - hence the `ATTRIBUTE` comparison.
 
     Args:
         obj: The object to document.
@@ -123,10 +162,10 @@ def _doc_of(obj: Any, kind: NodeKind) -> str:
     Returns:
         The object's own docstring, or `""`.
     """
-    doc = inspect.getdoc(obj) or ""
+    doc = _own_doc(obj)
     if kind is not NodeKind.ATTRIBUTE:
         return doc
-    return "" if doc == (inspect.getdoc(type(obj)) or "") else doc
+    return "" if doc == _own_doc(type(obj)) else doc
 
 
 def _resolve_import_name(name: str) -> str:
@@ -151,6 +190,72 @@ def _resolve_import_name(name: str) -> str:
             if dist_name.lower().replace("-", "_") == normalized:
                 return import_name
     return name.replace("-", "_")
+
+
+def _ensure_valid_name(root: str, name: str) -> None:
+    """Raise if `root` cannot possibly be a package name.
+
+    NOTE: Boundary validation of caller input, run before resolution -
+    the dash/case fallback can only disguise a malformed name, never
+    repair one. The message carries `name` because the root of a
+    degenerate spelling (`.foo`) is `""`, which names nothing the
+    caller can fix. See `specs/behaviors/package-resolution.md`.
+
+    Args:
+        root: The top-level component to validate, as supplied.
+        name: The caller's original spelling, used for the message.
+
+    Raises:
+        InvalidArgumentError: On `root` not being a possible package
+            name.
+    """
+    if not _VALID_NAME_RE.match(root):
+        msg = f"Invalid package name `{name}`"
+        raise InvalidArgumentError(msg)
+
+
+def _ensure_installed(import_name: str, name: str) -> None:
+    """Raise if nothing in the venv answers to `import_name`.
+
+    NOTE: Availability is decided by the import system, not by
+    `importlib.metadata` - a stdlib module, a namespace package and a
+    local module on `sys.path` are all importable with no distribution
+    claiming them, and 'install it' is the wrong advice for all three.
+
+    NOTE: `sys.modules` is checked first because `find_spec` *raises*
+    on a module whose `__spec__` is None (a bare `types.ModuleType`).
+    An already-imported module is available by definition.
+
+    Args:
+        import_name: The resolved import name, from
+            `_resolve_import_name`.
+        name: The caller's original spelling, used for the message.
+
+    Raises:
+        PackageNotFoundError: On nothing in the venv providing
+            `import_name`.
+    """
+    if import_name in sys.modules:
+        return
+
+    # NOTE: `find_spec` delegates to arbitrary `sys.meta_path` finders,
+    # which may raise rather than return None. A finder that fails is
+    # 'not located', not a crash - the distribution check below still
+    # gets its say.
+    try:
+        if importlib.util.find_spec(import_name) is not None:
+            return
+    except (ImportError, ValueError):
+        logger.debug("No module spec located for `%s`", import_name)
+
+    # NOTE: Located by nothing, but a distribution claims the name - it
+    # is installed and broken, so the caller's import attempt runs and
+    # reports `PackageImportError` rather than 'not installed'.
+    try:
+        metadata.distribution(name)
+    except metadata.PackageNotFoundError as err:
+        msg = f"Package `{name}` is not installed in the active venv"
+        raise PackageNotFoundError(msg) from err
 
 
 def _signature_of(obj: Any) -> str:
@@ -419,7 +524,7 @@ def _walk_submodules(
                 name=submodule.__name__.rsplit(".", 1)[-1],
                 module=module.__name__,
                 signature="",
-                doc=inspect.getdoc(submodule) or "",
+                doc=_own_doc(submodule),
                 package=package,
                 version=version,
                 home_qualified_name=submodule.__name__,
@@ -584,6 +689,10 @@ def _build_store_for(
         refresh: Rebuild even if the cached graph is still current.
 
     Raises:
+        InvalidArgumentError: On the top-level root of `name` not being
+            a possible package name.
+        PackageNotFoundError: On the resolved package not being installed
+            in the active venv.
         PackageImportError: On resolved module import error.
 
     Returns:
@@ -593,7 +702,13 @@ def _build_store_for(
     from venvaxi import _cache
     from venvaxi._core import get_project_root
 
-    root_package = _resolve_import_name(_top_level_root(name))
+    # NOTE: The check takes the *root*, not `name` - a qualified name
+    # carries `.module::Symbol` that neither names a distribution nor
+    # belongs in a 'not installed' message.
+    root = _top_level_root(name)
+    _ensure_valid_name(root, name)
+    root_package = _resolve_import_name(root)
+    _ensure_installed(root_package, root)
     try:
         return _cache.get_or_build_store(
             get_project_root(),
@@ -632,6 +747,45 @@ def show_module(
         return node, store.get_children(resolved)
 
 
+def _resolve_facade_member(
+    store: SymbolStore, resolved: str
+) -> SymbolNode | None:
+    """Resolve a facade-spelled class member to its home-keyed node.
+
+    NOTE: Member nodes are keyed at their owner class's *home* module
+    only (`_walk_class_members`), so a facade spelling such as
+    `fastmcp::Client.call_tool` has no row of its own - unlike classes
+    and functions, which are keyed at every containing module. The
+    owner resolves via `canonical_name`; the answer is the home row
+    as stored, per `specs/behaviors/qualified-name-semantics.md`.
+
+    NOTE: No depth guard, unlike `get_inheritors` - member `CONTAINS`
+    rows are written by the same class walk that wrote the owner node,
+    keyed at home regardless of build depth, so a found owner implies
+    its member rows exist and a candidate miss is definitive.
+
+    Args:
+        store: The open `SymbolStore` to resolve against.
+        resolved: The import-name-resolved qualified name.
+
+    Returns:
+        The home-keyed member `SymbolNode`, or `None` on a genuine miss.
+    """
+    _, separator, symbol_part = resolved.partition("::")
+    if not separator or "." not in symbol_part:
+        return None
+    # NOTE: Last-dot split, matching member key shape (`Class.member`) -
+    # a nested-class owner (`mod::Outer.Inner`) stays intact.
+    owner, _, member = resolved.rpartition(".")
+    canonical = store.canonical_name(owner)
+    if canonical == owner:
+        # NOTE: Owner absent, or already home-keyed - a genuine miss.
+        return None
+    # NOTE: Concatenation, not `qualify()` - `canonical` already
+    # carries its `::` separator.
+    return store.get_node(f"{canonical}.{member}")
+
+
 def get_symbol(qualified_name: str, *, refresh: bool = False) -> SymbolNode:
     """Fetch a single symbol node by its qualified name.
 
@@ -652,6 +806,8 @@ def get_symbol(qualified_name: str, *, refresh: bool = False) -> SymbolNode:
         refresh=refresh,
     ) as store:
         node = store.get_node(resolved)
+        if node is None:
+            node = _resolve_facade_member(store, resolved)
         if node is None:
             msg = f"Symbol `{qualified_name}` not found"
             raise SymbolNotFoundError(msg)
@@ -705,6 +861,13 @@ def get_module_tree(
         max_depth: The maximum recursion depth.
         refresh: Rebuild the cached graph first.
 
+    Raises:
+        InvalidArgumentError: On the top-level root of `name` not being
+            a possible package name.
+        PackageNotFoundError: On the owning package not being installed
+            in the active venv.
+        PackageImportError: On resolved module import error.
+
     Returns:
         `(depth, node)` pairs in depth-first order, with depth measured
         from the named module.
@@ -737,8 +900,10 @@ def find_symbol(
         refresh: Rebuild the cached graph first for `package`.
 
     Raises:
-        InvalidArgumentError: On missing `query` or `refresh` without
-            `package`.
+        InvalidArgumentError: On missing `query`, `refresh` without
+            `package`, or a malformed `package` name.
+        PackageNotFoundError: On `package` not being installed in the
+            active venv.
         PackageImportError: On `package` import error.
 
     Returns:
@@ -776,34 +941,49 @@ def get_public_api(
 
     NOTE: Compatibility shim over the `SymbolStore` introspection engine.
 
+    NOTE: Build depth derives from the resolved name's module offset,
+    mirroring `get_symbol` - a dotted module deeper than
+    `DEFAULT_MAX_DEPTH` must not answer from whatever depth the cache
+    happens to hold. See `specs/behaviors/cache-refresh.md` (Validity).
+
     Args:
-        name: The package (distribution) name.
+        name: The package (distribution) name, or a dotted module path.
         docstring: Return complete docstrings instead of the truncated
             first line.
         limit: The docstring truncation limit.
         refresh: Rebuild the cached graph first.
 
     Raises:
-        PackageNotFoundError: On `name` containing invalid characters.
+        InvalidArgumentError: On `name` not being a possible package
+            name.
+        PackageNotFoundError: On `name` not being installed in the active
+            venv.
         PackageImportError: On resolved module import error.
 
     Returns:
         Public top-level symbols, with their kind, signature and
         docstring.
     """
-    if not _VALID_NAME_RE.match(name):
-        msg = f"Invalid package name `{name}`"
-        raise PackageNotFoundError(msg)
+    _ensure_valid_name(name, name)
 
-    import_name = _resolve_import_name(name)
+    # NOTE: `_resolve_qualified_name`, not `_resolve_import_name` - the
+    # store is keyed by root-resolved import names, and whole-argument
+    # resolution would fall through to a dash replacement that repairs
+    # the tail, which validation must never see repaired.
+    resolved = _resolve_qualified_name(name)
+    _ensure_installed(resolved, name)
     try:
-        importlib.import_module(import_name)
+        importlib.import_module(resolved)
     except ImportError as err:
-        msg = f"Failed to import `{import_name}` (from `{name}`)"
+        msg = f"Failed to import `{resolved}` (from `{name}`)"
         raise PackageImportError(msg) from err
 
-    with _build_store_for(name, refresh=refresh) as store:
-        children = store.get_children(import_name)
+    with _build_store_for(
+        name,
+        max_depth=max(DEFAULT_MAX_DEPTH, _module_offset(resolved)),
+        refresh=refresh,
+    ) as store:
+        children = store.get_children(resolved)
 
     symbols: list[SymbolInfo] = []
     for node in children:
