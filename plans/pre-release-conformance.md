@@ -5,7 +5,7 @@ specs:
   - specs/behaviors/cache-refresh.md
   - specs/commands/show.md
 issues: [28, 29, 30, 31]
-pr:
+pr: 32
 ---
 
 # Plan: Close the pre-release conformance gaps
