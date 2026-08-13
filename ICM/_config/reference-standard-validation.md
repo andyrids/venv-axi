@@ -84,8 +84,8 @@ Stack the preconditions, then the trigger, then the response. If the result need
 it is usually two criteria.
 
 ```markdown
-- [ ] While a schema is registered, when a record fails validation, the importer shall write it
-      to the reject log with the failing field named.
+- [ ] While a schema is registered, when a record fails validation, the
+      importer shall write it to the reject log with the failing field named.
 ```
 
 ## The right level of detail
@@ -120,8 +120,8 @@ it is too vague to be a criterion.
 Ticking a box at closeout appends what evidenced it, after an em dash separator:
 
 ```markdown
-- [x] When a record arrives with a known identifier, the importer shall replace the stored
-      copy. — `tests/test_import.py::test_replaces_known_id`
+- [x] When a record arrives with a known identifier, the importer shall replace
+  the stored copy. — `tests/test_import.py::test_replaces_known_id`
 ```
 
 The citation is appended at closeout, never at authoring. The identifier is the text up to the
