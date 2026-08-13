@@ -152,7 +152,14 @@ def command_list(ctx: CLIContext) -> int:
     fields = _parse_fields(ctx.args.fields)
 
     if not packages:
-        help_txt = "Run `venvaxi list --all` to include all dependencies"
+        # NOTE: An empty `list --all` is definitive - no broader query
+        # exists, so the hint names the file that would have to change
+        # rather than the flag just used (`specs/commands/list.md`).
+        help_txt = (
+            "Edit `pyproject.toml` to declare dependencies"
+            if ctx.args.all
+            else "Run `venvaxi list --all` to include all dependencies"
+        )
 
         _emit("count: 0")
         _emit(format_help([help_txt]))
