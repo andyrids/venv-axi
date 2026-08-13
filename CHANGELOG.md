@@ -18,11 +18,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.2.0] - 2026-08-13
 
+### Added
+
+- `ICM/_config/reference-standard-validation.md` - EARS authoring bar for Validation criteria.
+- `specs/behaviors/symbol-graph.md` - the graph's observable state, promoted out of
+  `specs/architecture.md`.
+- `docs/architecture.md` - the stack, module map and skill-copies note, moved out of `specs/`.
+
 ### Changed
 
 - `find` result ordering is declared in `specs/commands/find.md`.
 - `specs/principles.md` gives each AXI principle its own heading.
 - An empty `list --all` names `pyproject.toml` instead of the `--all` flag just used.
+- The `ICM/create-feature` pipeline is split by whether a spec has to move - `ICM/process-plan`
+  carries a spec change through closeout, `ICM/express-change` lands the rest in one commit.
+- CI runs on a push to `develop` and on a pull request into either branch, no longer on a push to
+  `main`.
+- The release workflow publishes on a created GitHub Release; the `v*` tag-push trigger is gone.
+
+### Removed
+
+- `specs/architecture.md`, split by kind into `specs/behaviors/symbol-graph.md` and
+  `docs/architecture.md`.
+- The repo-local `spec-drift-auditor` agent and `icm-spec` skill, now supplied by the
+  `icm@icm-spec` plugin as `icm:spec-drift-auditor` and the `icm:*` pipeline skills.
+- The `/audit-spec-drift` and `/create-feature` commands; the plugin skills replace them, and
+  `/create-feature` named a workspace that no longer exists.
 
 ### Fixed
 
