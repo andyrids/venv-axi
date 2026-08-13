@@ -32,11 +32,25 @@ are excluded. Valid `--fields` values are the `PackageInfo` fields - `name`, `ve
 The `list` command shall emit `count: <n>` followed by a `packages` TOON table over the selected
 fields.
 
-The default fields are two, not the full four, per principle 2 (minimal default schemas).
+The default fields are two, not the full four, per
+[principle 2, minimal default schemas](../principles.md#principle-2-minimal-default-schemas).
 
-When there are no results, the `list` command shall emit `count: 0` plus a hint naming `--all`,
-which is the flag most likely to produce results; otherwise the footer shall name
+When there are results, the `list` command shall end output with a footer naming
 `venvaxi show <package>`.
+
+Empty-state hints are conditional on `--all`, because the flag that widens the answer is only a
+next step while it is still unused:
+
+- When a `list` without `--all` returns no results, the `list` command shall emit `count: 0` plus
+  a hint naming `--all`, which is the flag most likely to produce results.
+- When a `list` with `--all` returns no results, the `list` command shall emit `count: 0` plus a
+  hint naming `pyproject.toml` as the source of the declarations it found none of. There is no
+  broader query left, so the honest next step is the file that would have to change.
+
+Hinting `--all` to a caller who just passed `--all` is barred by the suppression rule in
+[Output contract](../behaviors/output-contract.md#contextual-disclosure). It also misreads the
+answer: an empty `list --all` is the definitive statement that the project declares no
+dependencies, not a suggestion to search harder.
 
 ## Failure modes
 
@@ -62,8 +76,8 @@ An empty result is success - `count: 0` exits `EX_OK`, per the
 
 **Inherited** - project principles that especially bite here:
 
-- Principle 2, minimal default schemas
-  ([The 10 AXI Principles](../principles.md#the-10-axi-principles)) - `location` and `summary`
+- [Principle 2, minimal default schemas](../principles.md#principle-2-minimal-default-schemas)
+  - `location` and `summary`
   are available but off by default; they are wide, low-signal columns that would dominate the
   payload.
 - [Measured token efficiency beats the headline claim](../principles.md#measured-token-efficiency-beats-the-headline-claim)

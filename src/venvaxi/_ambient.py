@@ -18,9 +18,13 @@ import json
 import logging
 import os
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
+
+from venvaxi.exceptions import AmbientContextError
 
 logger = logging.getLogger(__package__)
 
@@ -37,6 +41,31 @@ class Text(StrEnum):
     BODY = ambient_markdown.read_text(encoding="utf-8").strip()
 
 
+@contextmanager
+def _install_boundary(path: Path) -> Iterator[None]:
+    """Reraise an `OSError` at a filesystem call as an install failure.
+
+    NOTE: The bound stays visible at the call site - only the wrapped
+    filesystem call sits inside the `with` block, never a whole function
+    body - so an `OSError` raised anywhere else still escapes as an
+    unexpected error (exit 2, venvaxi being broken).
+
+    Args:
+        path: The destination artifact path named in the error message.
+
+    Yields:
+        Control to the wrapped filesystem call.
+
+    Raises:
+        AmbientContextError: If the wrapped call raises `OSError`.
+    """
+    try:
+        yield
+    except OSError as exc:
+        msg = f"Cannot install ambient context: {path}"
+        raise AmbientContextError(msg) from exc
+
+
 def _atomic_write_text(path: Path, text: str) -> None:
     """Atomically write text via a same-directory temp file + rename.
 
@@ -46,10 +75,15 @@ def _atomic_write_text(path: Path, text: str) -> None:
     Args:
         path: The destination file path.
         text: The full file content to write.
+
+    Raises:
+        AmbientContextError: If the temp-file write or the rename fails
+            with an `OSError`.
     """
     tmp_path = path.with_suffix(f"{path.suffix}.tmp")
-    tmp_path.write_text(text, encoding="utf-8")
-    os.replace(tmp_path, path)
+    with _install_boundary(path):
+        tmp_path.write_text(text, encoding="utf-8")
+        os.replace(tmp_path, path)
 
 
 def _axi_command() -> str:
@@ -81,6 +115,10 @@ def inject_agents_md(root: Path) -> bool:
 
     Returns:
         True if `AGENTS.md` was created or modified.
+
+    Raises:
+        AmbientContextError: If an existing `AGENTS.md` cannot be read,
+            or the write fails with an `OSError`.
     """
     path = root / "AGENTS.md"
     block = f"{Text.BEGIN}{Text.GAP}{Text.BODY}{Text.GAP}{Text.END}"
@@ -90,7 +128,8 @@ def inject_agents_md(root: Path) -> bool:
         logger.debug("Created `AGENTS.md` with axi block")
         return True
 
-    original = path.read_text(encoding="utf-8")
+    with _install_boundary(path):
+        original = path.read_text(encoding="utf-8")
     text = original
 
     if Text.BEGIN in text and Text.END in text:
@@ -125,6 +164,10 @@ def _update_mcp_json(path: Path, servers_key: str, available: bool) -> bool:
 
     Returns:
         True if `path` was created or modified.
+
+    Raises:
+        AmbientContextError: If the config directory cannot be created
+            or the write fails with an `OSError`.
     """
     data: dict[str, Any] = {}
     if path.exists():
@@ -152,7 +195,8 @@ def _update_mcp_json(path: Path, servers_key: str, available: bool) -> bool:
         return False
 
     servers["VenvAXI"] = entry
-    path.parent.mkdir(parents=True, exist_ok=True)
+    with _install_boundary(path):
+        path.parent.mkdir(parents=True, exist_ok=True)
     _atomic_write_text(path, json.dumps(data, indent=2) + "\n")
     return True
 
@@ -169,17 +213,26 @@ def install_skill(root: Path) -> bool:
 
     Returns:
         True if `SKILL.md` was created or modified.
+
+    Raises:
+        AmbientContextError: If an existing `SKILL.md` cannot be read,
+            the skill directory cannot be created, or the write fails
+            with an `OSError`.
     """
     # NOTE: Written verbatim - the bytes on disk *are* the file, so the
     # round-trip must match exactly for the comparison below to hold.
     text = skill_markdown.read_text(encoding="utf-8")
     path = root / ".claude" / "skills" / "venvaxi" / "SKILL.md"
 
-    if path.exists() and path.read_text(encoding="utf-8") == text:
-        logger.debug("`SKILL.md` is up-to-date")
-        return False
+    if path.exists():
+        with _install_boundary(path):
+            installed = path.read_text(encoding="utf-8")
+        if installed == text:
+            logger.debug("`SKILL.md` is up-to-date")
+            return False
 
-    path.parent.mkdir(parents=True, exist_ok=True)
+    with _install_boundary(path):
+        path.parent.mkdir(parents=True, exist_ok=True)
     _atomic_write_text(path, text)
     logger.debug("Installed `SKILL.md` skill")
     return True
@@ -202,6 +255,10 @@ def setup_ambient_context(
         `AGENTS.md`, `.vscode`, `.mcp.json` and `skill` - the last of
         which is always present, but only ever True when `skill` was
         requested.
+
+    Raises:
+        AmbientContextError: If any artifact cannot be read, created or
+            written because of an `OSError`.
     """
     available = mcp_available()
     return {

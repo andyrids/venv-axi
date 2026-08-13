@@ -55,7 +55,8 @@ the first thing an agent runs and it has to answer before anything else works.
 
 **Inherited** - project principles that especially bite here:
 
-- Principle 8, content first, and principle 9, contextual disclosure
-  ([The 10 AXI Principles](../principles.md#the-10-axi-principles)) - this command is the
+- [Principle 8, content first](../principles.md#principle-8-content-first), and
+  [principle 9, contextual disclosure](../principles.md#principle-9-contextual-disclosure)
+  - this command is the
   reference implementation of both. It is the first thing an agent runs, so it MUST answer with
   live state plus next steps, and never with a usage summary.

@@ -82,8 +82,10 @@ Success exits `EX_OK`, per the [exit codes](../behaviors/output-contract.md#exit
 
 **Inherited** - project principles that especially bite here:
 
-- Principle 7, ambient context, and principle 6, idempotent mutations
-  ([The 10 AXI Principles](../principles.md#the-10-axi-principles)) - state is made visible to
+- [Principle 7, ambient context](../principles.md#principle-7-ambient-context), and
+  [principle 6, structured errors and exit codes](../principles.md#principle-6-structured-errors-and-exit-codes),
+  which is where idempotent mutations are declared
+  - state is made visible to
   the agent by an explicit command rather than by magic, and running it twice is always safe.
 
 **Local**:

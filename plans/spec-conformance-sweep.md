@@ -191,27 +191,52 @@ rather than left to look tidy.
 
 **Reconciling `specs/` found no divergence owned by this plan.** `specs:` is empty and no code
 moved, so closeout step 6 discharges vacuously. The three divergences found while sweeping are
-pre-existing, predate this work and are recorded below. No `Deferred to` entries were written, so
-there is nothing for deferral absorption to bind.
+pre-existing, predate this work and are recorded below.
+
+**Record corrections applied by [plan-record-repair](plan-record-repair.md).** Two defects in this
+frozen plan were corrected after merge, per the 'edit only to correct the record' rule in
+`plans/README.md`.
+
+1. *Four Follow-ups were labelled `Tracked as` with no target.* The taxonomy reserves `Tracked as`
+   for external dependencies and asks for `Issue [#N](link)` or `Deferred to [<plan>]` where the
+   work is actionable. All four were actionable, and an empty label pointed a reader at nothing.
+   They now name the downstream plans that absorb them, and the original closing sentence of the
+   paragraph above - 'No `Deferred to` entries were written, so there is nothing for deferral
+   absorption to bind' - was removed, because it is no longer true.
+2. *This plan's commit `b3bd320` deleted ten merged plan files* -
+   `facade-method-resolution`, `inspect-own-docstring`, `malformed-name-rejection`,
+   `markdown-standard-rollout`, `mcp-hint-parity`, `package-error-taxonomy`,
+   `pipeline-gate-rework`, `pre-release-conformance`, `spec-driven-icm` and
+   `tree-empty-state-cause`. The Scope above names only `_specs/` and no Validation criterion
+   quantifies over `plans/`, so the deletion was collateral rather than declared. It matters
+   because `plans/README.md` freezes merged plans as the project's working memory, and because
+   issues #28 to #31 each cite `pre-release-conformance.md` as their origin.
+   `pre-release-conformance.md` was restored; the other nine were left deleted, by decision
+   recorded in that plan.
 
 ## Follow-ups
 
-- Tracked as - `specs/principles.md` renders 'The 10 AXI Principles' as one numbered list under a
+- **Deferred to** [principles-anchor-granularity](principles-anchor-granularity.md) -
+  `specs/principles.md` renders 'The 10 AXI Principles' as one numbered list under a
   single heading, so `find.md`, `home.md`, `list.md`, `setup.md`, `tree.md`, `inherits.md`,
   `package-resolution.md` and `mcp/tools.md` link `#the-10-axi-principles` and then name
   'Principle 5' / 'Principle 9' in prose that no anchor resolves to. It is a citation of an
   external source ([axi.md](https://axi.md/)), so the container heading is defensible; flagged
   here rather than fixed.
-- Tracked as - `AmbientContextError` is defined but never raised, so a failed `setup` write
+- **Deferred to** [setup-ambient-error](setup-ambient-error.md) -
+  `AmbientContextError` is defined but never raised, so a failed `setup` write
   escapes as exit 2. That contradicts `specs/commands/setup.md` and contradicts
   `specs/behaviors/output-contract.md#exit-codes`, which reserves exit 2 for venvaxi itself being
   broken. Needs a code fix under its own plan, listing `setup.md` in `specs:`.
-- Tracked as - the `## Divergences from the CLI` list in `specs/mcp/tools.md` is inaccurate. The
+- **Issue** [#29](https://github.com/andyrids/venv-axi/issues/29), **deferred to**
+  [hint-surface-parity](hint-surface-parity.md) - the `## Divergences from the CLI` list in
+  `specs/mcp/tools.md` is inaccurate. The
   `getSymbolTool` footer item is in fact parity and should not be listed, while
   `showPackageApiTool` and `showModuleTool` footer behaviour under `docstring=true` is a real
   divergence that is missing. Needs a spec amendment under its own plan - and it is exactly the
   drift that file's own Local principle exists to prevent.
-- Tracked as - `list --all` with zero results emits a hint naming `--all`, the flag the caller
+- **Deferred to** [hint-surface-parity](hint-surface-parity.md) -
+  `list --all` with zero results emits a hint naming `--all`, the flag the caller
   just used, against the suppression rule in `specs/behaviors/output-contract.md`. Needs a code
   fix under its own plan.
 - Several specs still name implementation symbols (`SymbolStore.canonical_name`, `_record_symbol`,
