@@ -138,6 +138,50 @@ def test_command_list_empty(
     assert "count: 0" in out
 
 
+def test_command_list_empty_hint_names_all(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+) -> None:
+    """Without `--all`, the empty-state hint names the flag most likely
+    to produce results (`specs/commands/list.md`)."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(all=False, fields="name,version")
+    )
+    with (
+        mock.patch(f"{CLI}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{CLI}.list_packages", return_value=[]),
+    ):
+        exit_code = _cli.command_list(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "count: 0" in out
+    assert "venvaxi list --all" in out
+
+
+def test_command_list_empty_all_hint_names_pyproject(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+) -> None:
+    """With `--all`, the empty state is definitive - the hint names
+    `pyproject.toml`, never the flag the caller just passed (the
+    suppression rule in `specs/behaviors/output-contract.md`)."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(all=True, fields="name,version")
+    )
+    with (
+        mock.patch(f"{CLI}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{CLI}.list_packages", return_value=[]),
+    ):
+        exit_code = _cli.command_list(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "count: 0" in out
+    assert "pyproject.toml" in out
+    assert "--all" not in out
+
+
 def test_command_list_with_packages(
     tmp_path: Path,
     capsys: pytest.CaptureFixture,
@@ -259,6 +303,52 @@ def test_command_show_api_empty(
     assert exit_code == 0
     assert "count: 0" in out
     assert "help[1]:" in out
+
+
+def test_command_show_api_docstring_suppresses_footer(
+    capsys: pytest.CaptureFixture, make_cli_context: ContextFactory
+) -> None:
+    """`show --api --docstring` emits no `help[]` footer - the CLI
+    baseline the MCP suppression assertions are pinned against (#29).
+
+    NOTE: Characterization of behaviour `hint-surface-parity` does not
+    change.
+    """
+    symbols = [
+        SymbolInfo(name="foo", kind="function", signature="()", doc="Foo."),
+    ]
+    ctx = make_cli_context(
+        args=argparse.Namespace(package="rich", api=True, docstring=True)
+    )
+    with mock.patch(f"{CLI}.get_public_api", return_value=symbols):
+        exit_code = _cli.command_show(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "count: 1" in out
+    assert "help[" not in out
+
+
+def test_command_inspect_docstring_suppresses_footer(
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+    make_symbol_node: NodeFactory,
+) -> None:
+    """`inspect --docstring` emits no `help[]` footer - the CLI baseline
+    the MCP suppression assertions are pinned against (#29).
+
+    NOTE: Characterization of behaviour `hint-surface-parity` does not
+    change.
+    """
+    node = make_symbol_node(qualified_name="rich::Console", name="Console")
+    ctx = make_cli_context(
+        args=argparse.Namespace(qualified_name="rich::Console", docstring=True)
+    )
+    with mock.patch(f"{CLI}.get_symbol", return_value=node):
+        exit_code = _cli.command_inspect(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert 'qualified_name: "rich::Console"' in out
+    assert "help[" not in out
 
 
 def test_command_serve_reports_missing_extra(

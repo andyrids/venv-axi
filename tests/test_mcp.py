@@ -9,7 +9,7 @@ import pytest
 
 pytest.importorskip("fastmcp")
 # ruff: disable[E402]
-from venvaxi._introspect import SymbolInfo
+from venvaxi._introspect import MCP_ESCAPE_HATCH, SymbolInfo
 from venvaxi._mcp import build_server
 from venvaxi._packages import PackageInfo
 from venvaxi._store import NodeKind, SymbolNode
@@ -98,6 +98,41 @@ def test_list_packages_tool_empty_hint_names_camel_case(
     assert "list_packages_tool" not in result
 
 
+def test_list_packages_tool_empty_hint_names_include_dev(
+    tmp_path: Path,
+) -> None:
+    """Without `include_dev`, the empty-state hint names the parameter
+    most likely to produce results."""
+    server = build_server()
+    with (
+        mock.patch(f"{MCP}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.list_packages", return_value=[]),
+    ):
+        tool = asyncio.run(server.get_tool(camel_case("list_packages_tool")))
+        result = tool.fn()
+    assert result.startswith("count: 0")
+    assert "include_dev=true" in result
+
+
+def test_list_packages_tool_empty_all_hint_names_pyproject(
+    tmp_path: Path,
+) -> None:
+    """With `include_dev=true`, the empty state is definitive - the hint
+    names `pyproject.toml`, never the parameter the caller just passed
+    (the suppression rule in `specs/behaviors/output-contract.md`),
+    mirroring the CLI's `list --all` branch."""
+    server = build_server()
+    with (
+        mock.patch(f"{MCP}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.list_packages", return_value=[]),
+    ):
+        tool = asyncio.run(server.get_tool(camel_case("list_packages_tool")))
+        result = tool.fn(include_dev=True)
+    assert result.startswith("count: 0")
+    assert "pyproject.toml" in result
+    assert "include_dev=true" not in result
+
+
 def test_show_package_tool_returns_toon(
     make_package_info: PackageFactory,
 ) -> None:
@@ -124,6 +159,36 @@ def test_show_package_api_tool_returns_toon() -> None:
         result = tool.fn(name="rich")
     assert "count: 1" in result
     assert "foo|function" in result
+
+
+def test_show_package_api_tool_docstring_suppresses_footer() -> None:
+    """`docstring=true` returns the bare payload with no `help[]`
+    footer, matching `show --api --docstring` on the CLI (#29)."""
+    server = build_server()
+    symbols = [
+        SymbolInfo(name="foo", kind="function", signature="()", doc="Foo."),
+    ]
+    with mock.patch(f"{MCP}.get_public_api", return_value=symbols):
+        tool = asyncio.run(
+            server.get_tool(camel_case("show_package_api_tool"))
+        )
+        result = tool.fn(name="rich", docstring=True)
+    assert "count: 1" in result
+    assert "help[" not in result
+
+
+def test_show_package_api_tool_passes_mcp_escape_hatch() -> None:
+    """The API tool spells the truncation escape hatch for MCP - its
+    payload reaches `truncate` only through `get_public_api` (#30)."""
+    server = build_server()
+    with mock.patch(f"{MCP}.get_public_api", return_value=[]) as api:
+        tool = asyncio.run(
+            server.get_tool(camel_case("show_package_api_tool"))
+        )
+        tool.fn(name="rich")
+    api.assert_called_once_with(
+        "rich", docstring=False, escape_hatch=MCP_ESCAPE_HATCH
+    )
 
 
 def test_show_module_tool_returns_toon(
@@ -157,6 +222,46 @@ def test_show_module_tool_empty_children(
         tool = asyncio.run(server.get_tool(camel_case("show_module_tool")))
         result = tool.fn(name="rich")
     assert "children count: 0" in result
+
+
+def test_show_module_tool_docstring_suppresses_footer(
+    make_symbol_node: NodeFactory,
+) -> None:
+    """`docstring=true` returns the bare payload with no `help[]`
+    footer, matching `inspect --docstring` on the CLI (#29)."""
+    server = build_server()
+    node = make_symbol_node(
+        qualified_name="rich", kind=NodeKind.PACKAGE, name="rich"
+    )
+    children = [
+        make_symbol_node(qualified_name="rich::Console", name="Console")
+    ]
+    with mock.patch(f"{MCP}.show_module", return_value=(node, children)):
+        tool = asyncio.run(server.get_tool(camel_case("show_module_tool")))
+        result = tool.fn(name="rich", docstring=True)
+    assert "children count: 1" in result
+    assert "help[" not in result
+
+
+def test_show_module_tool_truncation_names_mcp_escape_hatch(
+    make_symbol_node: NodeFactory,
+) -> None:
+    """A truncated child docstring carries the MCP-spelled size hint,
+    never the CLI `--docstring` flag (#30)."""
+    server = build_server()
+    node = make_symbol_node(
+        qualified_name="rich", kind=NodeKind.PACKAGE, name="rich"
+    )
+    children = [
+        make_symbol_node(
+            qualified_name="rich::Console", name="Console", doc="x" * 500
+        )
+    ]
+    with mock.patch(f"{MCP}.show_module", return_value=(node, children)):
+        tool = asyncio.run(server.get_tool(camel_case("show_module_tool")))
+        result = tool.fn(name="rich")
+    assert "re-call with docstring=true for the complete body" in result
+    assert "--docstring" not in result
 
 
 def test_get_symbol_tool_returns_toon(make_symbol_node: NodeFactory) -> None:
@@ -197,7 +302,13 @@ def test_find_symbol_tool_returns_toon(
 
 
 def test_find_symbol_tool_empty_without_package_hints_indexing() -> None:
-    """No match without a package hints at re-calling with one."""
+    """No match without a package hints at re-calling with one, and
+    names no package list at all.
+
+    NOTE: The `listPackagesTool` absence pins the branch distinction -
+    the package-list hint belongs to the `package`-truthy branch only,
+    mirroring `venvaxi list --all` on the CLI (#31).
+    """
     server = build_server()
     with mock.patch(f"{MCP}.find_symbol", return_value=[]):
         tool = asyncio.run(server.get_tool(camel_case("find_symbol_tool")))
@@ -208,7 +319,9 @@ def test_find_symbol_tool_empty_without_package_hints_indexing() -> None:
 
 
 def test_find_symbol_tool_empty_with_package_names_list_tool() -> None:
-    """No match with a package set hints at the package-list tool."""
+    """No match with a package set hints at the package-list tool, with
+    `include_dev=true` for scope parity with the CLI's `venvaxi list
+    --all` counterpart (#31)."""
     server = build_server()
     with mock.patch(f"{MCP}.find_symbol", return_value=[]):
         tool = asyncio.run(server.get_tool(camel_case("find_symbol_tool")))
@@ -216,6 +329,7 @@ def test_find_symbol_tool_empty_with_package_names_list_tool() -> None:
     assert result.startswith("count: 0")
     assert "No match in `rich`" in result
     assert "listPackagesTool" in result
+    assert "include_dev=true" in result
     assert "list_packages_tool" not in result
 
 

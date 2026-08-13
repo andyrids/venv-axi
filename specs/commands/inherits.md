@@ -79,8 +79,8 @@ exits `EX_OK`, per the [exit codes](../behaviors/output-contract.md#exit-codes).
 
 **Inherited** - project principles that especially bite here:
 
-- Principle 5, definitive empty states
-  ([The 10 AXI Principles](../principles.md#the-10-axi-principles)) - the separation between
+- [Principle 5, definitive empty states](../principles.md#principle-5-definitive-empty-states)
+  - the separation between
   `count: 0` and `SymbolNotFoundError` is what makes a zero answer trustworthy. Collapsing them
   would make every empty result ambiguous.
 - [The agent's spelling wins over the internally correct one](../principles.md#the-agents-spelling-wins-over-the-internally-correct-one)

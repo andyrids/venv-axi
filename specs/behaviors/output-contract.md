@@ -97,11 +97,21 @@ Docstrings shall be reduced to a truncated first line by default. The limit is 2
 applied at emission rather than storage, so the cached graph keeps complete docstrings.
 
 When text exceeds the limit, it shall gain a size hint naming the total length and the escape
-hatch:
+hatch.
+
+The escape hatch shall be named in the **spelling of the surface the caller is on** - the CLI flag
+on the CLI, the tool parameter over MCP:
 
 ```text
 ... truncated, 2847 chars total - use --docstring to see complete body
+... truncated, 2847 chars total - re-call with docstring=true for the complete body
 ```
+
+The suffix travels inside the payload, so a single hardcoded spelling reaches both surfaces and
+teaches one of them an invocation it cannot make. This is the same failure the
+[MCP hint wording rule](../mcp/tools.md#hint-wording) forbids in footers, arriving through the
+truncation path instead - the rule is about what the caller is told, not about which function
+emits it.
 
 Where `--docstring` (CLI) / `docstring=true` (MCP) is set, the complete body shall be returned
 unchanged.
@@ -113,7 +123,13 @@ usage summary. Hints are situational: the footer after a `find` names `inspect`,
 after an empty `find` names the flag that would index the package.
 
 Where a flag is already set, its `--docstring`-style hint shall be suppressed, so a footer never
-suggests what the caller just did.
+suggests what the caller just did. If suppression leaves no hint to emit, then the `help[N]:`
+footer shall be omitted entirely rather than emitted empty - an empty footer is the silent blank
+the definitive-empty-states rule above forbids, wearing a structural key.
+
+A suppressed hint shall not be replaced by an unrelated one to keep the footer populated. The
+footer exists to name the next step, and manufacturing a step so the shape stays constant is how
+two surfaces over one graph end up disagreeing about what the caller should do next.
 
 ### Non-interactive
 
