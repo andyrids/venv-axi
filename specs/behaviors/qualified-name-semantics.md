@@ -1,6 +1,8 @@
 ---
 context-hierarchy: Layer 3
-context-hierarchy-role: Desired state (specification)
+context-hierarchy-role: Desired state
+immutable: false
+tags: [behavior, qualified-name, resolution]
 ---
 
 # Behavior: Qualified name semantics
@@ -26,11 +28,11 @@ The symbol graph keys nodes and edges in two different frames. Respect this inva
   `__module__` via its *class* (`re.compile(...)` -> `re`), so claiming a home there would record
   a false fact - hence the class/function kind guard in `_record_symbol`.
 - `SymbolStore.canonical_name` is the single facade -> home resolution point. It is applied by
-  `get_inheritors`, and by `get_symbol` for **class members only**: a member spelled through a
-  facade (`fastmcp::Client.call_tool`) that has no node under that spelling MUST resolve through
-  its owner class's home to the home-keyed row (`fastmcp.client.client::Client.call_tool`) and
-  answer with that row **as stored**. A miss that survives this resolution is a genuine miss and
-  raises `SymbolNotFoundError`.
+  `get_inheritors`, and by `get_symbol` for **class members only**: if a member spelled through a
+  facade (`fastmcp::Client.call_tool`) has no node under that spelling, then it shall resolve
+  through its owner class's home to the home-keyed row
+  (`fastmcp.client.client::Client.call_tool`) and answer with that row **as stored**. If a miss
+  survives this resolution, then it is a genuine miss and shall raise `SymbolNotFoundError`.
 - The member carve-out is the facade-keyed rule's own split, not an exception to it. The
   objection behind that rule is to *rewriting an answer* - changing the `module` field agents
   see - never to *resolving a lookup*. A class member has no facade-keyed row to rewrite,
@@ -47,14 +49,25 @@ The symbol graph keys nodes and edges in two different frames. Respect this inva
   prefers short facade paths (the correct public spelling for agents; never 'fix' the ordering
   to prefer home paths - the resolver absorbs facade input where it matters).
 - Home-path class nodes are materialized only when the home module sits inside the *same*
-  package. A foreign (e.g. stdlib) class re-exported by two indexed packages must not have its
-  home node's `package` field claimed, or `clear_package` for one package deletes the other
-  package's node. Cross-package bases resolve once their owning package is indexed.
+  package. If a foreign (e.g. stdlib) class is re-exported by two indexed packages, then its
+  home node's `package` field shall not be claimed, or `clear_package` for one package deletes
+  the other package's node. Cross-package bases resolve once their owning package is indexed.
 - `inherits` derives its build depth from the canonical name, so facade and home paths agree on
   a fresh cache. Answers can still *grow* as build depth grows (lazy-depth model): a subclass
   homed deeper than the base stays undiscovered until some query builds that deep.
 - The `nodes` table must keep a stable rowid mapping for the external-content FTS5 index - never
   `VACUUM` these caches without rebuilding, or add an `INTEGER PRIMARY KEY` first.
+
+## Out of scope
+
+- **Deep member indexing** - members are recorded one level deep by design; a spelling like
+  `mod::Outer.Inner.method` has no row under any module and its `SymbolNotFoundError` is
+  definitive. Never - indexing every nesting level multiplies the graph for a surface agents
+  rarely spell.
+- **Rewriting answers to home spellings** - outside the member carve-out, output stays
+  facade-keyed. Never - the
+  [agent's spelling principle](../principles.md#the-agents-spelling-wins-over-the-internally-correct-one)
+  rules it out.
 
 ## Principles
 

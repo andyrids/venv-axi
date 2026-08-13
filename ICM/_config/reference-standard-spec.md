@@ -1,6 +1,9 @@
 ---
 context-hierarchy: Layer 3
-context-hierarchy-role: Rules, conventions and guidelines
+context-hierarchy-role: Reference material
+immutable: true
+maximum-context-tokens: 2500
+tags: [spec, SDD]
 ---
 
 # Standard - specifications
@@ -12,28 +15,57 @@ How to write a file in `specs/`. The tree layout and the invariants it holds are
 
 Specs declare **what** MUST be true, not **how** to implement it.
 
-- **Too vague** - 'The find command searches symbols and returns useful results.' An implementer
-  still has to make a hundred decisions. Which fields? What ordering? What happens on no match?
-- **Right** - 'Emit `count: <n>` and a `symbols` table of `name`, `kind`, `qualified_name`.
-  Ranking prefers short facade paths. On no match with `--package` set, hint at `list --all`; on
-  no match without it, hint at `--package`.' Testable by running the command.
-- **Too detailed** - 'Call `find_symbol(query, limit, package)`, build rows via `node.as_row()`,
-  pass to `encode_table` with fields `[...]`.' This is writing the code twice, and it rots on the
-  first refactor.
+- **Too vague** - 'The importer handles duplicate records sensibly.' An implementer still has to
+  make a hundred decisions. Replace or reject? Reported how? What counts as a duplicate?
+- **Right** - 'When a record arrives with a known identifier, the importer shall replace the
+  stored copy and report the count of replacements on completion. If a record arrives malformed,
+  then the importer shall reject it and continue the batch.' Testable by running one batch.
+- **Too detailed** - 'Call `find_record(key)`, compare via `record.fingerprint()`, pass the
+  survivor to `store.upsert` with fields `[...]`.' This is writing the code twice, and it rots on
+  the first refactor.
 
 The test: could two implementers read it and disagree about whether the code conforms? If yes, it
 is too vague to be a spec.
 
+## Requirement notation
+
+Statements about system behaviour are written in EARS - the templates, and the subject test that
+decides when they apply, are in `reference-standard-validation.md`. That covers a spec's rules,
+its output description and every Validation criterion a plan derives from it.
+
+The rules in the next section are addressed to whoever is authoring the spec rather than to the
+system, so they stay in modal form. That split is the whole of the policy: EARS for what the
+system does, modals for what a person does.
+
 ## Rules
 
-- MUST state behaviour observable from outside `src/venvaxi/` - invocation, output, exit codes,
-  errors
+- MUST state behaviour observable from outside the implementation - invocation, outputs, failure
+  modes, errors
 - MUST NOT name functions, variables or module paths as requirements; those change freely
-- MUST NOT restate `--help` output as prose. `venvaxi <cmd> --help` is authoritative; a spec that
-  disagrees with it is the thing that is wrong
+- Where the project exposes a CLI, MUST NOT restate `--help` output as prose. The `--help` text
+  is authoritative; a spec that disagrees with it is the thing that is wrong
 - SHOULD explain *why* a non-obvious rule exists, in one line. A rule whose reason is lost gets
   'simplified' away by the next implementer
-- SHOULD NOT duplicate a behaviour spec into a command spec - link to it
+- SHOULD NOT duplicate a behaviour spec into an interface spec - link to it
+
+## Edge cases
+
+Edge cases are spec content, not implementation scratch. Behaviour at the margins is still
+observable behaviour, and an edge case recorded only in a techspec is deleted with the run's
+scratch. Enumerate them in the spec - under Failure modes in an interface spec, under Details in
+a behavior spec - as EARS unwanted criteria: `If <trigger>, then`. That pattern is the edge-case
+enumerator, and a spec with no If clause has probably not looked for its failures.
+
+## Out of scope
+
+Both templates carry an `## Out of scope` section, because the most expensive misreading of a
+spec is the adjacent capability a reader would reasonably assume is included - the importer that
+surely also validates, the search that surely also paginates. Name each such assumption and say
+where it went: a plan Follow-up, a named future spec, or never, with the why.
+
+This is not `specs/README.md`'s 'What specs do NOT cover'. That section rules out *kinds of
+statement* - module names, test cases - and applies to every spec identically; Out of scope
+rules out *behaviour* this one spec deliberately excludes, and is written fresh each time.
 
 ## Principles
 
@@ -49,8 +81,8 @@ side.
 
 ### Placement
 
-Default to **the most specific spec the principle governs**. A principle shaping one command
-belongs in that command spec's `## Principles` section, next to the rules it backs, where an
+Default to **the most specific spec the principle governs**. A principle shaping one interface
+belongs in that interface spec's `## Principles` section, next to the rules it backs, where an
 implementer reading only that file will see it.
 
 Reserve `specs/principles.md` for genuinely project-wide rules. The trigger to promote is
@@ -62,43 +94,50 @@ Do not agonize at capture time. Put it on the spec you are in; promote later if 
 
 ### Referencing back down
 
-Promotion sends principles up; this is the flow back down. An agent working from one command spec
-will not open `specs/principles.md` on its own, so a project-wide principle quietly governing
-that command is invisible.
+Promotion sends principles up; this is the flow back down. An agent working from one interface
+spec will not open `specs/principles.md` on its own, so a project-wide principle quietly
+governing that interface is invisible.
 
-In a spec's `## Principles` section, name the `principles.md` entries that **especially bite
+In a spec's `## Principles` section, name the `specs/principles.md` entries that **especially bite
 here**, each with a one-line gloss of how it applies, linked to the full statement. Be selective:
 a spec that links every principle teaches nothing.
 
-Use the two-part shape - **Inherited** for linked `principles.md` entries, **Local** for
+Use the two-part shape - **Inherited** for linked `specs/principles.md` entries, **Local** for
 principles this spec owns. Omit either subsection if empty.
 
 ## Templates
 
-### Command spec
+### Interface spec
+
+One file per unit of public surface - a CLI verb, an API endpoint, an MCP tool. The H1 keeps the
+`Kind: Name` prefix from `reference-standard-markdown.md` - `# Command: <cli> find`,
+`# Tool: inspect`. Stack mechanics - exit-code enums, payload encodings, help footers, console
+formatting - are toolchain conventions declared once in `reference-toolchain-*.md`; the spec
+states what the caller observes, and the toolchain reference names the mechanism carrying it.
 
 ```markdown
-# Command: venvaxi <verb>
+# Command: <cli> <verb>
 
-## Invocation
-Positional arguments and flags, with defaults, as a table.
+## Invocation / inputs
+What the unit accepts - arguments, flags, request fields - with defaults, as a table.
 
 ## Data requirements
-What the command reads - installed metadata, the symbol store, live introspection.
+What the unit reads - stored state, configuration, live introspection.
 
-## Output rules
-Declarative description of the TOON payload: fields emitted by default, truncation,
-the definitive empty state and its hint, the `help[]` footer.
+## Outputs
+Declarative description of what is emitted: fields present by default, ordering,
+truncation, and the definitive empty state with its hint.
 
-## Exit codes
-Which `ExitCode` under which condition.
+## Failure modes
+The edge cases, as `If <trigger>, then` criteria: bad input, missing state, denied
+access - and what the caller observes for each, including how failure is signalled.
 
-## Errors
-Which `venvaxi.exceptions` surface, and what the caller sees.
+## Out of scope
+Adjacent behaviour this spec deliberately excludes, and where each item went.
 
 ## Principles (optional)
 **Inherited** - `principles.md` entries that bite here, one-line gloss each.
-**Local** - principles owned by this command.
+**Local** - principles owned by this unit.
 ```
 
 ### Behavior spec
@@ -113,7 +152,10 @@ The invariant, stated declaratively.
 Which commands, tools or modules this governs.
 
 ## Details
-Edge cases, calculations, ordering, failure handling.
+Calculations, ordering, and the edge cases as `If <trigger>, then` criteria.
+
+## Out of scope
+Adjacent behaviour this spec deliberately excludes, and where each item went.
 
 ## Principles (optional)
 Same two-part shape as above.

@@ -1,6 +1,9 @@
 ---
 context-hierarchy: Layer 3
-context-hierarchy-role: Work in flight
+context-hierarchy-role: Reference material
+immutable: true
+maximum-context-tokens: 2500
+tags: [plans, protocol, closeout]
 ---
 
 # Plans
@@ -28,6 +31,11 @@ change goes through `specs/`, and the work to execute it gets a file here.
 Even small work leaves a plan. Skipping it because a change is 'quick' is what hollows the record
 out.
 
+That is why the fast path is a shorter *pipeline*, not a plan-free one. `ICM/express-change/`
+drops the techspec and the intermediate reports for work no spec has to move for, and opens,
+validates and freezes the plan exactly as this file prescribes. If a change is too small to
+deserve a plan, it is too small to have needed a pipeline either.
+
 No DAG drawing or status table is maintained in this file - both rot the moment someone forgets
 to update them. Query the frontmatter instead:
 
@@ -41,45 +49,68 @@ makes this file a false positive in every ripple check that greps for it.
 
 **Two different questions, two different queries.** The ripple check above is deliberately broad:
 after editing a spec you want every plan that so much as mentions it. The *coverage* check behind
-Invariant 1 in `specs/README.md` is the opposite - it must read only the frontmatter `specs:`
-block, because a plan's prose routinely names specs it does not implement, and counting those as
-coverage lets the invariant pass on specs nothing owns. Never answer 'is this spec covered?' with
-a whole-file grep.
+Invariant 1 in `specs/README.md` is the opposite - it must read only the frontmatter `specs:` and
+`authors:` blocks, because a plan's prose routinely names specs it does not own, and counting
+those as coverage lets the invariant pass on specs nothing owns. Never answer 'is this spec
+covered?' with a whole-file grep.
 
 ## Frontmatter
 
 ```yaml
 ---
+context-hierarchy: Layer 4
+context-hierarchy-role: Working artifact
+immutable: false
 status: planned        # planned | in-progress | done | blocked | cancelled
 depends: []            # other plan slugs that must land first
-specs:                 # spec files this plan brings code into conformance with
+specs:                 # specs this plan brings CODE into conformance with
   - specs/commands/<verb>.md
+authors: []            # specs this plan WRITES, with no behaviour change
 issues: []             # issue numbers
 pr:                    # PR number, set at closeout
 ---
 ```
 
-### `specs:` means conformance, not authorship
+### `specs:` means conformance; `authors:` means authorship
 
-List only the specs this plan brings **code** into conformance with. A plan that *writes* a spec
-without changing behaviour lists nothing - `specs: []` is correct and common.
+The two fields answer different questions, and putting a spec in the wrong one breaks a different
+check each way.
 
-This is the field's one real trap, and the methodology walked into it on its first use: the plan
-that created this directory listed all 16 spec files, having authored them. Every spec then had a
-covering plan by `grep`, so Invariant 1 in `specs/README.md` could never fail and the drift
-auditor's Table 1 was silently useless. The check was built and defeated in the same commit.
+- **`specs:`** - this plan changes code until it conforms. Stage 03 verifies observable behaviour
+  against every entry here, so a spec listed without matching code produces a false divergence
+  finding.
+- **`authors:`** - this plan writes or amends the spec and changes no behaviour. Nothing is
+  verified against it; the field exists so a spec-authoring plan can own its spec without claiming
+  a conformance it never delivers.
 
-The invariant is only worth having if a spec can fail it. Over-listing here is how it quietly
-stops being able to.
+A spec belongs in one field, never both. If the same plan writes a spec *and* implements it, that
+is `specs:` - the code conformance is the stronger claim and subsumes the authorship.
+
+Invariant 1 in `specs/README.md` accepts either field, so `specs: []` with a populated `authors:`
+is a complete answer to 'who owns this spec?'.
+
+This is where the methodology walked into its one real trap on first use: the plan that created
+this directory listed every spec file in `specs:`, having authored them. Every spec then had a
+covering plan by `grep`, so Invariant 1 could never fail and the drift auditor was silently
+useless. The check was built and defeated in the same commit.
+
+`authors:` exists so that the honest answer is also the cheap one. The invariant is only worth
+having if a spec can fail it, and over-listing `specs:` is how it quietly stops being able to.
 
 ## Body
 
 Fixed section order: **Scope**, **Implements**, **Approach**, **Validation**, **Risks /
 unknowns**, **Notes**, **Follow-ups**.
 
+`Implements` is the prose companion to the frontmatter: which specs this plan answers, and which
+parts of them. It is written for people. Nothing reads it to decide coverage - the gates read
+`specs:` and `authors:` - so a spec named here and in neither field is an uncovered spec with a
+paragraph about it.
+
 `Validation` is load-bearing - it is the checkbox list that converts `in-progress` to `done`, and
-it supplies the requirement identifiers the ICM verification stage reports against. `Notes` and
-`Follow-ups` stay empty until closeout.
+it supplies the requirement identifiers the ICM verification stage reports against. Its criteria
+are written in EARS, per `ICM/_config/reference-standard-validation.md`. `Notes` and `Follow-ups`
+stay empty until closeout.
 
 ## Status lifecycle
 
@@ -94,9 +125,13 @@ planned -> in-progress -> done      (frozen; edit only to correct the record)
 The last commit before merge:
 
 1. Flip `status` to `done` and add `pr:`.
-2. Tick validation boxes **only where verified**. Leave unverified boxes unticked and say why in
-   Notes - a ticked box that was not checked is worse than an unticked one.
-3. Populate Notes: decisions, gotchas, version pins.
+2. Tick validation boxes **only where verified**, appending each ticked box's evidence citation
+   after the em dash separator (`ICM/_config/reference-standard-validation.md`). Leave unverified
+   boxes unticked and say why in Notes - a ticked box that was not checked is worse than an
+   unticked one.
+3. Populate Notes: decisions, gotchas, version pins - and the *why this design* reasoning, which
+   otherwise lives only in the techspec and is deleted with the run's scratch. Notes is the one
+   durable home design rationale has.
 4. Populate Follow-ups using the taxonomy below.
 5. Absorb any deferrals (see below).
 6. Reconcile `specs/` - if the implementation diverged, fix the code or amend the spec.

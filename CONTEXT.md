@@ -1,78 +1,38 @@
 ---
 context-hierarchy: Layer 1
-context-hierarchy-role: Workspace task routing
+context-hierarchy-role: Workspace routing
+immutable: false
 maximum-context-tokens: 300
 ---
 
 # Workspace routing
 
-## Routing
+Two workspaces. Match the work to a pipeline, then read that workspace's `CONTEXT.md` - nothing
+deeper until a stage is entered.
 
-Each task category heading details necessary context and locations.
+## Workspaces
 
-### Create feature
+### process-plan
 
-Consolidated (with Create Unit Test & Code Refactor) into the same `ICM/create-feature` workspace.
+- **Work**: a spec change, its implementation, verification and closeout
+- **Read**: `ICM/process-plan/CONTEXT.md`
 
-- **Navigate to**: `ICM/create-feature`
-- **Read**: `CONTEXT.md`
-- **Exclude**: * in `.gitignore`
+### express-change
 
-### Create unit test
+- **Work**: a change conforming to a spec already on the default branch, landing in one commit
+- **Read**: `ICM/express-change/CONTEXT.md`
 
-Consolidated (with Create Feature & Code Refactor) into the same `ICM/create-feature` workspace.
+## Choosing
 
-- **Navigate to**: `ICM/create-feature`
-- **Read**: `CONTEXT.md`
-- **Exclude**: * in `.gitignore`
+One question decides it: **must `specs/**` change?** If yes - new or changed behaviour, or a rule
+not yet declared - it is `process-plan`, however small the diff looks. If no, and the work is one
+commit's worth, it is `express-change`.
 
-### Code refactor
+Size is not the test. A two-line diff that changes what the software promises is a spec change; a
+large mechanical refactor that changes nothing observable is not.
 
-Consolidated (with Create Feature & Create Unit Test) into the same `ICM/create-feature` workspace.
+## Shared configuration
 
-- **Navigate to**: `ICM/create-feature`
-- **Read**: `CONTEXT.md`
-- **Exclude**: * in `.gitignore`
-
-### Create documentation
-
-Multi-location route (unlike the single-workspace sections above); reads reference material from
-several directories rather than one `ICM/` workspace.
-
-- **Navigate to**:
-  - `.`
-    - **Read**:
-      - `CHANGELOG.md`
-      - `COPYRIGHT`
-      - `README.md`
-      - `LICENSE`
-  - `src/`
-    - **Read**: `venvaxi/*`
-  - `tests/`
-    - **Read**: `*`
-  - `ICM/_config/`
-    - **Read**:
-      - `reference-standard-attribution.md`
-      - `reference-standard-changelog.md`
-      - `reference-standard-docstrings.md`
-      - `reference-standard-markdown.md`
-      - `reference-toolchain-pymarkdown.md`
-- **Exclude**: * in `.gitignore`
-
-### Code review
-
-Review against `specs/`, not against personal preference - the spec is the acceptance criteria.
-
-- **Navigate to**:
-  - `specs/`
-    - **Read**: `*` - the behavioural contract the code must conform to
-  - `src/`
-    - **Read**: `venvaxi/*`
-  - `tests/`
-    - **Read**: `*`
-  - `ICM/_config/`
-    - **Read**:
-      - `reference-toolchain-logging.md`
-      - `reference-toolchain-mypy.md`
-      - `reference-toolchain-ruff.md`
-- **Exclude**: * in `.gitignore`
+Standards shared by every workspace live in `ICM/_config/` as `reference-*.md` files (Layer 3).
+Load one only when its subject is in play. A new deliverable does not need a new workspace -
+configure the factory, not the product.

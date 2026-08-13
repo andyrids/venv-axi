@@ -1,6 +1,8 @@
 ---
 context-hierarchy: Layer 3
-context-hierarchy-role: Desired state (specification)
+context-hierarchy-role: Desired state
+immutable: false
+tags: [behavior, package, resolution]
 ---
 
 # Behavior: Package resolution
@@ -15,8 +17,9 @@ A package argument fails in exactly one of three ways, and the exception says wh
 | **Absent** | A possible name, but nothing in the venv provides it | `PackageNotFoundError` |
 | **Broken** | Provided, but will not import | `PackageImportError` |
 
-No user-supplied argument value may produce `EX_SYNTAX`. Exit 2 means venvaxi is broken; it MUST
-NOT mean the caller typed something odd.
+If a user-supplied argument value cannot be honoured, then the command shall raise an `Error` and
+exit `EX_FAILURE`, never `EX_SYNTAX`. Exit 2 means venvaxi is broken; it MUST NOT mean the caller
+typed something odd.
 
 ## Applies to
 
@@ -41,33 +44,33 @@ Collapsing malformed into absent invites it to install something that can never 
 
 'Absent' means *nothing importable answers to this name*, not *no distribution claims it*. A
 stdlib module, a namespace package and a local module on `sys.path` are all importable with no
-distribution at all, and reporting one of those as needing installation is a false statement
-about the venv.
+distribution at all, and if one of those is supplied, then the resolver shall not report it as
+needing installation - that would be a false statement about the venv.
 
-A distribution that *is* installed but whose module cannot be located is **broken**, not absent -
-the caller has the package and something about it is wrong.
+If a distribution *is* installed but its module cannot be located, then the resolver shall report
+it as **broken**, not absent - the caller has the package and something about it is wrong.
 
 ### Ordering
 
-Validation runs before resolution. A name is checked as the caller supplied it, because
+Validation shall run before resolution. A name is checked as the caller supplied it, because
 distribution-to-import-name resolution can only disguise a malformed name, never repair one.
 
-Resolution of dashes and case (`detect-secrets` -> `detect_secrets`) happens after validation and
-before the availability check, so a legitimate distribution name is never reported as absent
-merely because its import name differs. See
+Resolution of dashes and case (`detect-secrets` -> `detect_secrets`) shall happen after
+validation and before the availability check, so a legitimate distribution name is never reported
+as absent merely because its import name differs. See
 [Qualified name semantics](qualified-name-semantics.md).
 
 ### Scope of the malformed check
 
-For a dotted or qualified name, only the **top-level component** is validated - it is the part
-that has to name something installable. What a malformed tail reports then differs by command,
-because each asks its lookup a different question:
+For a dotted or qualified name, only the **top-level component** shall be validated - it is the
+part that has to name something installable. What a malformed tail reports then differs by
+command, because each asks its lookup a different question:
 
 - `inspect` and `inherits` resolve the tail through the normal symbol lookup, so a malformed
   tail raises `SymbolNotFoundError` - already the correct answer for 'that symbol is not there'.
 - `show --api` validates the **whole** argument and raises `InvalidArgumentError`, because in
   API mode the whole argument *is* the module path under inspection - there is no symbol tail
-  for a lookup to answer about. The error list in [show](../commands/show.md) states this.
+  for a lookup to answer about. The failure modes in [show](../commands/show.md) state this.
 - `tree` reports `count: 0` and exits `EX_OK` - a malformed tail is indistinguishable from a
   submodule with no node, which is its specified definitive empty state (see
   [tree](../commands/tree.md)).
@@ -78,9 +81,18 @@ because each asks its lookup a different question:
 ### Metadata mode
 
 `show <package>` without `--api` reads distribution metadata rather than the import system, so
-its 'absent' answer is about the metadata database. Where it can tell that a name looks like a
-dotted module path rather than a distribution name, it says so and names `--api` - a more useful
-answer than the generic malformed-name error, and it MUST be preserved.
+its 'absent' answer is about the metadata database. Where a name looks like a dotted module path
+rather than a distribution name, the `show` command shall say so and name `--api` - a more useful
+answer than the generic malformed-name error, and one that MUST be preserved.
+
+## Out of scope
+
+- **Spelling suggestion** - no 'did you mean' recovery; each error reports the class of failure,
+  not a corrected name. Never - a guessed correction is a recommendation, and the class alone is
+  the fact the caller can act on.
+- **Installation** - the resolver reports that a package is absent; it never installs, and no
+  error suggests a specific install command beyond checking `venvaxi list --all`. No future spec
+  is planned.
 
 ## Principles
 

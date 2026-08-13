@@ -1,11 +1,13 @@
 ---
 context-hierarchy: Layer 3
-context-hierarchy-role: Desired state (specification)
+context-hierarchy-role: Desired state
+immutable: false
+tags: [command, inherits]
 ---
 
 # Command: venvaxi inherits
 
-## Invocation
+## Invocation / inputs
 
 ```text
 venvaxi inherits <qualified_name> [--refresh]
@@ -15,8 +17,6 @@ venvaxi inherits <qualified_name> [--refresh]
 | ---------------- | -------- | ---------------------------------------- |
 | `qualified_name` | required | Qualified base class name (`module::Class`) |
 | `--refresh`      | off      | Rebuild the cached graph first           |
-
-There is no `--docstring` flag; the output carries no `doc` column.
 
 ## Data requirements
 
@@ -31,14 +31,18 @@ row of its own; `find` never resolves. See
 Build depth is derived from the canonical name, so facade and home spellings agree on a fresh
 cache.
 
-## Output rules
+## Outputs
 
-- `count: <n>` and an `inheritors` table of `name`, `kind`, `qualified_name`.
-- Footer names `venvaxi inspect <qualified_name>`.
+The `inherits` command shall emit `count: <n>` and an `inheritors` table of `name`, `kind`,
+`qualified_name`.
 
-Empty result: `count: 0` plus a hint naming `venvaxi find <name> --package <package>`. The hint
-MUST name **both** causes - subclasses in an unindexed package, and subclasses below the built
-depth - because the caller cannot distinguish them from the output.
+The `inherits` command shall end output with a footer naming
+`venvaxi inspect <qualified_name>`.
+
+When the base class resolves with zero indexed subclasses, the `inherits` command shall emit
+`count: 0` plus a hint naming `venvaxi find <name> --package <package>`. The hint shall name
+**both** causes - subclasses in an unindexed package, and subclasses below the built depth -
+because the caller cannot distinguish them from the output.
 
 `count: 0` here means the base class resolved and has zero *indexed* subclasses. It is a
 definitive empty state, not a lookup failure: an unresolvable name raises `SymbolNotFoundError`
@@ -48,20 +52,28 @@ Answers may legitimately **grow** as build depth grows. A subclass homed deeper 
 build stays undiscovered until some query builds that deep - the lazy-depth model in
 [Cache and refresh](../behaviors/cache-refresh.md).
 
-## Exit codes
+## Failure modes
 
-`EX_OK`, including the empty case. `EX_FAILURE` on any raised `Error`.
-
-## Errors
-
-- `SymbolNotFoundError` - the base class name does not resolve.
-- `InvalidArgumentError` - the name's top-level component is not a possible package name.
-- `PackageNotFoundError` - the owning package is not installed in the venv.
-- `PackageImportError` - the owning package is installed but cannot be imported to build the
-  graph.
+- If the base class name does not resolve, then the `inherits` command shall raise
+  `SymbolNotFoundError`, emit the TOON error block and exit `EX_FAILURE`.
+- If the name's top-level component is not a possible package name, then the `inherits` command
+  shall raise `InvalidArgumentError`, emit the TOON error block and exit `EX_FAILURE`.
+- If the owning package is not installed in the venv, then the `inherits` command shall raise
+  `PackageNotFoundError`, emit the TOON error block and exit `EX_FAILURE`.
+- If the owning package is installed but cannot be imported to build the graph, then the
+  `inherits` command shall raise `PackageImportError`, emit the TOON error block and exit
+  `EX_FAILURE`.
 
 The three package classes are defined once in
-[Package resolution](../behaviors/package-resolution.md).
+[Package resolution](../behaviors/package-resolution.md). An empty result is success - `count: 0`
+exits `EX_OK`, per the [exit codes](../behaviors/output-contract.md#exit-codes).
+
+## Out of scope
+
+- **The transitive closure** - direct subclasses only; a full descendant tree is composed by the
+  caller from repeated calls. No future spec is planned.
+- **Docstring reporting** - there is no `--docstring` flag and the table carries no `doc` column;
+  per-symbol detail belongs to `inspect`.
 
 ## Principles
 
