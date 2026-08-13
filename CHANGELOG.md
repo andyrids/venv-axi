@@ -16,29 +16,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > - `Fixed` for any bug fixes.
 > - `Security` in case of vulnerabilities.
 
-## [Unreleased]
+## [v0.2.0] - 2026-08-13
 
 ### Changed
 
-- `find` result ordering is declared in `specs/commands/find.md` - five keys, total, with the
-  backend-dependent relevance gap recorded as deliberately unspecified.
-- `specs/principles.md` gives each AXI principle its own heading, so a citation resolves to the
-  principle rather than to the list containing it.
+- `find` result ordering is declared in `specs/commands/find.md`.
+- `specs/principles.md` gives each AXI principle its own heading.
 - An empty `list --all` names `pyproject.toml` instead of the `--all` flag just used.
 
 ### Fixed
 
 - Truncation size hints name the escape hatch in the caller's own spelling - `--docstring` on the
   CLI, `docstring=true` over MCP.
-- `findSymbolTool`'s empty hint names `include_dev=true`, matching the CLI's `list --all` scope.
-- `showPackageApiTool` and `showModuleTool` omit the `help[]` footer under `docstring=true`, as
-  the CLI already did.
-- An empty `listPackagesTool(include_dev=true)` names `pyproject.toml`, not the parameter just used.
+- `findSymbolTool` empty hint names `include_dev=true`, matching the CLI's `list --all` scope.
+- `showPackageApiTool` and `showModuleTool` omit the `help[]` footer under `docstring=true`.
+- An empty `listPackagesTool(include_dev=true)` names `pyproject.toml` not the parameter just used.
 - A failed `venvaxi setup` write raises `AmbientContextError` and exits `1`, not `2`.
-- `plans/pre-release-conformance.md` restored; it was deleted as undeclared collateral of the
-  spec conformance sweep, and issues #28 to #31 each cite it as their origin.
-- `plans/spec-conformance-sweep.md` Follow-ups relabelled from an empty `Tracked as` to the
-  taxonomy form `plans/README.md` requires, and its Notes corrected on deferral absorption.
+- `plans/pre-release-conformance.md` restored.
+- `plans/spec-conformance-sweep.md` follow-ups relabelled in accordance with `plans/README.md`.
 
 ## [v0.1.0] - 2026-08-09
 
