@@ -98,8 +98,8 @@ answer than the generic malformed-name error, and one that MUST be preserved.
 
 **Inherited** - project principles that especially bite here:
 
-- Principle 5, definitive empty states
-  ([The 10 AXI Principles](../principles.md#the-10-axi-principles)) - the same reasoning that
+- [Principle 5, definitive empty states](../principles.md#principle-5-definitive-empty-states)
+  - the same reasoning that
   separates `count: 0` from a lookup failure separates these three. An answer an agent cannot act
   on is not an answer.
 - [Report what a symbol is, not how to use it](../principles.md#report-what-a-symbol-is-not-how-to-use-it)
