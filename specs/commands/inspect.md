@@ -1,11 +1,13 @@
 ---
 context-hierarchy: Layer 3
-context-hierarchy-role: Desired state (specification)
+context-hierarchy-role: Desired state
+immutable: false
+tags: [command, inspect]
 ---
 
 # Command: venvaxi inspect
 
-## Invocation
+## Invocation / inputs
 
 ```text
 venvaxi inspect <qualified_name> [--docstring] [--refresh]
@@ -27,54 +29,67 @@ name always contains `::`, and a bare or dotted module name never does.
 Both modes answer with **facade-keyed** data - the module the symbol was recorded under, which is
 the spelling the caller will import. Class members are the carve-out: member rows are keyed at
 the owning class's *home* module only, so a member spelled through a facade
-(`fastmcp::Client.call_tool`) MUST resolve to its home-keyed row and answers with the home
+(`fastmcp::Client.call_tool`) shall resolve to its home-keyed row and answer with the home
 spelling (`fastmcp.client.client::Client.call_tool`) - the only row that exists, and the same
 name `find` returns for the symbol. Echoing the caller's facade spelling back would report a
 qualified name no other command can resolve. A member spelling that still misses after
 resolution raises `SymbolNotFoundError`. See
 [Qualified name semantics](../behaviors/qualified-name-semantics.md).
 
-## Output rules
+## Outputs
 
-**Symbol mode** (`::` present) - a flat TOON object of `qualified_name`, `kind`, `signature`,
-`doc`.
+**Symbol mode** (`::` present) - the `inspect` command shall emit a flat TOON object of
+`qualified_name`, `kind`, `signature`, `doc`.
 
-**Module mode** (no `::`) - a header object of `qualified_name`, `kind`, `doc`, then
-`children count: <n>` and a `children` table of `name`, `kind`, `signature`, `doc`.
+**Module mode** (no `::`) - the `inspect` command shall emit a header object of
+`qualified_name`, `kind`, `doc`, then `children count: <n>` and a `children` table of `name`,
+`kind`, `signature`, `doc`.
 
 Rules binding both modes:
 
-- **`doc` MUST be the target's own docstring.** It MUST NOT inherit its base class's, its
-  metaclass's, or its type's docstring. Reporting an inherited docstring as the symbol's own
-  records a false fact about the installed package, which is precisely the drift this tool exists
-  to eliminate.
-- A symbol that defines no docstring of its own reports the marker `(no docstring)`, not an empty
-  string, in both truncated and `--docstring` modes. See
+- The `inspect` command shall report the target's **own** docstring in `doc`; it shall not
+  substitute the base class's, the metaclass's, or the type's docstring. Reporting an inherited
+  docstring as the symbol's own records a false fact about the installed package, which is
+  precisely the drift this tool exists to eliminate.
+- If a symbol defines no docstring of its own, then the `inspect` command shall report the marker
+  `(no docstring)`, not an empty string, in both truncated and `--docstring` modes. See
   [Definitive empty states](../behaviors/output-contract.md#definitive-empty-states) for why a
   bare `""` is insufficient.
-- `signature` is the real signature from live introspection. Where `inspect.signature` fails on a
-  callable, the marker `(signature unavailable)` is recorded - distinct from every real
-  signature, so 'introspection failed' is never confused with 'takes no arguments'.
-- Docstrings truncate at 200 characters unless `--docstring` is set; the footer suggests
-  `--docstring` only when it is not already set.
-- Empty module: header object then `children count: 0`, with a hint naming `venvaxi tree`.
+- The `inspect` command shall report the real signature from live introspection. If
+  `inspect.signature` fails on a callable, then the marker `(signature unavailable)` shall be
+  recorded - distinct from every real signature, so 'introspection failed' is never confused
+  with 'takes no arguments'.
+- The `inspect` command shall truncate docstrings at 200 characters unless `--docstring` is set,
+  and the footer shall suggest `--docstring` only when it is not already set.
+- When a module has no children, the `inspect` command shall emit the header object then
+  `children count: 0`, with a hint naming `venvaxi tree`.
 
-## Exit codes
+## Failure modes
 
-`EX_OK`, including a module with no children. `EX_FAILURE` on any raised `Error`.
-
-## Errors
-
-- `SymbolNotFoundError` - the qualified name does not resolve in the store. This is distinct from
+- If the qualified name does not resolve in the store, then the `inspect` command shall raise
+  `SymbolNotFoundError`, emit the TOON error block and exit `EX_FAILURE`. This is distinct from
   a zero-children answer, which is a definitive success.
-- `InvalidArgumentError` - the name's top-level component is not a possible package name.
-- `PackageNotFoundError` - the owning package is not installed in the venv.
-- `PackageImportError` - the owning package is installed but cannot be imported to build the
-  graph.
+- If the name's top-level component is not a possible package name, then the `inspect` command
+  shall raise `InvalidArgumentError`, emit the TOON error block and exit `EX_FAILURE`.
+- If the owning package is not installed in the venv, then the `inspect` command shall raise
+  `PackageNotFoundError`, emit the TOON error block and exit `EX_FAILURE`.
+- If the owning package is installed but cannot be imported to build the graph, then the
+  `inspect` command shall raise `PackageImportError`, emit the TOON error block and exit
+  `EX_FAILURE`.
 
 The three package classes are defined once in
 [Package resolution](../behaviors/package-resolution.md). Only the top-level component is
-validated; a malformed tail resolves to `SymbolNotFoundError` above.
+validated; a malformed tail resolves to `SymbolNotFoundError` above. A module with no children is
+success and exits `EX_OK`, per the [exit codes](../behaviors/output-contract.md#exit-codes).
+
+## Out of scope
+
+- **Usage guidance** - `inspect` reports what a symbol is (kind, signature, docstring), never how
+  to use it; tutorials, recipes and migration notes are documentation's job. Never - the
+  [Report what a symbol is](../principles.md#report-what-a-symbol-is-not-how-to-use-it)
+  principle already decides this.
+- **Recursive listing** - module mode lists direct children only; the nested view is `tree`'s
+  job.
 
 ## Principles
 

@@ -1,132 +1,66 @@
 ---
 context-hierarchy: Layer 0
 context-hierarchy-role: Global identity
+immutable: false
 maximum-context-tokens: 900
 ---
 
-# Global context
+# `venv-axi`
 
-You are an expert Python software engineer acting as a developer for the venv-axi project - an
-Agent eXperience Interface (AXI) CLI for token-efficient querying of venv dependencies.
+The venv-axi project is an Agent eXperience Interface (AXI) CLI for token-efficient querying of
+venv dependencies. See `docs/architecture.md` for more details.
 
-## General guidance
+This project follows Interpretable Context Methodology (ICM): agent workflows orchestrated through
+workspaces of folder structure, markdown and scripts, each a pipeline of stages with a defined
+input, process and output. Review gates MUST be respected - they are where a human inspects the
+work and hands it back.
 
-- Read `ICM/_config/reference-standard-yagni.md`
+Start at `CONTEXT.md` in the repository root; it routes to the workspace that owns the work.
 
-## Environment and toolchain
+## Context hierarchy
 
-Venv-axi is developed with uv, which MUST be installed globally or in the venv.
+Five layers. Layers 0 to 2 route; layers 3 and 4 carry content. Load a layer only when the work
+has reached it - reading ahead is how a stage acquires context it was designed not to have.
 
-- **Language**: Python >=3.11
-- **OS**: Windows/Linux/WSL2
+| Layer | Role              | Path                            | `immutable` | Budget |
+| ----- | ----------------- | ------------------------------- | ----------- | ------ |
+| 0     | Global identity   | `AGENTS.md`                     | false       | 900    |
+| 1     | Workspace routing | `CONTEXT.md`                    | false       | 300    |
+| 2     | Stage routing     | `ICM/*/CONTEXT.md`              | false       | 500    |
+| 2     | Stage contract    | `ICM/*/stages/**/CONTEXT.md`    | false       | 500    |
+| 3     | Reference material| `ICM/_config/reference-*.md`, both READMEs | true | 2500 |
+| 3     | Desired state     | `specs/**/*.md`                 | false       | -      |
+| 4     | Working artifact  | `plans/*.md`                    | false       | -      |
+| 4     | Working artifact  | `ICM/*/stages/**/output/*.md`   | false       | -      |
 
-## Navigation
+### Frontmatter
 
-- `ICM/` <- Task workspaces
-- `specs/` <- Desired state - what MUST be true (see `specs/architecture.md` for the module map)
-- `plans/` <- Work in flight, frozen at closeout
-- `src/venvaxi/` <- Project sourcecode
-- `tests/` <- Project unit tests
-- `.github/workflows/ci.yml` <- Project CI config
-- `.secrets.baseline` <- Secrets baseline (`detect-secrets`)
-- `AGENTS.md` <- Global project context
-- `CHANGELOG.md` <- Project CHANGELOG
-- `CLAUDE.md` <- Symbolic link to AGENTS.md
-- `CONTEXT.md` <- Task routing
-- `COPYRIGHT` <- Project COPYRIGHT
-- `Justfile` <- Just recipes
-- `LICENSE` <- Project LICENSE
-- `prek.toml` <- Prek pre-commit hook configuration
-- `pyproject.toml` <- Project configuration
-- `README.md` <- Project README
-- `uv.lock` <- Project lockfile
+Every file above carries `context-hierarchy`, `context-hierarchy-role` and `immutable` as tabled,
+plus `maximum-context-tokens` where a budget is given. Beyond those:
 
-## Workspaces
+- **Budgets are ceilings, not suggestions.** A file that outgrows one has started doing another
+  layer's job. Specs are unbudgeted - a spec is as long as the behaviour it declares.
+- **Layer 3** carries `tags: [keyword, ...]`. `immutable: true` marks the factory configuration,
+  amended deliberately, not in passing. Specs are not part of it: the pipeline exists to amend
+  them, and stage 01 owns every change.
+- **`plans/*.md`** carries `status` - `planned | in-progress | done | blocked | cancelled` - plus
+  the query fields `depends`, `specs`, `authors`, `issues` and `pr`, contracted in
+  `plans/README.md`. Every coverage and ripple check reads them.
+- **`ICM/*/stages/**/output/*.md`** carries `status: in-progress | in-review | done`. It is
+  ephemeral scratch, gitignored.
 
-Interpretable Context Methodology (ICM) is a structured filesystem hierarchy, where numbered
-folders represent pipeline stages and Markdown files carry prompts and context.
+## Design principles
 
-Each ICM workspace has a `CONTEXT.md`, which is the main control point.
+1. **One stage, one job** - each stage handles a single step of a workflow.
+2. **Plain text as the interface** - stages communicate through plain text.
+3. **Layered context loading** - agents load only what the current stage needs.
+4. **Output is an edit surface** - stage output can be opened, read, edited and saved.
+5. **Configure the factory, not the product** - new deliverables reuse the same configuration.
 
-## Routing
+## Stage contracts
 
-User prompt tasking and workspace routing information is in the project root `CONTEXT.md`.
+Each stage defines a contract in three parts - what it reads, what it does, what it writes -
+stated in its own `ICM/*/stages/**/CONTEXT.md`, which is the authority for that stage.
 
-In Claude Code, the `/create-feature` command (`.claude/commands/`) is the preferred entry point.
-Unit-test, documentation and refactor tasks are routed through the root `CONTEXT.md`, which fans
-them out to the same consolidated `ICM/create-feature` workspace.
-
-## Spec-driven development
-
-`specs/` is the source of truth for what MUST be true. `plans/` is the work-in-flight record that
-bridges specs to merged code. The `icm-spec` skill carries the full methodology.
-
-- **Specs lead.** Before changing observable behaviour, change the spec; bring code into
-  conformance after. Spec/code drift is a bug, not debt.
-- **`plans/` is the planning system - not your built-in plan mode.** Every chunk of work lands as
-  a file in `plans/` that freezes to `done` as the durable record of what got built. Do not skip
-  it for 'small' changes. Classic trap: an ephemeral plan of 'write spec X, then build it' that
-  ends with neither a reviewed spec nor a plan file - split those into the two real artifacts.
-- **When to author a plan depends on intent:** mapping out a batch of specs -> finish the batch,
-  then propose a *set* of plans; one bounded feature -> spec and plan in tandem; unclear -> ask.
-- **A spec change ripples to its plans.** After editing a spec, review the plans implementing it
-  (`grep -l '<spec-path>' plans/*.md`) and offer to update them.
-
-Run `/audit-spec-drift` to compare `specs/` against the implementation.
-
-## Token efficiency
-
-- Each task is performed within a specific, compartmentalized ICM workspace
-- Each workspace `CONTEXT.md` provides necessary context
-- Avoid unnecessary files listed in `.gitignore`
-
-<!-- venvaxi:begin -->
-
-## VenvAXI
-
-`venvaxi` introspects dependencies for a consuming project - querying exact signatures present in
-that venv, at the exact versions pinned there.
-
-You SHOULD prefer `venvaxi` over API recall from memory, which drifts from the installed
-version, whereas the AXI cannot.
-
-You MUST scan the codebase with your tools and use any findings to drive the AXI, when conducting
-tasks.
-
-### (1) Scan
-
-Locate the import and call sites of the dependency symbol you are working on with your own tools.
-This gives you a bare symbol name (`Console.print`) and its owning package (`rich`).
-
-### (2) Resolve
-
-`venvaxi find Console.print --package rich` converts the bare name into a qualified name
-(`rich.console::Console.print`), indexing the package if needed.
-
-### (3) Inspect
-
-`venvaxi inspect rich.console::Console.print` returns the real signature and docstring for the
-installed version.
-
-## Guidance
-
-Docstrings are truncated by default; add `--docstring` if needed. Add `--refresh` to rebuild a
-stale graph after updating dependencies (`find` requires `--package` alongside `--refresh`).
-
-`doc: (no docstring)` means the symbol defines none of its own - a definitive answer, not a
-failure. Do not retry, and do not substitute a base class's documentation or your own recall.
-
-VenvAXI reports what a symbol *is*, not how to use it - reach for documentation if needed.
-
-Other commands:
-
-- `venvaxi` - status & next-step hints
-- `venvaxi list [--all]` - installed dependencies
-- `venvaxi show <package> [--api]` - metadata|public API symbols
-- `venvaxi tree <package> [--max-depth N]` - nested module tree
-- `venvaxi inspect <module>` - direct children
-- `venvaxi inherits <qualified_name>` - direct subclasses
-- `venvaxi serve` - MCP (STDIO)
-- `venvaxi setup` - register MCP config & refresh
-
-<!-- venvaxi:end -->
+A contract cites the rules it depends on rather than restating them. Where a stage and a reference
+disagree, the reference wins and the contract is what needs fixing.

@@ -1,6 +1,9 @@
 ---
 context-hierarchy: Layer 3
-context-hierarchy-role: Rules, conventions and guidelines
+context-hierarchy-role: Reference material
+immutable: true
+maximum-context-tokens: 2500
+tags: [pytest, unit-testing]
 ---
 
 # Toolchain - `Pytest`
