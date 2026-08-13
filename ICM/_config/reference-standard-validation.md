@@ -63,8 +63,10 @@ failure modes to be enumerated as their own criteria instead of hiding in an 'an
 gracefully' clause.
 
 ```markdown
-- [ ] When a record arrives with a known identifier, the importer shall replace the stored copy.
-- [ ] If a record arrives malformed, then the importer shall reject it and continue the batch.
+- [ ] When a record arrives with a known identifier, the importer shall replace
+      the stored copy.
+- [ ] If a record arrives malformed, then the importer shall reject it and
+      continue the batch.
 ```
 
 ### State-driven and optional feature
@@ -74,8 +76,10 @@ that exists only when some feature, flag or integration is present, which is wha
 criterion honest about configurations it does not cover.
 
 ```markdown
-- [ ] While a batch is in progress, the importer shall reject a second concurrent batch.
-- [ ] Where a schema is registered, the importer shall validate each record against it.
+- [ ] While a batch is in progress, the importer shall reject a second
+      concurrent batch.
+- [ ] Where a schema is registered, the importer shall validate each record
+      against it.
 ```
 
 ### Complex

@@ -7,7 +7,8 @@ maximum-context-tokens: 900
 
 # `venv-axi`
 
-The venv-axi project is an Agent eXperience Interface (AXI) CLI for token-efficient querying of venv dependencies. See `docs/architecture.md` for more details.
+The venv-axi project is an Agent eXperience Interface (AXI) CLI for token-efficient querying of
+venv dependencies. See `docs/architecture.md` for more details.
 
 This project follows Interpretable Context Methodology (ICM): agent workflows orchestrated through
 workspaces of folder structure, markdown and scripts, each a pipeline of stages with a defined
