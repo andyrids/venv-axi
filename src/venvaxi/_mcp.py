@@ -8,6 +8,7 @@ from typing import Any
 
 from venvaxi._core import get_project_root
 from venvaxi._introspect import (
+    MCP_ESCAPE_HATCH,
     SYMBOL_INFO_FIELDS,
     find_symbol,
     get_inheritors,
@@ -97,10 +98,17 @@ def list_packages_tool(include_dev: bool = False) -> str:
     root = get_project_root()
     packages = list_packages(root, include_dev=include_dev)
     if not packages:
+        # NOTE: An empty `include_dev=true` answer is definitive - the
+        # hint names the file that would have to change rather than the
+        # parameter just used, mirroring the CLI's `list --all` branch
+        # (`specs/behaviors/output-contract.md`, Contextual disclosure).
         cname = camel_case(list_packages_tool.__name__)
-        return _with_help(
-            "count: 0", [f"Call `{cname}` with include_dev=true"]
+        hint = (
+            "Edit `pyproject.toml` to declare dependencies"
+            if include_dev
+            else f"Call `{cname}` with include_dev=true"
         )
+        return _with_help("count: 0", [hint])
     rows = [asdict(package) for package in packages]
     table = encode_table("packages", rows, ["name", "version"])
 
@@ -129,19 +137,20 @@ def show_package_tool(name: str) -> str:
 
 def show_package_api_tool(name: str, docstring: bool = False) -> str:
     """Show public API symbols for a package (TOON format)."""
-    symbols = get_public_api(name, docstring=docstring)
+    symbols = get_public_api(
+        name, docstring=docstring, escape_hatch=MCP_ESCAPE_HATCH
+    )
     if not symbols:
         cname = camel_case(get_module_tree_tool.__name__)
         return _with_help("count: 0", [f"Call `{cname}` with name={name}"])
     rows = [asdict(symbol) for symbol in symbols]
     table = encode_table("symbols", rows, SYMBOL_INFO_FIELDS)
-    cname = camel_case(get_symbol_tool.__name__)
-    hint = (
-        f"Call `{cname}` for one symbol's full detail"
-        if docstring
-        else "Re-call with docstring=true for complete docstrings"
+    output = f"count: {len(symbols)}\n{table}"
+    if docstring:
+        return output
+    return _with_help(
+        output, ["Re-call with docstring=true for complete docstrings"]
     )
-    return _with_help(f"count: {len(symbols)}\n{table}", [hint])
 
 
 def show_module_tool(name: str, docstring: bool = False) -> str:
@@ -151,7 +160,9 @@ def show_module_tool(name: str, docstring: bool = False) -> str:
         {
             "qualified_name": node.qualified_name,
             "kind": str(node.kind),
-            "doc": summarize_doc(node.doc, docstring=docstring),
+            "doc": summarize_doc(
+                node.doc, docstring=docstring, escape_hatch=MCP_ESCAPE_HATCH
+            ),
         }
     )
     if not children:
@@ -163,21 +174,20 @@ def show_module_tool(name: str, docstring: bool = False) -> str:
     rows = [
         {
             **child.as_row(),
-            "doc": summarize_doc(child.doc, docstring=docstring),
+            "doc": summarize_doc(
+                child.doc, docstring=docstring, escape_hatch=MCP_ESCAPE_HATCH
+            ),
         }
         for child in children
     ]
     table = encode_table(
         "children", rows, ["name", "kind", "signature", "doc"]
     )
-    cname = camel_case(get_symbol_tool.__name__)
-    hint = (
-        f"Call `{cname}` for one symbol's full detail"
-        if docstring
-        else "Re-call with docstring=true for complete docstrings"
-    )
+    output = f"{header}\nchildren count: {len(children)}\n{table}"
+    if docstring:
+        return output
     return _with_help(
-        f"{header}\nchildren count: {len(children)}\n{table}", [hint]
+        output, ["Re-call with docstring=true for complete docstrings"]
     )
 
 
@@ -189,7 +199,9 @@ def get_symbol_tool(qualified_name: str, docstring: bool = False) -> str:
             "qualified_name": node.qualified_name,
             "kind": str(node.kind),
             "signature": node.signature,
-            "doc": summarize_doc(node.doc, docstring=docstring),
+            "doc": summarize_doc(
+                node.doc, docstring=docstring, escape_hatch=MCP_ESCAPE_HATCH
+            ),
         }
     )
     if docstring:
@@ -205,10 +217,14 @@ def find_symbol_tool(
     """Search cached symbols by name|doc text (TOON format)."""
     nodes = find_symbol(query, limit, package)
     if not nodes:
+        # NOTE: Scope equivalence (`specs/mcp/tools.md`, Hint wording) -
+        # the CLI counterpart names `venvaxi list --all`, so the mirrored
+        # hint carries `include_dev=true` or it sends the caller to a
+        # narrower package list for the same recovery.
         cname = camel_case(list_packages_tool.__name__)
         hint = (
-            f"No match in `{package}` - call `{cname}`"
-            " to check the package name"
+            f"No match in `{package}` - call `{cname}` with"
+            " include_dev=true to check the package name"
             if package
             else "Re-call with package=<package> to index it and search"
         )

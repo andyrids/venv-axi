@@ -4,6 +4,9 @@ import json
 from pathlib import Path
 from unittest import mock
 
+import pytest
+
+from venvaxi import __main__
 from venvaxi._ambient import (
     _update_mcp_json,
     inject_agents_md,
@@ -11,6 +14,8 @@ from venvaxi._ambient import (
     setup_ambient_context,
     skill_markdown,
 )
+from venvaxi._core import ExitCode
+from venvaxi.exceptions import AmbientContextError
 
 AMBIENT = "venvaxi._ambient"
 
@@ -61,6 +66,31 @@ def test_inject_agents_md_replaces_stale_block(tmp_path: Path) -> None:
     assert changed is True
     assert "stale content" not in text
     assert "VenvAXI" in text
+
+
+def test_inject_agents_md_write_failure_raises(tmp_path: Path) -> None:
+    """An `OSError` writing `AGENTS.md` raises `AmbientContextError`
+    naming the destination path, chained from the `OSError`."""
+    with (
+        mock.patch.object(Path, "write_text", side_effect=OSError("denied")),
+        pytest.raises(AmbientContextError) as exc_info,
+    ):
+        inject_agents_md(tmp_path)
+    assert str(tmp_path / "AGENTS.md") in str(exc_info.value)
+    assert ".tmp" not in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, OSError)
+
+
+def test_inject_agents_md_read_failure_raises(tmp_path: Path) -> None:
+    """An `OSError` reading an existing `AGENTS.md` raises
+    `AmbientContextError`."""
+    (tmp_path / "AGENTS.md").write_text("# My project\n", encoding="utf-8")
+    with (
+        mock.patch.object(Path, "read_text", side_effect=OSError("denied")),
+        pytest.raises(AmbientContextError) as exc_info,
+    ):
+        inject_agents_md(tmp_path)
+    assert str(tmp_path / "AGENTS.md") in str(exc_info.value)
 
 
 def test_update_mcp_json_creates_file(tmp_path: Path) -> None:
@@ -149,6 +179,21 @@ def test_update_mcp_json_unavailable_idempotent(tmp_path: Path) -> None:
     assert "other" in json.loads(path.read_text())["mcpServers"]
 
 
+def test_update_mcp_json_write_failure_raises(tmp_path: Path) -> None:
+    """An `OSError` writing an MCP config file raises
+    `AmbientContextError` naming the destination path."""
+    path = tmp_path / ".vscode" / "mcp.json"
+    with (
+        mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"),
+        mock.patch.object(Path, "write_text", side_effect=OSError("denied")),
+        pytest.raises(AmbientContextError) as exc_info,
+    ):
+        _update_mcp_json(path, "servers", available=True)
+    assert str(path) in str(exc_info.value)
+    assert ".tmp" not in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, OSError)
+
+
 def test_skill_markdown_has_frontmatter() -> None:
     """The packaged `skill.md` is a valid skill file."""
     text = skill_markdown.read_text(encoding="utf-8")
@@ -185,6 +230,41 @@ def test_install_skill_overwrites_stale_copy(tmp_path: Path) -> None:
 
     assert changed is True
     assert "stale content" not in path.read_text(encoding="utf-8")
+
+
+def test_install_skill_write_failure_raises(tmp_path: Path) -> None:
+    """An `OSError` writing `SKILL.md` raises `AmbientContextError`
+    naming the destination path."""
+    path = tmp_path / ".claude" / "skills" / "venvaxi" / "SKILL.md"
+    with (
+        mock.patch.object(Path, "write_text", side_effect=OSError("denied")),
+        pytest.raises(AmbientContextError) as exc_info,
+    ):
+        install_skill(tmp_path)
+    assert str(path) in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, OSError)
+
+
+def test_install_skill_read_failure_raises(tmp_path: Path) -> None:
+    """An `OSError` reading an existing `SKILL.md` raises
+    `AmbientContextError` (the packaged copy is read untouched)."""
+    path = tmp_path / ".claude" / "skills" / "venvaxi" / "SKILL.md"
+    path.parent.mkdir(parents=True)
+    path.write_text("stale content\n", encoding="utf-8")
+    real_read_text = Path.read_text
+
+    def deny(self: Path, encoding: str | None = None) -> str:
+        """Deny reads of the installed copy only, not package data."""
+        if self == path:
+            raise OSError("denied")
+        return real_read_text(self, encoding=encoding)
+
+    with (
+        mock.patch.object(Path, "read_text", deny),
+        pytest.raises(AmbientContextError) as exc_info,
+    ):
+        install_skill(tmp_path)
+    assert str(path) in str(exc_info.value)
 
 
 def test_setup_ambient_context_reports_all_artifacts(
@@ -250,3 +330,69 @@ def test_setup_ambient_context_skips_mcp_when_unavailable(
     assert (tmp_path / "AGENTS.md").exists()
     assert not (tmp_path / ".vscode" / "mcp.json").exists()
     assert not (tmp_path / ".mcp.json").exists()
+
+
+def _run_main_setup(root: Path) -> int:
+    """Run `venvaxi setup` through the real entry point over `root`.
+
+    Args:
+        root: The consuming repo root `get_project_root` resolves to.
+
+    Returns:
+        The process exit code raised via `SystemExit`.
+    """
+    with (
+        mock.patch("sys.argv", ["venvaxi", "setup"]),
+        mock.patch("venvaxi.__main__.configure_cli_logging"),
+        mock.patch("venvaxi._cli.get_project_root", return_value=root),
+        mock.patch("venvaxi._cli.mcp_available", return_value=True),
+        mock.patch(f"{AMBIENT}.mcp_available", return_value=True),
+        mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"),
+        pytest.raises(SystemExit) as exc_info,
+    ):
+        __main__.main()
+    return int(exc_info.value.code)
+
+
+def test_main_setup_write_failure_emits_toon_and_exits_1(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """A failed install emits the TOON error block and exits 1 (an
+    `Error` reported), not 2 (venvaxi being broken)."""
+    with mock.patch.object(Path, "write_text", side_effect=OSError("denied")):
+        exit_code = _run_main_setup(tmp_path)
+    out = capsys.readouterr().out
+    assert exit_code == ExitCode.EX_FAILURE
+    assert "error: true" in out
+    assert "help[1]:" in out
+    assert "Unexpected error" not in out
+
+
+def test_main_setup_write_failure_names_path(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """The failed-install message names the path that could not be
+    written."""
+    with mock.patch.object(Path, "write_text", side_effect=OSError("denied")):
+        exit_code = _run_main_setup(tmp_path)
+    # NOTE: TOON quotes the message and escapes backslashes, so the
+    # escaping is reversed before comparing against a Windows path
+    out = capsys.readouterr().out.replace("\\\\", "\\")
+    assert exit_code == ExitCode.EX_FAILURE
+    assert "Cannot install ambient context" in out
+    assert str(tmp_path / "AGENTS.md") in out
+
+
+def test_main_setup_success_unchanged(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """A successful `setup` still emits the artifact mapping and exits
+    0 - the failure bound must not disturb the success path."""
+    exit_code = _run_main_setup(tmp_path)
+    out = capsys.readouterr().out
+    assert exit_code == ExitCode.EX_OK
+    assert "AGENTS.md: true" in out
+    assert '".vscode": true' in out
+    assert '".mcp.json": true' in out
+    assert "SKILL.md: false" in out
+    assert "error: true" not in out

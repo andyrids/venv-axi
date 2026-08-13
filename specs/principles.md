@@ -1,6 +1,8 @@
 ---
 context-hierarchy: Layer 3
-context-hierarchy-role: Desired state (specification)
+context-hierarchy-role: Desired state
+immutable: false
+tags: [principles]
 ---
 
 # Principles
@@ -20,22 +22,49 @@ would rot.
 Source: [axi.md](https://axi.md/), 'The 10 AXI Principles'. These are the design contract every
 command output MUST satisfy.
 
-1. **Token-efficient output** - use TOON format for token savings over JSON.
-2. **Minimal default schemas** - return 3-4 fields per list item by default, not 10+.
-3. **Content truncation** - truncate large text fields with a size-hint suffix (e.g. `truncated,
-   2847 chars total`).
-4. **Pre-computed aggregates** - include derived fields (e.g. `count`) that eliminate round
-   trips.
-5. **Definitive empty states** - an explicit zero-result message on empty output, never silent
-   blank output.
-6. **Structured errors & exit codes** - idempotent mutations, structured errors written to
-   stdout, commands never prompt.
-7. **Ambient context** - installed into the agent's session/hooks via an explicit setup command.
-8. **Content first** - a bare command with no arguments shows live, actionable data, not help
-   text.
-9. **Contextual disclosure** - `help[]` lines after output suggesting concrete next-step command
-   templates.
-10. **Consistent way to get help** - every subcommand offers `--help` as a fallback.
+Each carries its own heading so a spec can cite the principle it means. The wording below is the
+cited source's; the headings are this project's, added so that a reference resolves to the
+principle rather than to the list containing it.
+
+### Principle 1, token-efficient output
+
+Use TOON format for token savings over JSON.
+
+### Principle 2, minimal default schemas
+
+Return 3-4 fields per list item by default, not 10+.
+
+### Principle 3, content truncation
+
+Truncate large text fields with a size-hint suffix (e.g. `truncated, 2847 chars total`).
+
+### Principle 4, pre-computed aggregates
+
+Include derived fields (e.g. `count`) that eliminate round trips.
+
+### Principle 5, definitive empty states
+
+An explicit zero-result message on empty output, never silent blank output.
+
+### Principle 6, structured errors and exit codes
+
+Idempotent mutations, structured errors written to stdout, commands never prompt.
+
+### Principle 7, ambient context
+
+Installed into the agent's session/hooks via an explicit setup command.
+
+### Principle 8, content first
+
+A bare command with no arguments shows live, actionable data, not help text.
+
+### Principle 9, contextual disclosure
+
+`help[]` lines after output suggesting concrete next-step command templates.
+
+### Principle 10, consistent way to get help
+
+Every subcommand offers `--help` as a fallback.
 
 ## Measured token efficiency beats the headline claim
 

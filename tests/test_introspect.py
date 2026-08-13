@@ -15,6 +15,7 @@ from venvaxi._core import get_project_root
 from venvaxi._introspect import (
     DEFAULT_MAX_DEPTH,
     DOCSTRING_ABSENT,
+    MCP_ESCAPE_HATCH,
     SIGNATURE_UNAVAILABLE,
     _doc_of,
     _ensure_installed,
@@ -102,6 +103,35 @@ def test_truncate_long_text_appends_hint() -> None:
     result = truncate("x" * 20, limit=5)
     assert result.startswith("xxxxx... truncated, 20 chars total")
     assert "use --docstring to see complete body" in result
+
+
+def test_truncate_default_suffix_is_byte_identical_cli_spelling() -> None:
+    """The default suffix keeps today's exact CLI wording - the escape
+    hatch names `--docstring`, the flag the CLI caller can pass."""
+    result = truncate("x" * 20, limit=5)
+    assert result == (
+        "xxxxx... truncated, 20 chars total"
+        " - use --docstring to see complete body"
+    )
+
+
+def test_truncate_mcp_escape_hatch_names_parameter() -> None:
+    """The MCP phrasing names `docstring=true`, never the CLI flag -
+    the suffix travels inside the payload, so a hardcoded CLI spelling
+    would teach an MCP caller an invocation it cannot make (#30)."""
+    result = truncate("x" * 20, limit=5, escape_hatch=MCP_ESCAPE_HATCH)
+    assert result == (
+        "xxxxx... truncated, 20 chars total"
+        " - re-call with docstring=true for the complete body"
+    )
+    assert "--docstring" not in result
+
+
+def test_summarize_doc_forwards_escape_hatch() -> None:
+    """`summarize_doc` threads the caller's phrasing into `truncate`."""
+    result = summarize_doc("x" * 20, limit=5, escape_hatch=MCP_ESCAPE_HATCH)
+    assert "docstring=true" in result
+    assert "--docstring" not in result
 
 
 def test_own_doc_normalises_whitespace() -> None:
@@ -241,6 +271,20 @@ def test_get_public_api_truncates_doc_by_default(
     assert greet.doc == "Greets someone."
     assert greet.kind == "function"
     assert greet.signature == "(name: str) -> str"
+
+
+def test_get_public_api_forwards_escape_hatch(
+    fake_module: types.ModuleType,
+) -> None:
+    """`get_public_api` threads the caller's phrasing into truncation -
+    it is the only path by which `showPackageApiTool` payloads reach
+    `truncate`, so a dropped forward reverts #30 for that tool."""
+    symbols = get_public_api(
+        fake_module.__name__, limit=5, escape_hatch=MCP_ESCAPE_HATCH
+    )
+    greet = next(symbol for symbol in symbols if symbol.name == "greet")
+    assert "docstring=true" in greet.doc
+    assert "--docstring" not in greet.doc
 
 
 def test_get_public_api_full_returns_complete_docstring(

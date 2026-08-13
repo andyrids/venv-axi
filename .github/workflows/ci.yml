@@ -4,7 +4,7 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [develop]
   pull_request:
     branches: [main, develop]
 
@@ -16,10 +16,9 @@ jobs:
   ruff-lint:
     runs-on: ubuntu-latest
     steps:
-      # NOTE: `fetch-depth: 0` - `hatch-vcs` derives the version from
-      # git tags, which a shallow clone does not carry.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
+          # `hatch-vcs` git tag versioning
           fetch-depth: 0
 
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
@@ -36,7 +35,7 @@ jobs:
   pytest:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 

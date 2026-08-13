@@ -1,9 +1,13 @@
 ---
+context-hierarchy: Layer 4
+context-hierarchy-role: Working artifact
+immutable: false
 status: done
 depends: []
 specs:
   - specs/behaviors/cache-refresh.md
   - specs/commands/show.md
+authors: []
 issues: [28, 29, 30, 31]
 pr: 32
 ---
