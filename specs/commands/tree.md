@@ -66,7 +66,7 @@ An empty result is success - `count: 0` exits `EX_OK`, per the
 
 **Inherited** - project principles that especially bite here:
 
-- Principle 1, token-efficient output
-  ([The 10 AXI Principles](../principles.md#the-10-axi-principles)) - the flat depth column is
+- [Principle 1, token-efficient output](../principles.md#principle-1-token-efficient-output)
+  - the flat depth column is
   what keeps this a table. Nesting would force per-row keys and lose the header amortization the
   encoding depends on.
