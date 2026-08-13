@@ -2,14 +2,14 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends:
   - plan-record-repair
 specs: []
 authors:
   - specs/commands/find.md
 issues: [28]
-pr:
+pr: 34
 ---
 
 # Plan: Find result ordering contract
@@ -54,19 +54,33 @@ conform without either being described as the reference implementation.
 
 ## Validation
 
-- [ ] When a query exactly matches a symbol name, ignoring case, the `find` command shall return
-      that symbol before any symbol matching only by prefix.
-- [ ] When a query matches one symbol name by prefix and another only within its docstring, the
-      `find` command shall return the prefix match first.
-- [ ] When two matched symbols differ only in kind, the `find` command shall return the `class` or
-      `function` before the other kind.
-- [ ] When two matched symbols are tied on name match and kind, the `find` command shall return
-      the one with the shorter `qualified_name` first.
-- [ ] When two matched symbols are tied on every earlier key, the `find` command shall return them
-      ordered by `qualified_name` ascending.
-- [ ] When the same query is run twice against an unchanged graph, the `find` command shall return
-      identical rows in identical order.
-- [ ] The test suite shall pass.
+- [x] When a query exactly matches a symbol name, ignoring case, the `find` command shall return
+      that symbol before any symbol matching only by prefix. —
+      `tests/test_find_ordering.py::test_find_orders_exact_name_match_before_prefix_match`
+      on both backends; the query differs in case from the name, so 'ignoring case' is exercised
+- [x] When a query matches one symbol name by prefix and another only within its docstring, the
+      `find` command shall return the prefix match first. —
+      `tests/test_find_ordering.py::test_find_orders_prefix_match_before_docstring_only_match`.
+      FTS path only - the `LIKE` backend never matches docstring text, so the criterion is
+      vacuous there rather than uncovered
+- [x] When two matched symbols differ only in kind, the `find` command shall return the `class` or
+      `function` before the other kind. —
+      `tests/test_find_ordering.py::test_find_orders_class_kind_before_module_kind` on both
+      backends
+- [x] When two matched symbols are tied on name match and kind, the `find` command shall return
+      the one with the shorter `qualified_name` first. —
+      `tests/test_find_ordering.py::test_find_orders_shorter_qualified_name_first` on both
+      backends
+- [x] When two matched symbols are tied on every earlier key, the `find` command shall return them
+      ordered by `qualified_name` ascending. —
+      `tests/test_find_ordering.py::test_find_breaks_final_ties_on_qualified_name_ascending`
+      on both backends
+- [x] When the same query is run twice against an unchanged graph, the `find` command shall return
+      identical rows in identical order. —
+      `tests/test_find_ordering.py::test_find_repeats_identical_rows_in_identical_order` on
+      both backends
+- [x] The test suite shall pass. —
+      `uv run coverage run -m pytest` reports `293 passed in 28.73s`
 
 ## Risks / unknowns
 
@@ -82,4 +96,47 @@ conform without either being described as the reference implementation.
 
 ## Notes
 
+**Why one gap is declared unspecified rather than closed.** The two search paths share four of the
+five keys; the FTS backend interposes a `bm25()` relevance score between kind and length, and the
+substring backend has none to offer. Three answers were available: declare the FTS order as the
+contract and make the fallback non-conforming, strip relevance to force agreement, or write the
+gap down. The third was chosen because the first two both change behaviour to make a document
+tidier. 'Unspecified' is a safe answer only where it is recorded as a decision - left silent, a
+caller discovers it as a bug.
+
+**Declaring an order freezes it.** A future ranking improvement now needs a spec amendment rather
+than a quiet query edit. That is the intended cost. The alternative - the state this plan found -
+is a contract an agent cannot rely on and an implementation nobody may change confidently either,
+which is the worst of both.
+
+**`authors:`, not `specs:`, and it matters.** The code already conformed; the spec was written to
+describe it. Listing `find.md` in `specs:` would have made stage 03 verify a code conformance this
+plan never delivered, and verification duly discharged its spec-comparison step vacuously - which
+is announced in the report rather than left to read as a clean pass.
+
+**The tests were shown to discriminate.** Each query was re-run with its targeted `ORDER BY` key
+removed, and all six orders flip. Without that check a fixture can pass because an unrelated key
+happens to sort it correctly, which is the failure mode the Risks section names. The scratch
+harness was not retained - the property it established is recorded here instead.
+
+**The unspecified gap is routed around, not asserted.** The key-4 and key-5 fixtures carry
+identical FTS token statistics, so `bm25` ties exactly and the key under test breaks the tie on
+that path too. This was the constraint most likely to be violated invisibly: a test reading order
+inside the gap would have made one backend's behaviour the contract by the back door, silently
+undoing the decision above.
+
+**Key 2 is FTS-only, and that is a property of the criterion.** The `LIKE` backend matches `name`
+and `qualified_name` and never docstring text, so a docstring-only hit cannot exist there. Not a
+coverage gap - a criterion with no observable form on one path.
+
+**Fixtures are seeded through `SymbolStore.upsert_node`.** That is the production write API, and
+the read path under test is the shipped SQL, so nothing about the ordering is simulated. Walking
+an on-disk fake package would not give per-key control of `name`, `kind`, `doc` and
+`qualified_name`, which is what isolating one sort key at a time requires.
+
 ## Follow-ups
+
+- **Issue** [#20](https://github.com/andyrids/venv-axi/issues/20) - the PyMarkdown tokenizer crash
+  stays open with its workaround; untouched here.
+- **Deferred to** - none.
+- **Tracked as** - none.

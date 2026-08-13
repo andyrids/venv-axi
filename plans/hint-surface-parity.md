@@ -2,7 +2,7 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends:
   - plan-record-repair
 specs:
@@ -11,7 +11,7 @@ specs:
   - specs/mcp/tools.md
 authors: []
 issues: [29, 30, 31]
-pr:
+pr: 34
 ---
 
 # Plan: Hint surface parity
@@ -90,9 +90,10 @@ began, which is why this plan carries a defect F that its first draft did not.
 Step 4's original wording named the `package is None` branch as the one mirroring the CLI's
 `venvaxi list --all`. It is the other branch. The criterion derived from it was wrong in the same
 direction, and would have been satisfiable only by moving a hint that issue #31 does not ask to
-move. Both are corrected here rather than at closeout, because
+move. Both were corrected at that point rather than at closeout, because
 `ICM/_config/reference-standard-validation.md` makes the checkbox text the identifier stage 03
-quotes verbatim - reword during re-entry, not after a verification report exists. None does yet.
+quotes verbatim - reword during re-entry, not after a verification report exists. None did yet;
+the report written against these criteria is the first, so no mapping was broken.
 
 Step 6 is new scope, taken deliberately. `listPackagesTool` is the MCP counterpart of the CLI
 `list` this plan already fixes, and its hint violates the same suppression rule in
@@ -102,30 +103,47 @@ branch and deferring it costs a false verification.
 
 ## Validation
 
-- [ ] When a `list` with `--all` returns no results, the `list` command shall emit `count: 0` and
-      a hint naming `pyproject.toml`, and shall not name `--all`.
-- [ ] When a `list` without `--all` returns no results, the `list` command shall emit `count: 0`
-      and a hint naming `--all`.
-- [ ] When a docstring is truncated on the CLI, the size hint shall name `--docstring`.
-- [ ] When a docstring is truncated in an MCP tool payload, the size hint shall name
-      `docstring=true` and shall not name `--docstring`.
-- [ ] When `findSymbolTool` is called with `package` and matches nothing, the returned hint shall
-      name `listPackagesTool` with `include_dev=true`.
-- [ ] When `findSymbolTool` is called without `package` and matches nothing, the returned hint
-      shall name `package=<package>` and shall not name `listPackagesTool`.
-- [ ] When `listPackagesTool` is called with `include_dev=true` and returns no packages, the
-      returned hint shall name `pyproject.toml` and shall not name `include_dev=true`.
-- [ ] When `listPackagesTool` is called without `include_dev` and returns no packages, the
-      returned hint shall name `include_dev=true`.
-- [ ] Where `docstring=true` is passed to `showPackageApiTool`, the returned payload shall carry
-      no `help[]` footer.
-- [ ] Where `docstring=true` is passed to `showModuleTool`, the returned payload shall carry no
-      `help[]` footer.
-- [ ] Where `--docstring` is passed to `show --api` or to `inspect`, the CLI shall carry no
-      `help[]` footer, unchanged by this plan.
-- [ ] The `## Divergences from the CLI` list in `specs/mcp/tools.md` shall contain no entry
-      describing footer suppression under `docstring=true`.
-- [ ] The test suite shall pass.
+- [x] When a `list` with `--all` returns no results, the `list` command shall emit `count: 0` and
+      a hint naming `pyproject.toml`, and shall not name `--all`. —
+      `tests/test_cli.py::test_command_list_empty_all_hint_names_pyproject`
+- [x] When a `list` without `--all` returns no results, the `list` command shall emit `count: 0`
+      and a hint naming `--all`. —
+      `tests/test_cli.py::test_command_list_empty_hint_names_all`
+- [x] When a docstring is truncated on the CLI, the size hint shall name `--docstring`. —
+      `tests/test_introspect.py::test_truncate_default_suffix_is_byte_identical_cli_spelling`
+- [x] When a docstring is truncated in an MCP tool payload, the size hint shall name
+      `docstring=true` and shall not name `--docstring`. —
+      `tests/test_introspect.py::test_truncate_mcp_escape_hatch_names_parameter` and
+      `tests/test_mcp.py::test_show_module_tool_truncation_names_mcp_escape_hatch`
+- [x] When `findSymbolTool` is called with `package` and matches nothing, the returned hint shall
+      name `listPackagesTool` with `include_dev=true`. —
+      `tests/test_mcp.py::test_find_symbol_tool_empty_with_package_names_list_tool`
+- [x] When `findSymbolTool` is called without `package` and matches nothing, the returned hint
+      shall name `package=<package>` and shall not name `listPackagesTool`. —
+      `tests/test_mcp.py::test_find_symbol_tool_empty_without_package_hints_indexing`
+- [x] When `listPackagesTool` is called with `include_dev=true` and returns no packages, the
+      returned hint shall name `pyproject.toml` and shall not name `include_dev=true`. —
+      `tests/test_mcp.py::test_list_packages_tool_empty_all_hint_names_pyproject`
+- [x] When `listPackagesTool` is called without `include_dev` and returns no packages, the
+      returned hint shall name `include_dev=true`. —
+      `tests/test_mcp.py::test_list_packages_tool_empty_hint_names_include_dev`
+- [x] Where `docstring=true` is passed to `showPackageApiTool`, the returned payload shall carry
+      no `help[]` footer. —
+      `tests/test_mcp.py::test_show_package_api_tool_docstring_suppresses_footer`
+- [x] Where `docstring=true` is passed to `showModuleTool`, the returned payload shall carry no
+      `help[]` footer. —
+      `tests/test_mcp.py::test_show_module_tool_docstring_suppresses_footer`
+- [x] Where `--docstring` is passed to `show --api` or to `inspect`, the CLI shall carry no
+      `help[]` footer, unchanged by this plan. —
+      `tests/test_cli.py::test_command_show_api_docstring_suppresses_footer` and
+      `tests/test_cli.py::test_command_inspect_docstring_suppresses_footer`
+- [x] The `## Divergences from the CLI` list in `specs/mcp/tools.md` shall contain no entry
+      describing footer suppression under `docstring=true`. —
+      inspection of the section shows four bullets
+      (`refresh`, split `inspect`, split `show`, fixed fields); the only `docstring` mentions in
+      that span are the prose declaring suppression to be parity
+- [x] The test suite shall pass. —
+      `uv run coverage run -m pytest` reports `293 passed in 28.73s`
 
 ## Risks / unknowns
 
@@ -143,4 +161,47 @@ branch and deferring it costs a false verification.
 
 ## Notes
 
+**Why aligning beat listing.** Issue #29 offered both: list the `docstring=true` footer divergence,
+or align the tools. Aligning was chosen because the divergence list is the file's own defence
+against drift, and the shorter it is the more it is read. Listing would have grown it by two
+entries while leaving a third - the false `getSymbolTool` one - to be deleted anyway. The cost is
+real: MCP callers lose a useful pointer (`Call getSymbolTool for one symbol's full detail`) that
+the CLI never offered. `output-contract.md#contextual-disclosure` gained a rule barring an
+unrelated hint from being back-filled to keep the footer populated, so that loss cannot be quietly
+undone later.
+
+**A spec/spec conflict, not a code bug.** `list.md` required the unconditional `--all` empty hint;
+`output-contract.md` forbids hinting a flag already set. The code satisfied the first by breaking
+the second, so no amount of code reading would have settled it. Invariant 2 says fix the code or
+amend the spec; here one spec had to yield first, and the cross-cutting behaviour won because a
+command spec that contradicts an invariant is the narrower error.
+
+**`pyproject.toml` is not a runnable command,** and Contextual disclosure asks for runnable next
+steps. Taken deliberately on both surfaces: an empty `list --all` has no broader query left, so
+naming the file that would have to change is more honest than inventing a command that would not
+help. Recorded here because it is a knowing exception, not an oversight.
+
+**Re-entry to stage 01 during stage 02, twice over.** Recorded in full after the Approach list. In
+short: the techspec named the wrong branch for fix C, and the implementing agent reported the
+mismatch rather than contorting the code to satisfy a defective criterion. The same pass surfaced
+defect F. Both were absorbed by amending the plan and techspec before any verification report
+existed, which is what kept the criterion-to-report mapping intact.
+
+**A third artifact error, found at verification.** The techspec placed the escape-hatch constants
+in `_constants.py` "beside `DEFAULT_TRUNCATE_LIMIT`". That constant is in `_introspect.py`, and
+`_constants.py` is an attribution-scoped, encode-only subset of the upstream TOON constants
+carrying a third-party licence header - project hint wording does not belong in it. The code was
+right and the directive was wrong; the directive was corrected. Three artifact errors in one run,
+all caught because implementation was told to report rather than comply.
+
+**The durable part is the tests.** No test asserted any hint wording anywhere before this plan,
+which is exactly why four of these five defects survived a green suite for a whole release. The 14
+assertions are the bridge `specs/README.md`'s spec-anchored stance asks for, and they are what
+stops the next hint from drifting silently.
+
 ## Follow-ups
+
+- **Issue** [#20](https://github.com/andyrids/venv-axi/issues/20) - the PyMarkdown tokenizer crash
+  is untouched here and stays open with its workaround.
+- **Deferred to** - none.
+- **Tracked as** - none.
