@@ -2,12 +2,12 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs: []
 authors: []
 issues: []
-pr:
+pr: 34
 ---
 
 # Plan: Repair the plan record
@@ -92,10 +92,20 @@ documents depend on: `plans/README.md`'s freeze rule, and issues #28 to #31, eac
 
 ## Notes
 
-**Status is `in-progress`, not `done`, and that is deliberate.** `plans/README.md` calls closeout
-'the last commit before merge' and asks for `pr:` at the same moment. Every Validation criterion
-above is evidenced and ticked, but no PR exists yet, so flipping to `done` would freeze a record
-whose `pr:` is empty. The status flips when the PR number is real.
+**Closeout order.** This plan held at `in-progress` with every box ticked until
+[PR #34](https://github.com/andyrids/venv-axi/pull/34) existed, rather than flipping to `done`
+against an empty `pr:`. The PR was opened from the already-pushed branch and the closeout commit
+written after it, so `pr:` carries a real number and this stays what `plans/README.md` calls it -
+the last commit before merge. The same order was used by
+[spec-conformance-sweep](spec-conformance-sweep.md), for the same reason: committing closeout
+first and patching `pr:` afterwards ends with a frozen plan whose final edit lands after the
+record it freezes.
+
+**One PR, five plans.** `plans/README.md` sets no one-plan-per-PR rule, and three spec files -
+`list.md`, `find.md` and `mcp/tools.md` - are edited by two plans each, in different sections.
+Splitting would have produced either stacked PRs that must merge in a forced order, or artificial
+conflicts between siblings. All five plans therefore carry `pr: 34`. The commit history is the
+per-unit boundary instead, one commit per plan.
 
 **Why `specs:` and `authors:` are both empty.** Express asks for `specs:` to name what the change
 conforms to, and this change conforms to nothing under `specs/` - `plans/` is not a surface specs

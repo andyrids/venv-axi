@@ -2,7 +2,7 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends:
   - plan-record-repair
 specs:
@@ -10,7 +10,7 @@ specs:
   - specs/behaviors/output-contract.md
 authors: []
 issues: []
-pr:
+pr: 34
 ---
 
 # Plan: Setup ambient-context error taxonomy
@@ -60,19 +60,31 @@ the defect observable rather than cosmetic.
 
 ## Validation
 
-- [ ] If a write to `AGENTS.md` fails with an `OSError`, then the `setup` command shall raise
-      `AmbientContextError`.
-- [ ] If a write to an MCP config file fails with an `OSError`, then the `setup` command shall
-      raise `AmbientContextError`.
-- [ ] If a write to `SKILL.md` fails with an `OSError` under `--skill`, then the `setup` command
-      shall raise `AmbientContextError`.
-- [ ] If ambient context cannot be installed, then the `setup` command shall emit the TOON error
-      block and exit `1`, not `2`.
-- [ ] If ambient context cannot be installed, then the message shall name the path that could not
-      be written.
-- [ ] When ambient context installs successfully, the `setup` command shall emit the artifact
-      mapping and exit `0`, unchanged by this plan.
-- [ ] The test suite shall pass.
+- [x] If a write to `AGENTS.md` fails with an `OSError`, then the `setup` command shall raise
+      `AmbientContextError`. —
+      `tests/test_ambient.py::test_inject_agents_md_write_failure_raises`, with
+      `test_inject_agents_md_read_failure_raises` covering the read boundary
+- [x] If a write to an MCP config file fails with an `OSError`, then the `setup` command shall
+      raise `AmbientContextError`. —
+      `tests/test_ambient.py::test_update_mcp_json_write_failure_raises`
+- [x] If a write to `SKILL.md` fails with an `OSError` under `--skill`, then the `setup` command
+      shall raise `AmbientContextError`. —
+      `tests/test_ambient.py::test_install_skill_write_failure_raises`, with
+      `test_install_skill_read_failure_raises` covering the read boundary
+- [x] If ambient context cannot be installed, then the `setup` command shall emit the TOON error
+      block and exit `1`, not `2`. —
+      `tests/test_ambient.py::test_main_setup_write_failure_emits_toon_and_exits_1`,
+      driving the real entry point
+- [x] If ambient context cannot be installed, then the message shall name the path that could not
+      be written. —
+      `tests/test_ambient.py::test_main_setup_write_failure_names_path`, which also pins
+      that the destination is named rather than the `.tmp` file
+- [x] When ambient context installs successfully, the `setup` command shall emit the artifact
+      mapping and exit `0`, unchanged by this plan. —
+      `tests/test_ambient.py::test_main_setup_success_unchanged`, plus the four pre-existing
+      `test_setup_ambient_context_*` tests passing unmodified
+- [x] The test suite shall pass. —
+      `uv run coverage run -m pytest` reports `293 passed in 28.73s`
 
 ## Risks / unknowns
 
@@ -88,4 +100,49 @@ the defect observable rather than cosmetic.
 
 ## Notes
 
+**The spec delta was empty by design.** `specs/commands/setup.md` has declared
+`AmbientContextError` for a failed install since it was written, and
+`output-contract.md#exit-codes` has always reserved exit `2` for venvaxi being broken. Nothing
+needed amending - Invariant 2 admits fixing the code or the spec, and here the spec was already
+right. Recorded because an empty spec delta at stage 01 normally means something was missed, and
+this one did not.
+
+**Why the exclusions are exclusions.** Two things were deliberately left raising as they were, and
+both would look like gaps to a later reader:
+
+1. `json.JSONDecodeError` in `_update_mcp_json` still warns and continues. A malformed
+   pre-existing config is not a failure to install, and treating it as one would make `setup`
+   refuse to run against a repo whose `.mcp.json` some other tool had mangled.
+2. The `read_text` calls against the packaged resources `ambient_markdown` and `skill_markdown`
+   are unwrapped. Failing to read installed package data genuinely *is* venvaxi being broken, so
+   exit `2` is the correct classification. Wrapping them would have re-emptied the very
+   distinction this plan exists to restore.
+
+**Bound tightness was the design constraint.** A single `try` around `setup_ambient_context` would
+have satisfied every criterion here and been wrong: it would convert any `OSError` from anywhere
+below, including ones that are not installation failures, and the message could name no path. The
+`_install_boundary(path)` helper wraps one filesystem call per site, which is what lets the error
+name the artifact that failed rather than reporting that something did.
+
+**Windows drove two implementation choices.** Failure is simulated by monkeypatching
+`Path.write_text` / `Path.read_text` rather than by `chmod`, which does not deny writes the same
+way here as on POSIX; and the path assertion reverses TOON's backslash escaping before comparing.
+Both are recorded so a future contributor does not "simplify" them back.
+
+**Test placement is a known compromise.** The CLI-level assertions live in `tests/test_ambient.py`
+rather than `tests/test_cli.py`, because a parallel agent owned that file during this run. They
+drive `venvaxi.__main__.main` directly, so coverage is equivalent, but the natural home is
+`test_cli.py` and moving them is free whenever that file is next open.
+
+**This gap survived a full release.** The existing setup tests covered only success paths, so a
+declared-but-never-raised exception sat behind a green suite. That pattern - a spec's failure mode
+with no test standing behind it - is worth grepping for elsewhere.
+
 ## Follow-ups
+
+- **Issue** [#20](https://github.com/andyrids/venv-axi/issues/20) - the PyMarkdown tokenizer crash
+  stays open with its workaround; untouched here.
+- **Deferred to** - none.
+- **Tracked as** - the two CLI-level tests noted above sit in `tests/test_ambient.py` rather than
+  `tests/test_cli.py`. No plan owns relocating them and none is proposed; it is a tidy-up, not a
+  defect.
