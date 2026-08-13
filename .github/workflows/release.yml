@@ -3,8 +3,9 @@ name: Release
 # Builds & publishes `venv-axi` to PyPI via Trusted Publishing (OIDC)
 on:
   release:
-    # Prerelease & Published only
-    types: [published, prerelease]
+    # NOTE: `published` fires for a prerelease too; `prereleased` is kept so a
+    # release later demoted to prerelease still builds.
+    types: [published, prereleased]
 
 jobs:
   build:

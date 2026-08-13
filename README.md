@@ -115,9 +115,9 @@ ICM replaces framework-level orchestration with filesystem structure. Numbered f
 stages. Plain markdown files carry prompts and context that tell a single AI agent what role to
 play at each step.
 
-The system is self-documenting - read `AGENTS.md` (symlink -> `CLAUDE.md`), which provide
-development context. Navigate to `CONTEXT.md` as per `AGENTS.md` [`Routing`](AGENTS.md#routing)
-instructions to see the necessary routing, context and reference that an agent would follow.
+The system is self-documenting - read [`AGENTS.md`](AGENTS.md) (symlink -> `CLAUDE.md`), which
+provides development context and routes to [`CONTEXT.md`](CONTEXT.md) for the workspace, stage and
+reference material an agent would follow.
 
 Context reference and guidance markdown files are kept in `ICM/_config` as living documents and
 are routed into the agent context where necessary.
