@@ -1,6 +1,8 @@
 ---
 context-hierarchy: Layer 3
-context-hierarchy-role: Desired state (specification)
+context-hierarchy-role: Desired state
+immutable: false
+tags: [principles]
 ---
 
 # Principles

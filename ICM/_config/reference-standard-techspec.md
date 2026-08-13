@@ -1,6 +1,9 @@
 ---
 context-hierarchy: Layer 3
-context-hierarchy-role: Rules, conventions and guidelines
+context-hierarchy-role: Reference material
+immutable: true
+maximum-context-tokens: 2500
+tags: [techspec, SDD]
 ---
 
 # Technical spec: [slug]
@@ -9,6 +12,8 @@ The techspec is the *how*. It is ephemeral scratch, gitignored, and rebuilt per 
 
 It does not carry the feature narrative - that belongs in `specs/**`, which is permanent - and it
 does not carry the acceptance criteria, which belong in a plan Validation checklist.
+
+It opens with the Layer 4 stage output frontmatter in `reference-standard-naming.md`, then:
 
 ## (1) Spec delta
 
@@ -20,10 +25,11 @@ plan at `plans/[slug].md`. Do not restate the spec here - point at it.}}
 {{List specific files within the project that require modification or creation. List required
 external dependencies.}}
 
-## (3) CLI interface and UX
+## (3) Interface and UX
 
-{{Detail how the feature interacts with the terminal. Specify argparse changes, STDOUT/STDERR
-behavior, logging and rich console output formatting.}}
+{{Detail how the feature meets its interface - terminal, API or tool surface. Specify entry-point
+changes, output stream behaviour, logging and formatting, per the conventions in
+`reference-toolchain-*.md`.}}
 
 ## (4) Implementation directives
 
@@ -32,8 +38,10 @@ function flow.}}
 
 ## (5) Toolchain and error handling
 
-{{Specify requirements to satisfy Mypy and Ruff strictness. Anticipate edge cases and define which
-`venvaxi.exceptions` should be raised.}}
+{{Specify requirements to satisfy the linters and type checkers named in
+`reference-toolchain-*.md`. Edge cases live in the spec delta as `If <trigger>, then` criteria -
+do not restate them here. Define only the implementation-side error handling: which package
+exceptions are raised, and where.}}
 
 ## (6) Verification requirements
 

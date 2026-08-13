@@ -1,6 +1,8 @@
 ---
 context-hierarchy: Layer 3
-context-hierarchy-role: Desired state (specification)
+context-hierarchy-role: Desired state
+immutable: false
+tags: [behavior, cache, refresh]
 ---
 
 # Behavior: Cache and refresh
@@ -20,27 +22,35 @@ never by file hash or incremental parse.
 ### Cache identity
 
 One SQLite database per consuming project at `~/.venvaxi/<hash>.db`, where `<hash>` is a
-16-character SHA-256 digest of the resolved project root path.
+16-character SHA-256 digest of the resolved project root path. Two checkouts of the same project
+at different paths therefore hold independent caches.
+
+### Project root resolution
+
+The consuming project root shall resolve to the nearest ancestor of the working directory
+containing a `pyproject.toml`, falling back to the venv's parent directory. If no root resolves,
+then the command shall raise `ProjectRootNotFoundError`.
 
 ### Validity
 
-A cached graph is valid when **all three** hold:
+The store shall treat a cached graph as valid only when **all three** hold:
 
 1. The store's schema version equals the current one.
 2. The recorded build version equals the currently installed distribution version.
 3. The recorded build depth is **at least** the depth the current query requires.
 
-Depth is part of the check by necessity: a graph built at `--max-depth 1` MUST NOT satisfy a
-later `--max-depth 4` request, which would silently return a shallow tree and read as a
-definitive empty answer.
+Depth is part of the check by necessity: if a graph was built at `--max-depth 1`, then it shall
+not satisfy a later `--max-depth 4` request, which would silently return a shallow tree and read
+as a definitive empty answer.
 
-A package with no recorded build is invalid, and is built on first query.
+If a package has no recorded build, then the store shall treat it as invalid and build it on
+first query.
 
 ### Schema version covers the builder, not just the shape
 
-The schema version is stored as SQLite's `PRAGMA user_version`. On mismatch the tables are
-dropped and rebuilt from scratch - cache databases are disposable derived data, so there are no
-migrations.
+The schema version is stored as SQLite's `PRAGMA user_version`. If the schema version mismatches,
+then the store shall drop and rebuild the tables from scratch - cache databases are disposable
+derived data, so there are no migrations.
 
 **It MUST be bumped whenever the *content* a walk records changes, not only when a table's
 columns change.** Node fields are computed at walk time and frozen into the store, so a change to
@@ -56,12 +66,12 @@ trigger, not 'did I change the table?'
 
 ### Rebuild
 
-`--refresh` forces a rebuild even when the cache is valid. Before walking, the package's existing
-nodes are cleared, so a failed introspection cannot leave a half-built graph behind that would
-then be treated as valid.
+When `--refresh` is given, the store shall rebuild even when the cache is valid. Before walking,
+the package's existing nodes shall be cleared, so a failed introspection cannot leave a
+half-built graph behind that would then be treated as valid.
 
-A build that raises rolls back and closes the store, then re-raises. A SQLite-level failure is
-re-raised as `StoreError`.
+If a build raises, then the store shall roll back, close, and re-raise. If a SQLite-level failure
+occurs, then it shall be re-raised as `StoreError`.
 
 ### Lazy-depth model
 
@@ -79,6 +89,14 @@ whose source changed, or a suspected corrupt graph.
 
 `find` requires `--package` alongside `--refresh`, because there is no package scope to rebuild
 otherwise.
+
+## Out of scope
+
+- **File-hash and incremental invalidation** - the Rule rejects them by name. Never - caches are
+  disposable derived data, and version-plus-depth is the whole contract; a file-watching scheme
+  would buy precision the disposable model does not need.
+- **Cache eviction** - no size cap or LRU policy. No future spec is planned; the databases are
+  small, per-project, and safe to delete.
 
 ## Principles
 

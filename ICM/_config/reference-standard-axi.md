@@ -1,7 +1,9 @@
 ---
 context-hierarchy: Layer 3
-context-hierarchy-role: Pointer - content relocated
-context-hierarchy-scope: Feature-scoped - read only when working on the axi CLI (src/venvaxi)
+context-hierarchy-role: Reference material
+immutable: true
+maximum-context-tokens: 2500
+tags: [AXI, CLI]
 ---
 
 # Standard - AXI principles

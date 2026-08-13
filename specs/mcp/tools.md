@@ -1,11 +1,18 @@
 ---
 context-hierarchy: Layer 3
-context-hierarchy-role: Desired state (specification)
+context-hierarchy-role: Desired state
+immutable: false
+tags: [mcp, tools, parity]
 ---
 
 # MCP: Tools
 
 The MCP surface exposed by `venvaxi serve`, under server name `VenvAXI`.
+
+This file consolidates all eight tools as a deliberate exception to the one-file-per-unit rule in
+`ICM/_config/reference-standard-spec.md`. Every tool mirrors a CLI command whose behaviour is
+already specified in `specs/commands/`; splitting this file eight ways would duplicate those
+specs eight times over, which the same standard warns against.
 
 ## Contract
 
@@ -13,19 +20,20 @@ Tool functions are defined in snake_case and **registered in camelCase**
 (`get_module_tree_tool` -> `getModuleTreeTool`). The registered name is the contract; renaming a
 Python function renames an MCP tool.
 
-Every tool returns **TOON text**, not JSON, and mirrors the CLI's
+Every tool shall return **TOON text**, not JSON, and shall mirror the CLI's
 [output contract](../behaviors/output-contract.md): `count:` aggregates, definitive empty states
 (including the `(no docstring)` marker), truncation at 200 characters, and a `help[]` footer.
 
-`Error` is caught per tool and returned as the same TOON error block the CLI emits. It MUST NOT
-escape into FastMCP's generic error path, which would present a different failure shape to the
-agent depending on which surface it happened to be using.
+If an `Error` is raised inside a tool, then the tool shall catch it and return the same TOON
+error block the CLI emits. It shall not escape into FastMCP's generic error path, which would
+present a different failure shape to the agent depending on which surface it happened to be
+using.
 
-**No exception escapes**, not just no `Error`. An unexpected exception is caught at the same
-boundary and returned as the `Unexpected error:` block the CLI renders, logged to STDERR with its
-traceback. Catching only `Error` leaves the surfaces divergent in exactly the case where the
-agent has least to go on - the CLI reports a fault it can read, the MCP caller gets a transport
-error carrying no TOON at all.
+**No exception escapes**, not just no `Error`. If an unexpected exception is raised, then the
+tool shall catch it at the same boundary, return the `Unexpected error:` block the CLI renders,
+and log it to STDERR with its traceback. Catching only `Error` leaves the surfaces divergent in
+exactly the case where the agent has least to go on - the CLI reports a fault it can read, the
+MCP caller gets a transport error carrying no TOON at all.
 
 ## Tools
 
@@ -58,15 +66,23 @@ These are deliberate and MUST be preserved:
 
 ## Hint wording
 
-Empty-state and next-step hints are phrased for the MCP caller - 'Call `getSymbolTool` ...', not
-'Run `venvaxi inspect` ...'. A hint naming a shell command is useless to a tool-calling agent,
-and mixing the two teaches the wrong invocation surface.
+Empty-state and next-step hints shall be phrased for the MCP caller - 'Call `getSymbolTool` ...',
+not 'Run `venvaxi inspect` ...'. A hint naming a shell command is useless to a tool-calling
+agent, and mixing the two teaches the wrong invocation surface.
 
-Hints reference other tools by deriving the camelCase name from the function, so a rename cannot
-leave a stale hint pointing at a tool that no longer exists.
+Hints shall reference other tools by deriving the camelCase name from the function, so a rename
+cannot leave a stale hint pointing at a tool that no longer exists.
 
-A hint MUST name the tool that performs the action its sentence describes. Deriving the name
+A hint shall name the tool that performs the action its sentence describes. Deriving the name
 correctly from the wrong function passes the rule above and still misdirects the caller.
+
+## Out of scope
+
+- **MCP resources and prompts** - the surface is tools only; no resource or prompt is served.
+  No future spec is planned.
+- **Mutating and lifecycle tools** - the eight tools cover the query surface; `setup` and
+  `serve` remain CLI-only. Never - an MCP tool that mutates the consuming repo would run without
+  the explicit invocation principle 7 requires.
 
 ## Principles
 

@@ -1,7 +1,9 @@
 ---
 context-hierarchy: Layer 3
-context-hierarchy-role: Rules, conventions and guidelines
-context-hierarchy-scope: Feature-scoped - read only when working on the axi TOON encoder (src/venvaxi)
+context-hierarchy-role: Reference material
+immutable: true
+maximum-context-tokens: 2500
+tags: [TOON, syntax]
 ---
 
 # Standard - TOON syntax

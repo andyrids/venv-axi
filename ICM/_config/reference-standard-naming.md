@@ -1,6 +1,9 @@
 ---
 context-hierarchy: Layer 3
-context-hierarchy-role: Rules, conventions and guidelines
+context-hierarchy-role: Reference material
+immutable: true
+maximum-context-tokens: 2500
+tags: []
 ---
 
 # Standard - naming conventions
@@ -34,3 +37,20 @@ only thing correlating a run's artifacts - it MUST match the plan slug.
 | Implementation report | `[slug]-code.md` | `rich-progress-bar-code.md`   |
 | Verification report   | `[slug]-test.md` | `rich-progress-bar-test.md`   |
 | Documentation report  | `[slug]-docs.md` | `rich-progress-bar-docs.md`   |
+
+### Frontmatter
+
+All four open with the same Layer 4 block, whatever the stage:
+
+```yaml
+---
+context-hierarchy: Layer 4
+context-hierarchy-role: Working artifact
+immutable: false
+status: in-progress   # in-progress | in-review | done
+---
+```
+
+`status` tracks the artifact, not the work: `in-progress` while the stage is writing it,
+`in-review` when it is presented at the stage gate, `done` once accepted. A stage that reads an
+upstream output still at `in-review` is reading something the human has not signed off.
