@@ -61,8 +61,14 @@ These are deliberate and MUST be preserved:
   `showPackageApiTool` (API), rather than a boolean `--api` switch.
 - **`showPackageTool` returns fixed fields** (`name`, `version`, `location`); there is no
   `--fields` equivalent.
-- **`getSymbolTool` omits the `help[]` footer when `docstring=True`**, since the only hint it
-  would offer is the flag already set.
+
+Footer suppression under `docstring=true` is **not** on this list. `getSymbolTool`,
+`showPackageApiTool` and `showModuleTool` shall each omit the `help[]` footer when `docstring` is
+set, which is exactly what `inspect --docstring` and `show --api --docstring` do - parity, and
+already required of both surfaces by the suppression rule in
+[Output contract](../behaviors/output-contract.md#contextual-disclosure). It was listed here once
+as a `getSymbolTool` divergence; it never was one, and listing parity as divergence is as
+misleading as omitting a real one.
 
 ## Hint wording
 
@@ -76,20 +82,30 @@ cannot leave a stale hint pointing at a tool that no longer exists.
 A hint shall name the tool that performs the action its sentence describes. Deriving the name
 correctly from the wrong function passes the rule above and still misdirects the caller.
 
+Where a hint mirrors a CLI hint, it shall carry the parameters that make the two **equivalent in
+scope**, not merely equivalent in tool. Naming the right tool with the wrong default sends the two
+surfaces to differently-scoped answers for the same recovery, which is the harder failure to see -
+the caller gets a plausible result and no signal that it was narrower than the one the CLI would
+have given.
+
+Truncation suffixes carry the same obligation as footers, and are specified with the truncation
+rule in [Output contract](../behaviors/output-contract.md#truncation).
+
 ## Out of scope
 
 - **MCP resources and prompts** - the surface is tools only; no resource or prompt is served.
   No future spec is planned.
 - **Mutating and lifecycle tools** - the eight tools cover the query surface; `setup` and
   `serve` remain CLI-only. Never - an MCP tool that mutates the consuming repo would run without
-  the explicit invocation principle 7 requires.
+  the explicit invocation
+  [principle 7, ambient context](../principles.md#principle-7-ambient-context) requires.
 
 ## Principles
 
 **Inherited** - project principles that especially bite here:
 
-- Principle 9, contextual disclosure
-  ([The 10 AXI Principles](../principles.md#the-10-axi-principles)) - it applies to the MCP
+- [Principle 9, contextual disclosure](../principles.md#principle-9-contextual-disclosure)
+  - it applies to the MCP
   surface too. `venvaxi setup` registers MCP as the primary ambient integration, so an
   MCP-driven agent MUST see the same quality of next-step hints a CLI-driven one does.
 

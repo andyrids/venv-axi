@@ -46,6 +46,23 @@ _VALID_NAME_RE = re.compile(r"^[A-Za-z0-9_]([A-Za-z0-9._-]*[A-Za-z0-9_])?$")
 DEFAULT_TRUNCATE_LIMIT = 200
 DEFAULT_MAX_DEPTH = 2
 
+CLI_ESCAPE_HATCH = "use --docstring to see complete body"
+"""Truncation escape-hatch clause, spelled for the CLI surface.
+
+NOTE: The escape hatch must be named in the spelling of the surface the
+caller is on (`specs/behaviors/output-contract.md`, Truncation) - this
+is the CLI flag spelling, and the default so existing callers keep
+today's byte-identical suffix.
+"""
+
+MCP_ESCAPE_HATCH = "re-call with docstring=true for the complete body"
+"""Truncation escape-hatch clause, spelled for the MCP surface.
+
+NOTE: MCP tools pass this at each `summarize_doc`/`get_public_api` call
+site - the suffix travels inside the payload, so the CLI default would
+otherwise teach an MCP caller a flag it cannot pass.
+"""
+
 SIGNATURE_UNAVAILABLE = "(signature unavailable)"
 """Marker recorded when `inspect.signature` fails on a callable.
 
@@ -82,7 +99,12 @@ SYMBOL_INFO_FIELDS = tuple(field.name for field in fields(SymbolInfo))
 """The ordered `SymbolInfo` field names, forming TOON tabular headers."""
 
 
-def truncate(text: str, limit: int = DEFAULT_TRUNCATE_LIMIT) -> str:
+def truncate(
+    text: str,
+    limit: int = DEFAULT_TRUNCATE_LIMIT,
+    *,
+    escape_hatch: str = CLI_ESCAPE_HATCH,
+) -> str:
     """Truncate text to a set number of characters determined by `limit`.
 
     NOTE: AXI principle 3 (content truncation with size hints) - see
@@ -91,6 +113,8 @@ def truncate(text: str, limit: int = DEFAULT_TRUNCATE_LIMIT) -> str:
     Args:
         text: The text to truncate.
         limit: Maximum number of characters to keep. Defaults to 200.
+        escape_hatch: The size hint's escape-hatch clause, spelled for
+            the caller's surface. Defaults to the CLI spelling.
 
     Returns:
         `text` unchanged or truncated with an appended size hint.
@@ -100,12 +124,16 @@ def truncate(text: str, limit: int = DEFAULT_TRUNCATE_LIMIT) -> str:
 
     return (
         f"{text[:limit]}... truncated, {len(text)} chars total"
-        " - use --docstring to see complete body"
+        f" - {escape_hatch}"
     )
 
 
 def summarize_doc(
-    doc: str, *, docstring: bool = False, limit: int = DEFAULT_TRUNCATE_LIMIT
+    doc: str,
+    *,
+    docstring: bool = False,
+    limit: int = DEFAULT_TRUNCATE_LIMIT,
+    escape_hatch: str = CLI_ESCAPE_HATCH,
 ) -> str:
     """Reduce a docstring to a truncated first line, unless in full.
 
@@ -117,6 +145,8 @@ def summarize_doc(
         doc: The complete docstring.
         docstring: Return `doc` unchanged. Defaults to False.
         limit: The truncation limit. Defaults to 200.
+        escape_hatch: The size hint's escape-hatch clause, spelled for
+            the caller's surface. Defaults to the CLI spelling.
 
     Returns:
         `DOCSTRING_ABSENT` when `doc` is empty, else `doc` unchanged or
@@ -126,7 +156,7 @@ def summarize_doc(
         return DOCSTRING_ABSENT
     if docstring:
         return doc
-    return truncate(doc.splitlines()[0], limit)
+    return truncate(doc.splitlines()[0], limit, escape_hatch=escape_hatch)
 
 
 def _own_doc(obj: Any) -> str:
@@ -935,6 +965,7 @@ def get_public_api(
     *,
     docstring: bool = False,
     limit: int = DEFAULT_TRUNCATE_LIMIT,
+    escape_hatch: str = CLI_ESCAPE_HATCH,
     refresh: bool = False,
 ) -> list[SymbolInfo]:
     """Extract top-level public functions & classes from a package.
@@ -951,6 +982,8 @@ def get_public_api(
         docstring: Return complete docstrings instead of the truncated
             first line.
         limit: The docstring truncation limit.
+        escape_hatch: The size hint's escape-hatch clause, spelled for
+            the caller's surface. Defaults to the CLI spelling.
         refresh: Rebuild the cached graph first.
 
     Raises:
@@ -994,7 +1027,12 @@ def get_public_api(
                 name=node.name,
                 kind=str(node.kind),
                 signature=node.signature,
-                doc=summarize_doc(node.doc, docstring=docstring, limit=limit),
+                doc=summarize_doc(
+                    node.doc,
+                    docstring=docstring,
+                    limit=limit,
+                    escape_hatch=escape_hatch,
+                ),
             )
         )
     return sorted(symbols, key=lambda symbol: symbol.name)
