@@ -16,6 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > - `Fixed` for any bug fixes.
 > - `Security` in case of vulnerabilities.
 
+## [Unreleased]
+
+### Fixed
+
+- `plans/pre-release-conformance.md` restored; it was deleted as undeclared collateral of the
+  spec conformance sweep, and issues #28 to #31 each cite it as their origin.
+- `plans/spec-conformance-sweep.md` Follow-ups relabelled from an empty `Tracked as` to the
+  taxonomy form `plans/README.md` requires, and its Notes corrected on deferral absorption.
+
 ## [v0.1.0] - 2026-08-09
 
 ### Added
