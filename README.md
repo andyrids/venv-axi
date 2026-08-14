@@ -15,7 +15,7 @@ private, internal and undocumented distributions that documentation-retrieval to
 The interface cannot drift from the pinned version - reporting what a symbol is rather than how to
 use it - complimenting a documentation source such as `Context7`, `King Context` etc.
 
-The AXI answers 'does this exist, and what is its exact shape in the version I have
+The AXI answers 'does this exist and what is its exact shape in the version I have
 installed?' - other tools answer 'how do I use this and why?'
 
 ## How?
@@ -108,34 +108,33 @@ The symbol graph is cached per-project under `~/.venvaxi/`.
 
 ## A note on AI usage
 
-This project is being used as a testbed for Interpretable Context Methodology (ICM), which uses
-folder structure as Agent Architecture.
+This project is being used as a testbed for spec-driven development (spec-anchored) on top of
+Interpretable Context Methodology Interpretable Context Methodology (ICM).
+
+With spec-anchored development, a specification evolves alongside the software and is updated to
+reflect the current state of the system as it changes. Adverserial agent verification is used to
+automate spec-drift detection.
 
 ICM replaces framework-level orchestration with filesystem structure. Numbered folders represent
 stages. Plain markdown files carry prompts and context that tell a single AI agent what role to
 play at each step.
 
-The system is self-documenting - read [`AGENTS.md`](AGENTS.md) (symlink -> `CLAUDE.md`), which
-provides development context and routes to [`CONTEXT.md`](CONTEXT.md) for the workspace, stage and
-reference material an agent would follow.
+> [!IMPORTANT]
+> Concepts adapted from an Interpretable Context Methodology paper attributed to Van Clief, J.
+> and McDermott, D., 2026 (arXiv:2603.16021).
 
-Context reference and guidance markdown files are kept in `ICM/_config` as living documents and
-are routed into the agent context where necessary.
+The system is self-documenting and has been wrapped up in a Claude Code plugin at
+[andyrids/icm-spec](https://github.com/andyrids/icm-spec).
 
-A community dedicated to this methodology can be found at [https://www.skool.com/cliefnotes](https://www.skool.com/cliefnotes/about?ref=478219c6d94340bd984dde6a8d1046e6).
+A large community dedicated to this methodology can be found at [https://www.skool.com/cliefnotes](https://www.skool.com/cliefnotes/about?ref=478219c6d94340bd984dde6a8d1046e6).
+
+A community member made a detailed and easy-to-understand video guide on YouTube -
+[here](https://youtu.be/tvvaOCK_Z50?si=dX86mhIKVEXSVM0k).
 
 > [!NOTE]
 > ICM can leverage AI in a way that streamlines development, but also generates enough friction
 > in the right areas to promote continued development (Friction Doctrine). This method of using
 > Agents is a WIP.
-
-ICM is spec-driven. Three artifact layers are kept deliberately separate:
-
-| Layer    | Answers                       | Location            | Lifetime                     |
-| -------- | ----------------------------- | ------------------- | ---------------------------- |
-| Spec     | What MUST be true, forever    | `specs/`            | Permanent, changed by review |
-| Plan     | What we are doing about it    | `plans/`            | Frozen at `status: done`     |
-| Techspec | How, at implementation detail | ICM stage `output/` | Ephemeral scratch            |
 
 `specs/` is the source of truth for behaviour; `plans/` is the durable record of what got built
 and why. Stage outputs stay gitignored scratch. See [`specs/README.md`](specs/README.md) and
@@ -143,8 +142,9 @@ and why. Stage outputs stay gitignored scratch. See [`specs/README.md`](specs/RE
 
 **TODO**:
 
-- [X] ~~Research spec-driven development integration & ICM suitability~~ - adapted from
-  [JarvusInnovations/specops](https://github.com/JarvusInnovations/specops)
+- [X] ~~Research spec-driven development integration & ICM suitability~~
+  - Referenced [JarvusInnovations/specops](https://github.com/JarvusInnovations/specops)
+  - Created a Claude Code plugin - [andyrids/icm-spec](https://github.com/andyrids/icm-spec)
 - [ ] Research verification loops & ICM suitability
   - [Getting started with loops](https://claude.com/blog/getting-started-with-loops)
   - [Building verification loops](https://claude.com/blog/building-verification-loops-in-claude-code-with-skills)
@@ -182,3 +182,16 @@ and informed the creation of `venv-axi` - a future contribution to the AXI Commu
   - [kunchenguid/axi](https://github.com/kunchenguid/axi)
   - [kunchenguid/gh-axi](https://github.com/kunchenguid/gh-axi)
 - **License**: MIT License - Copyright (c) 2026 Kun Chen
+
+### `JarvusInnovations/specops` | `IBM/iac-spec-kit` | `github/spec-kit`
+
+I looked at existing repos focused on spec-driven development (SSD), which were useful in
+determining what functionality and aspects are best to combine with ICM.
+
+- **Repository**:
+  - [JarvusInnovations/specops](https://github.com/JarvusInnovations/specops)
+    - **License**: N/A
+  - [IBM/iac-spec-kit](https://github.com/IBM/iac-spec-kit)
+    - **License**: MIT License - Copyright (c) 2025 Copyright International Business Machines
+  - [IBM/iac-spec-kit](https://github.com/github/spec-kit)
+    - **License**: MIT License - Copyright (c) 2026 Copyright GitHub, Inc
