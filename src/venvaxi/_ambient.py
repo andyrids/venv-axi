@@ -1,8 +1,8 @@
 """Agent eXperience Interface (AXI) ambient-context installation.
 
-AXI principle 7 (`ICM/_config/reference-standard-axi.md`): Make visible to an
-agent from an explicit setup command so that every conversation starts with
-relevant state already visible - before the agent takes any action.
+AXI principle 7 (`specs/principles.md`): Make visible to an agent from an
+explicit setup command so that every conversation starts with relevant state
+already visible - before the agent takes any action.
 
 - Inject a marked block into the `AGENTS.md` of a consuming repo
 - Register an MCP server entry in `.vscode/mcp.json`
@@ -18,7 +18,7 @@ import json
 import logging
 import os
 import sys
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from enum import StrEnum
 from pathlib import Path
@@ -42,7 +42,7 @@ class Text(StrEnum):
 
 
 @contextmanager
-def _install_boundary(path: Path) -> Iterator[None]:
+def _install_boundary(path: Path) -> Generator[None]:
     """Reraise an `OSError` at a filesystem call as an install failure.
 
     NOTE: The bound stays visible at the call site - only the wrapped
@@ -66,15 +66,20 @@ def _install_boundary(path: Path) -> Iterator[None]:
         raise AmbientContextError(msg) from exc
 
 
-def _atomic_write_text(path: Path, text: str) -> None:
-    """Atomically write text via a same-directory temp file + rename.
+def _atomic_write_bytes(path: Path, data: bytes) -> None:
+    """Atomically write bytes via a same-directory temp file + rename.
 
     NOTE: An interrupted write leaves `path` untouched (the `.tmp` file
     is simply overwritten on the next run).
 
+    NOTE: Every caller encodes at the call site rather than handing text
+    to a second helper. Bytes bypass newline translation, so the
+    destination is a byte-for-byte copy on every platform - `write_text`
+    would fork an LF source into a CRLF copy on Windows.
+
     Args:
         path: The destination file path.
-        text: The full file content to write.
+        data: The full file content to write.
 
     Raises:
         AmbientContextError: If the temp-file write or the rename fails
@@ -82,7 +87,7 @@ def _atomic_write_text(path: Path, text: str) -> None:
     """
     tmp_path = path.with_suffix(f"{path.suffix}.tmp")
     with _install_boundary(path):
-        tmp_path.write_text(text, encoding="utf-8")
+        tmp_path.write_bytes(data)
         os.replace(tmp_path, path)
 
 
@@ -124,12 +129,16 @@ def inject_agents_md(root: Path) -> bool:
     block = f"{Text.BEGIN}{Text.GAP}{Text.BODY}{Text.GAP}{Text.END}"
 
     if not path.exists():
-        _atomic_write_text(path, f"{block}\n")
+        _atomic_write_bytes(path, f"{block}\n".encode())
         logger.debug("Created `AGENTS.md` with axi block")
         return True
 
+    # NOTE: Read as bytes and decoded, never `read_text` - universal
+    # newlines would normalize an existing CRLF file to LF, and writing
+    # that back rewrites the hand-authored span the spec requires
+    # preserved byte-for-byte. Splicing stays on decoded text.
     with _install_boundary(path):
-        original = path.read_text(encoding="utf-8")
+        original = path.read_bytes().decode("utf-8")
     text = original
 
     if Text.BEGIN in text and Text.END in text:
@@ -137,14 +146,18 @@ def inject_agents_md(root: Path) -> bool:
         end = text.index(Text.END) + len(Text.END)
         updated = text[:start] + block + text[end:]
     else:
-        trailing = len(text) - len(text.rstrip("\n")) if text else 2
+        # NOTE: Counts line terminators, not `\n` bytes, so a CRLF file
+        # is not read as having one fewer trailing blank line than it
+        # has - `rstrip("\n")` alone leaves the `\r` behind.
+        stripped = text.rstrip("\r\n")
+        trailing = text[len(stripped) :].count("\n") if text else 2
         separator = "\n" * max(2 - trailing, 0)
         updated = f"{text}{separator}{block}\n"
 
     if updated == original:
         logger.debug("`AGENTS.md` axi block is up-to-date")
         return False
-    _atomic_write_text(path, updated)
+    _atomic_write_bytes(path, updated.encode())
     logger.debug("Updated `AGENTS.md` AXI block")
     return True
 
@@ -182,7 +195,7 @@ def _update_mcp_json(path: Path, servers_key: str, available: bool) -> bool:
     if not available:
         if servers.pop("VenvAXI", None) is None:
             return False
-        _atomic_write_text(path, json.dumps(data, indent=2) + "\n")
+        _atomic_write_bytes(path, (json.dumps(data, indent=2) + "\n").encode())
         return True
 
     entry = {
@@ -197,7 +210,7 @@ def _update_mcp_json(path: Path, servers_key: str, available: bool) -> bool:
     servers["VenvAXI"] = entry
     with _install_boundary(path):
         path.parent.mkdir(parents=True, exist_ok=True)
-    _atomic_write_text(path, json.dumps(data, indent=2) + "\n")
+    _atomic_write_bytes(path, (json.dumps(data, indent=2) + "\n").encode())
     return True
 
 
@@ -219,21 +232,22 @@ def install_skill(root: Path) -> bool:
             the skill directory cannot be created, or the write fails
             with an `OSError`.
     """
-    # NOTE: Written verbatim - the bytes on disk *are* the file, so the
-    # round-trip must match exactly for the comparison below to hold.
-    text = skill_markdown.read_text(encoding="utf-8")
+    # NOTE: Read, compared and written as raw bytes - the bytes on disk
+    # *are* the file, and text mode's newline translation would fork an
+    # LF source into a CRLF copy on Windows.
+    data = skill_markdown.read_bytes()
     path = root / ".claude" / "skills" / "venvaxi" / "SKILL.md"
 
     if path.exists():
         with _install_boundary(path):
-            installed = path.read_text(encoding="utf-8")
-        if installed == text:
+            installed = path.read_bytes()
+        if installed == data:
             logger.debug("`SKILL.md` is up-to-date")
             return False
 
     with _install_boundary(path):
         path.parent.mkdir(parents=True, exist_ok=True)
-    _atomic_write_text(path, text)
+    _atomic_write_bytes(path, data)
     logger.debug("Installed `SKILL.md` skill")
     return True
 

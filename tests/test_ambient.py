@@ -72,7 +72,7 @@ def test_inject_agents_md_write_failure_raises(tmp_path: Path) -> None:
     """An `OSError` writing `AGENTS.md` raises `AmbientContextError`
     naming the destination path, chained from the `OSError`."""
     with (
-        mock.patch.object(Path, "write_text", side_effect=OSError("denied")),
+        mock.patch.object(Path, "write_bytes", side_effect=OSError("denied")),
         pytest.raises(AmbientContextError) as exc_info,
     ):
         inject_agents_md(tmp_path)
@@ -86,11 +86,71 @@ def test_inject_agents_md_read_failure_raises(tmp_path: Path) -> None:
     `AmbientContextError`."""
     (tmp_path / "AGENTS.md").write_text("# My project\n", encoding="utf-8")
     with (
-        mock.patch.object(Path, "read_text", side_effect=OSError("denied")),
+        mock.patch.object(Path, "read_bytes", side_effect=OSError("denied")),
         pytest.raises(AmbientContextError) as exc_info,
     ):
         inject_agents_md(tmp_path)
     assert str(tmp_path / "AGENTS.md") in str(exc_info.value)
+
+
+def test_inject_agents_md_preserves_lf_bytes_outside_markers(
+    tmp_path: Path,
+) -> None:
+    """Hand-authored LF content outside the markers survives verbatim.
+
+    NOTE: `write_text`/`read_text` translate newlines on Windows, so the
+    pre-fix implementation rewrote every `\\n` in the hand-authored span
+    as `\\r\\n` - a violation of the byte-for-byte clause in
+    `specs/commands/setup.md`.
+    """
+    path = tmp_path / "AGENTS.md"
+    hand = b"# My project\n\nLine A\nLine B\n"
+    path.write_bytes(hand)
+    inject_agents_md(tmp_path)
+    written = path.read_bytes()
+    assert written.startswith(hand)
+    assert b"\r\n" not in written[: len(hand)]
+
+
+def test_inject_agents_md_preserves_crlf_bytes_outside_markers(
+    tmp_path: Path,
+) -> None:
+    """Hand-authored CRLF content outside the markers survives verbatim.
+
+    NOTE: The mirror of the LF case - `read_text` normalizes CRLF to LF
+    on the way in, so writing the result back rewrote the span just as
+    surely as the write-side translation did.
+    """
+    path = tmp_path / "AGENTS.md"
+    hand = b"# My project\r\n\r\nLine A\r\nLine B\r\n"
+    path.write_bytes(hand)
+    inject_agents_md(tmp_path)
+    assert path.read_bytes().startswith(hand)
+
+
+def test_inject_agents_md_preserves_bytes_around_existing_markers(
+    tmp_path: Path,
+) -> None:
+    """Replacing a stale block leaves the spans either side untouched."""
+    path = tmp_path / "AGENTS.md"
+    head = b"# My project\n\nLine A\n\n"
+    tail = b"\n\n## Trailing section\n\nLine B\n"
+    # NOTE: A distinctive sentinel, not the word 'stale' - the injected
+    # ambient body itself contains 'stale graph', so the obvious
+    # spelling of this assertion passes vacuously.
+    sentinel = b"SUPERSEDED-BLOCK-BODY"
+    path.write_bytes(
+        head
+        + b"<!-- venvaxi:begin -->\n"
+        + sentinel
+        + b"\n<!-- venvaxi:end -->"
+        + tail
+    )
+    inject_agents_md(tmp_path)
+    written = path.read_bytes()
+    assert written.startswith(head)
+    assert written.endswith(tail)
+    assert sentinel not in written
 
 
 def test_update_mcp_json_creates_file(tmp_path: Path) -> None:
@@ -185,7 +245,7 @@ def test_update_mcp_json_write_failure_raises(tmp_path: Path) -> None:
     path = tmp_path / ".vscode" / "mcp.json"
     with (
         mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"),
-        mock.patch.object(Path, "write_text", side_effect=OSError("denied")),
+        mock.patch.object(Path, "write_bytes", side_effect=OSError("denied")),
         pytest.raises(AmbientContextError) as exc_info,
     ):
         _update_mcp_json(path, "servers", available=True)
@@ -195,14 +255,14 @@ def test_update_mcp_json_write_failure_raises(tmp_path: Path) -> None:
 
 
 def test_skill_markdown_has_frontmatter() -> None:
-    """The packaged `skill.md` is a valid skill file."""
+    """The packaged `SKILL.md` is a valid skill file."""
     text = skill_markdown.read_text(encoding="utf-8")
     assert text.startswith("---")
     assert "name: venvaxi" in text
 
 
 def test_install_skill_creates_file(tmp_path: Path) -> None:
-    """A missing `SKILL.md` is created verbatim from `skill.md`."""
+    """A missing `SKILL.md` is created verbatim from the packaged copy."""
     changed = install_skill(tmp_path)
     path = tmp_path / ".claude" / "skills" / "venvaxi" / "SKILL.md"
 
@@ -237,7 +297,7 @@ def test_install_skill_write_failure_raises(tmp_path: Path) -> None:
     naming the destination path."""
     path = tmp_path / ".claude" / "skills" / "venvaxi" / "SKILL.md"
     with (
-        mock.patch.object(Path, "write_text", side_effect=OSError("denied")),
+        mock.patch.object(Path, "write_bytes", side_effect=OSError("denied")),
         pytest.raises(AmbientContextError) as exc_info,
     ):
         install_skill(tmp_path)
@@ -251,16 +311,16 @@ def test_install_skill_read_failure_raises(tmp_path: Path) -> None:
     path = tmp_path / ".claude" / "skills" / "venvaxi" / "SKILL.md"
     path.parent.mkdir(parents=True)
     path.write_text("stale content\n", encoding="utf-8")
-    real_read_text = Path.read_text
+    real_read_bytes = Path.read_bytes
 
-    def deny(self: Path, encoding: str | None = None) -> str:
+    def deny(self: Path) -> bytes:
         """Deny reads of the installed copy only, not package data."""
         if self == path:
             raise OSError("denied")
-        return real_read_text(self, encoding=encoding)
+        return real_read_bytes(self)
 
     with (
-        mock.patch.object(Path, "read_text", deny),
+        mock.patch.object(Path, "read_bytes", deny),
         pytest.raises(AmbientContextError) as exc_info,
     ):
         install_skill(tmp_path)
@@ -359,7 +419,7 @@ def test_main_setup_write_failure_emits_toon_and_exits_1(
 ) -> None:
     """A failed install emits the TOON error block and exits 1 (an
     `Error` reported), not 2 (venvaxi being broken)."""
-    with mock.patch.object(Path, "write_text", side_effect=OSError("denied")):
+    with mock.patch.object(Path, "write_bytes", side_effect=OSError("denied")):
         exit_code = _run_main_setup(tmp_path)
     out = capsys.readouterr().out
     assert exit_code == ExitCode.EX_FAILURE
@@ -373,7 +433,7 @@ def test_main_setup_write_failure_names_path(
 ) -> None:
     """The failed-install message names the path that could not be
     written."""
-    with mock.patch.object(Path, "write_text", side_effect=OSError("denied")):
+    with mock.patch.object(Path, "write_bytes", side_effect=OSError("denied")):
         exit_code = _run_main_setup(tmp_path)
     # NOTE: TOON quotes the message and escapes backslashes, so the
     # escaping is reversed before comparing against a Windows path

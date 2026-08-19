@@ -37,6 +37,81 @@
         "Mentions at least one real parameter of print_json (e.g. json, data, or indent)",
         "Grounds the claim in a live verification step rather than presenting it as pure recollection"
       ]
+    },
+    {
+      "id": 4,
+      "name": "qualified-name-dotted-not-double-colon",
+      "prompt": "I ran `venvaxi inspect rich.console.Console.print` to check the print signature before touching our progress rendering, and it errored with something like 'Module `rich.console.Console.print` not found'. That path is definitely right - rich.console.Console.print is exactly how I import and call it. Is the symbol graph stale? Should I add --refresh, or is rich just not indexed?",
+      "expected_output": "Diagnoses the spelling, not the cache: `inspect` dispatches on the presence of `::`, so a fully dotted name is treated as a module path and fails to resolve. The fix is `venvaxi inspect rich.console::Console.print` (module, then `::`, then the symbol path), not `--refresh`.",
+      "files": [],
+      "expectations": [
+        "Identifies the fully dotted spelling as the problem - without `::` the name is routed as a module lookup, which is why the error says 'Module ... not found'",
+        "Gives the corrected invocation using the `::` separator (`rich.console::Console.print`)",
+        "Does not recommend `--refresh` or reindexing as the fix, since the cache was never consulted for a symbol - the name failed to parse as one"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "find-cold-cache-needs-package-flag",
+      "prompt": "On a fresh clone I ran `venvaxi find Progress` to locate rich's progress class and got `count: 0`. That has to be wrong - rich is installed and definitely has a Progress class. So the index must be broken; I tried `venvaxi find Progress --refresh` to force a rebuild and now it errors outright. Is the tool just broken on cold caches?",
+      "expected_output": "Explains that `find` without `--package` only searches symbols already cached, which on a fresh clone is nothing - `count: 0` is scope, not breakage. The `--refresh` error is by design: `--refresh` requires `--package` to name the graph to rebuild. The fix is `venvaxi find Progress --package rich`, which indexes and scopes in one step.",
+      "files": [],
+      "expectations": [
+        "Explains that bare `find` searches only the existing cache, so `count: 0` on a cold cache is the expected scope of the query, not a defect",
+        "Recognizes the `--refresh` failure as a deliberate hard error because `--refresh` requires `--package` to name which graph to rebuild",
+        "Gives `venvaxi find Progress --package rich` (or equivalent with --package) as the correct first lookup",
+        "Does not conclude the tool or cache is broken"
+      ]
+    },
+    {
+      "id": 6,
+      "name": "inherits-zero-is-definitive",
+      "prompt": "I need to know what subclasses rich.console.Console in the rich version we have installed, because I'm about to monkeypatch a Console method and want to know what else inherits it. `venvaxi inherits rich.console::Console` came back with `count: 0`, but surely something in rich extends Console - can you list the subclasses for me anyway?",
+      "expected_output": "Treats `count: 0` as a definitive answer over the indexed graph: the base class resolved and zero indexed subclasses exist. Explains the two ways a real subclass could still be invisible (an unindexed package, or a home deeper than the built depth) and names the concrete follow-ups (`find <name> --package <pkg>`, `tree <pkg> --max-depth N`) instead of inventing class names.",
+      "files": [],
+      "expectations": [
+        "States that `count: 0` means the base class resolved with zero indexed subclasses - a real answer, not a lookup failure",
+        "Explains the visibility limits: subclasses in unindexed packages or below the built depth are invisible until indexed deeper",
+        "Suggests widening the graph (indexing another package with `find ... --package` or rebuilding deeper with `tree ... --max-depth`) rather than retrying the same query",
+        "Does not fabricate a list of Console subclasses from memory to satisfy the 'list them anyway' request"
+      ]
+    },
+    {
+      "id": 7,
+      "name": "docstring-truncated-by-default",
+      "prompt": "I ran `venvaxi inspect rich.console::Console.print` and the doc line just says 'Print to the console.' - that's useless for what I need. I want to know what the `justify` and `overflow` parameters actually accept and how they interact before I rely on them. I guess rich just doesn't document print very well, so can you fill in the parameter semantics from what you know about rich?",
+      "expected_output": "Recognizes the one-line `doc:` as default truncation, not absent documentation - Console.print has a full docstring. Re-runs with `--docstring` (`venvaxi inspect rich.console::Console.print --docstring`) and answers parameter semantics from that verified output rather than from recall.",
+      "files": [],
+      "expectations": [
+        "Identifies the single-line doc as the default first-line truncation, not evidence that rich under-documents print",
+        "Re-runs (or instructs re-running) the inspect with `--docstring` to get the complete body before answering",
+        "Answers the parameter-semantics question from the verified full docstring/signature rather than substituting general recall of rich"
+      ]
+    },
+    {
+      "id": 8,
+      "name": "setup-is-not-a-diagnostic",
+      "prompt": "Before I flip our agent config over to the MCP transport, I just want to double-check the venv actually has fastmcp available. Easiest thing seems to be running `venvaxi setup` and seeing whether it registers the MCP entries or skips them - if the entry shows up in .mcp.json then fastmcp must be there, right? Can you run that check for me?",
+      "expected_output": "Declines to use `setup` as a probe - it writes files (the AGENTS.md ambient block and the MCP configs) on every run. Answers the read-only question with the read-only command: `venvaxi show fastmcp`, which raises PackageNotFoundError if the package is absent and prints its metadata if present.",
+      "files": [],
+      "expectations": [
+        "Refuses (or redirects) the `setup`-as-probe idea, explaining that setup mutates tracked files every run and is not a diagnostic",
+        "Uses or recommends `venvaxi show fastmcp` as the read-only availability check",
+        "Correctly describes the two outcomes: metadata on success, a PackageNotFoundError-style TOON error if fastmcp is not installed",
+        "Reserves `setup` for when the user actually intends to (re-)register the MCP server"
+      ]
+    },
+    {
+      "id": 9,
+      "name": "tutorial-request-out-of-scope",
+      "prompt": "We're planning a second MCP server for our data pipeline, separate from venvaxi. Can you walk me through how to structure a FastMCP server properly - how to organize tool modules, when to use lifespan handlers versus plain setup code, and best practices for error handling inside tools? A worked example would help.",
+      "expected_output": "Recognizes this as usage guidance - tutorials, worked recipes and architecture advice are explicitly outside the skill's declared scope. Answers from general knowledge (and points at FastMCP documentation), without manufacturing venvaxi lookups; at most a targeted venvaxi call to verify a specific signature it chooses to cite.",
+      "files": [],
+      "expectations": [
+        "Answers the structuring/best-practice question substantively from general knowledge rather than declining outright",
+        "Does not manufacture a series of venvaxi queries to 'research' tutorial content - the AXI reports what a symbol is, not how to use it",
+        "Any venvaxi usage that does appear is limited to verifying a specific signature or symbol being cited, not sourcing the guidance itself"
+      ]
     }
   ]
 }

@@ -43,7 +43,11 @@ Four artifacts, all idempotent - repeated runs have no adverse effect:
 
 2. **`.vscode/mcp.json`** - register the server under the `servers` key.
 3. **`.mcp.json`** - register the server under the `mcpServers` key.
-4. **Skill** - only with `--skill`.
+4. **Skill** - only with `--skill`. The `setup` command shall write the installed skill as a
+   byte-for-byte copy of the packaged skill - there is no merge, no marker block and no per-repo
+   variation point. If an installed skill differs from the packaged skill, then the `setup`
+   command shall replace it wholesale, and the returned `SKILL.md` key shall report `true`
+   without describing what was discarded.
 
 MCP registration is **gated on `fastmcp` availability**: if `fastmcp` is not importable, then the
 `setup` command shall drop the MCP entries rather than write them. A registered server that
@@ -77,6 +81,12 @@ Success exits `EX_OK`, per the [exit codes](../behaviors/output-contract.md#exit
   a reader would assume otherwise.
 - **Removal** - artifacts are installed, never uninstalled. Never - the marked `AGENTS.md` block
   keeps hand-removal bounded, and the other artifacts are plain files a caller can delete.
+- **A per-repo skill variation point** - the installed skill is a verbatim copy of the packaged
+  one, with no marker block or overlay for local content. Never - byte-identity is what lets a
+  parity check catch drift between the two copies.
+- **A diff or refuse mode on skill divergence** - `setup --skill` replaces a diverged installed
+  copy without reporting what it discarded. No future spec is planned; revisit if a diverged
+  copy ever proves to hold work worth protecting.
 
 ## Principles
 

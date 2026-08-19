@@ -16,6 +16,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > - `Fixed` for any bug fixes.
 > - `Security` in case of vulnerabilities.
 
+## [Unreleased]
+
+### Added
+
+- `specs/commands/setup.md` declares the installed skill a byte-for-byte copy of the packaged one.
+- `tests/test_skill_parity.py` fails when the repo skill copy drifts from `src/venvaxi/SKILL.md`.
+- `just skill-sync` regenerates `.claude/skills/venvaxi/SKILL.md` through the real installer.
+- The packaged skill gains an Invocation section and gotchas for its documented failure modes.
+- The skill eval suite grows from 3 to 9 cases, plus a README recording the manual loop.
+
+### Changed
+
+- `.claude/skills/venvaxi/SKILL.md` is generated output, not a hand-maintained dev-facing fork.
+- `docs/architecture.md` documents the single-source skill model and drops the stale advice not
+  to run `setup --skill` in this repo.
+
+### Fixed
+
+- `install_skill()` writes bytes, so Windows newline translation cannot fork the installed copy.
+- `inject_agents_md()` reads and writes bytes, so hand-authored `AGENTS.md` content outside the
+  markers is preserved byte-for-byte as `specs/commands/setup.md` requires, on every platform.
+- The repo skill copy no longer names the nonexistent lowercase `src/venvaxi/skill.md` path.
+
 ## [v0.2.0] - 2026-08-13
 
 ### Added

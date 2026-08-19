@@ -36,12 +36,18 @@ judgements that resolve ambiguity live in [principles](../specs/principles.md).
 Everything except `exceptions.py` and `__main__.py` is underscore-private. The public surface is
 the CLI and the MCP tools, not the Python API.
 
-## Two skill copies, deliberately
+## Two skill copies, one source
 
-- `src/venvaxi/SKILL.md` - the generic skill, shipped in the wheel and written into consuming
-  repos by `venvaxi setup --skill`
-- `.claude/skills/venvaxi/SKILL.md` - a hand-maintained dev-facing fork for this repo
+- `src/venvaxi/SKILL.md` - the skill, shipped in the wheel and written into consuming repos by
+  `venvaxi setup --skill`. The only hand-edited copy.
+- `.claude/skills/venvaxi/SKILL.md` - this repo's own copy, generated from the first.
+  Regenerate with `just skill-sync`, which calls `install_skill` directly so the repo dogfoods
+  its own installer without `setup` also touching `AGENTS.md` and `.mcp.json`.
 
-Do not run `setup --skill` inside this repo - it would clobber the dev-facing copy. This is
-operational caution, not an enforced rule: `install_skill` overwrites unconditionally for any
-project root, and nothing detects that the target is `venv-axi` itself.
+`specs/commands/setup.md` declares the installed skill a byte-for-byte copy of the packaged one -
+no merge, no marker block, no per-repo variation point. There is therefore no dev-facing fork to
+protect, and `tests/test_skill_parity.py` fails on any byte of drift, which is what makes this an
+enforced rule rather than operational caution.
+
+`install_skill` overwrites unconditionally for any project root, and the returned mapping reports
+only `SKILL.md: true|false` - never what a diverged copy contained before it was replaced.
