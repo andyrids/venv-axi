@@ -2,13 +2,13 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-review
+status: done
 depends: []
 specs:
   - specs/commands/setup.md
 authors: []
 issues: []
-pr:
+pr: 42
 ---
 
 # Plan: Collapse ambient context to the skill
@@ -161,9 +161,41 @@ never implemented a runtime hook; `.claude/settings.json` configures only `attri
 `enabledPlugins`. Ambient context here has always meant static files written once by `setup`.
 Recorded because the principle's phrasing invites the opposite assumption.
 
+**No stage output artifacts were produced for this run.** `stages/01-specification/output/`,
+`02-implementation/output/` and `03-verification/output/` hold nothing for this slug - the run
+went spec amendment straight through to implementation and verification without writing the
+intermediate reports. The Validation evidence below was gathered directly (named tests, coverage,
+live `setup` runs against seeded repos) and recorded here rather than in a stage 03 report, so
+every ticked box cites what was actually executed. The gap is in the paper trail, not the
+checking; it is recorded because stage 04's contract reads the stage 03 report as its input, and
+a closeout that quietly substitutes its own evidence is the failure mode `plans/README.md` warns
+about. `plans/skill-parity-and-evals.md` records the same class of gap at stage 02.
+
+**Delivered as a stacked PR, not on #41.** The work was first aimed at #41, whose branch it was
+written on. #41's plan was already `status: done` with that PR recorded, so landing a second
+plan there would have made one PR deliver two. Branching from `develop` instead proved
+impossible: this change depends on `_atomic_write_bytes`, `just skill-sync`,
+`tests/test_skill_parity.py` and `.gitattributes`, none of which existed on `develop` until #41
+merged. PR #42 was therefore stacked on `skill-parity-and-evals` and retargeted to `develop`
+automatically once #41 landed.
+
+**The plan carried an invalid status mid-run.** It was set to `in-review` between implementation
+and closeout, which is the lifecycle for `ICM/*/stages/**/output/*.md`, not for a plan - the plan
+lifecycle is `planned | in-progress | done | blocked | cancelled`, with no review state. Corrected
+to `done` at closeout. Recorded because the wrong value would have been invisible to the
+`status:` frontmatter queries every coverage check depends on.
+
 ## Follow-ups
 
-- **`--skill` as the default**, with `--no-skill` to opt out. A bare `setup` installs only MCP
-  config now; whether that is too thin a default is a separate spec question.
-- **Issue [#39](https://github.com/andyrids/venv-axi/issues/39)** and
-  **issue [#40](https://github.com/andyrids/venv-axi/issues/40)** are untouched by this plan.
+- **Tracked as** - `--skill` as the default, with `--no-skill` to opt out. A bare `setup` now
+  installs only MCP config, and whether that is too thin a default is a spec question this plan
+  deliberately did not widen into. No issue or plan owns it yet; it needs one before it can be
+  scheduled.
+- **Tracked as** - a tenth eval case covering the removal pass. Case 8
+  (`setup-is-not-a-diagnostic`) still holds - `setup` mutates, and more so now - but nothing in
+  `.claude/skills/venvaxi/evals/evals.json` exercises the strip. Unowned.
+- **Issue [#39](https://github.com/andyrids/venv-axi/issues/39)** - skill text vs code drift is
+  still undetected. This plan edited the skill text again without adding such a check, so the
+  risk it names grew slightly.
+- **Issue [#40](https://github.com/andyrids/venv-axi/issues/40)** - the eval suite still runs
+  nowhere. Unchanged by this plan.
