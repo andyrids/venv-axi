@@ -108,7 +108,7 @@ def truncate(
     """Truncate text to a set number of characters determined by `limit`.
 
     NOTE: AXI principle 3 (content truncation with size hints) - see
-    `ICM/_config/reference-standard-axi.md`.
+    `specs/principles.md`.
 
     Args:
         text: The text to truncate.
@@ -138,8 +138,8 @@ def summarize_doc(
     """Reduce a docstring to a truncated first line, unless in full.
 
     NOTE: AXI principle 3 (content truncation with size hints) - see
-    `ICM/_config/reference-standard-axi.md`. Applied at emission (not
-    storage) so the cached graph keeps complete docstrings.
+    `specs/principles.md`. Applied at emission (not storage) so the cached
+    graph keeps complete docstrings.
 
     Args:
         doc: The complete docstring.

@@ -44,9 +44,9 @@ License:
 def format_help(lines: Sequence[str]) -> str:
     """Format the contextual-disclosure `help[]` footer.
 
-    NOTE: AXI principle 9 (contextual disclosure, see
-    `ICM/_config/reference-standard-axi.md`): concrete next-step commands
-    are surfaced instead of a static usage summary.
+    NOTE: AXI principle 9 (contextual disclosure, see `specs/principles.md`):
+    concrete next-step commands are surfaced instead of a static usage
+    summary.
 
     Args:
         lines: Concrete next-step command suggestions.

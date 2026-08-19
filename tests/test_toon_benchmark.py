@@ -1,14 +1,13 @@
 """Token-efficiency benchmark for `venvaxi._toon`.
 
-Substantiates (or refutes) AXI principle 1 - see
-`ICM/_config/reference-standard-axi.md`. The headline "~40% savings over
-JSON" is an external claim; these tests measure the encoder against the
-payload shapes `axi` actually emits, so the README can cite a number
-this repo owns.
+Substantiates (or refutes) AXI principle 1 - see `specs/principles.md`. The
+headline "~40% savings over JSON" is an external claim; these tests measure
+the encoder against the payload shapes `axi` actually emits, so the README can
+cite a number this repo owns.
 
-NOTE: Measures characters, not tokens - a stand-in that avoids a
-tokenizer dependency. The two track closely for ASCII structural text,
-and the ratio is what matters here.
+NOTE: Measures characters, not tokens - a stand-in that avoids a tokenizer
+dependency. The two track closely for ASCII structural text and the ratio is
+what matters here.
 """
 
 import json
