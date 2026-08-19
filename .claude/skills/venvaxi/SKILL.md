@@ -28,16 +28,10 @@ are in scope; tutorials, worked recipes and migration guides are not.
 
 ## Invocation
 
-`venvaxi` is not on `PATH` here - it is a console script inside the project venv, so every command
-MUST run through uv:
-
-```sh
-uv run venvaxi find Console.print --package rich
-```
-
-The bare `venvaxi ...` spelling used in `AGENTS.md` and in the `help[]` footers assumes an
-activated venv or a consuming repo that has the console script on `PATH`. Prefix with `uv run` when
-working in this repo.
+`venvaxi` is a console script installed inside the project venv. If it is not on `PATH`, run it
+through the project's runner (for example `uv run venvaxi ...`) or activate the venv first. The
+bare `venvaxi ...` spelling used in `AGENTS.md` and in the `help[]` footers assumes the console
+script is reachable on `PATH`.
 
 ## Workflow
 
@@ -113,21 +107,28 @@ Verified against `venvaxi --help` output; defaults shown in parentheses.
 Notes on the positional arguments and shared flags:
 
 - `--fields` accepts any of `name`, `version`, `location`, `summary`; anything else is a hard
-  error listing the valid set. It applies to `list` and to `show` *without* `--api` only.
+  error listing the valid set. It applies to `list` and to `show` *without* `--api` only;
+  passed together with `--api` it is **silently ignored**, not an error - `--api` dispatches
+  before `--fields` is parsed.
+- `-v` / `--verbose` is a global flag enabling DEBUG logging on STDERR - reach for it when a
+  `setup` or `serve` failure produced no useful message.
 - `show <pkg> --api` takes a distribution name or any importable dotted module path, and
   emits the columns `name|kind|signature|doc`.
 - `inspect` takes either a qualified symbol name (`module::Symbol`, `module::Class.method`)
   or a bare/dotted module name - it dispatches on the presence of `::`.
 - `--refresh` exists on `show`, `find`, `tree`, `inspect` and `inherits`; it forces a graph
   rebuild before the query.
-- `setup --skill` additionally installs the *generic* skill packaged at `src/venvaxi/skill.md`
-  into `.claude/skills/venvaxi/SKILL.md`, overwriting any existing copy. Do **not** run it in
-  this repo - it would clobber this hand-maintained dev-facing file.
+- `setup --skill` additionally (re)installs this skill at `.claude/skills/venvaxi/SKILL.md`,
+  overwriting any existing copy.
 
 Output contract, common to every command:
 
 - Structured TOON goes to **stdout**, including errors: `error: true` plus a `message:` line,
   with exit code `1`. Success is exit code `0`.
+- Two package failures read differently, and the recovery differs: `is not installed in the
+  active venv` means the venv has nothing by that name, so install it or check the spelling;
+  `Failed to import` means it is installed and broken, so investigate it rather than
+  reinstalling.
 - Collection commands lead with `count: N`, then the table.
 - Most commands close with a `help[]` block of concrete next-step commands - follow them
   rather than guessing at a spelling.
@@ -135,9 +136,9 @@ Output contract, common to every command:
 ## MCP tools
 
 `venvaxi serve` exposes the same surface over stdio MCP under the server name `VenvAXI`. Tool
-names are a camelCase version of the underlying functions in `src/venvaxi/_mcp.py`. Every
-tool returns a TOON string with the same `count:`/`help[]` contract as the CLI, and any `Error`
-presents a TOON error block instead of an MCP transport error.
+names are a camelCase version of the underlying `venvaxi` MCP functions. Every tool returns a
+TOON string with the same `count:`/`help[]` contract as the CLI, and any `Error` presents a TOON
+error block instead of an MCP transport error.
 
 | Tool | Parameters | CLI equivalent |
 | --- | --- | --- |
@@ -158,8 +159,8 @@ Notable CLI differences:
 - The CLI `inspect` splits into `getSymbolTool` (qualified names, with `::`) and
   `showModuleTool` (module names) - pick by argument shape yourself.
 - **No tool takes a `refresh` parameter.** A stale graph can only be rebuilt from the CLI, so
-  after a dependency version bump run `uv run venvaxi <cmd> ... --refresh` once, then carry
-  on over MCP.
+  after a dependency version bump run `venvaxi <cmd> ... --refresh` once, then carry on over
+  MCP.
 
 ## Gotchas
 
@@ -178,38 +179,48 @@ Notable CLI differences:
   --max-depth N`).
 - **Docstrings are truncated to a first line by default.** Add `--docstring` to `inspect` or
   to `show --api` when the parameter semantics matter, not just the signature.
+- **`doc: (no docstring)` is a definitive answer.** It means the symbol defines no docstring of
+  its own - not that the lookup failed. Do not retry, and do not substitute a base class's
+  docstring or your own recall; the signature is still authoritative.
 - **When to `--refresh`.** The cache lives at `~/.venvaxi/<project-hash>.db` and already
   invalidates itself when a package's installed version changes, or when a query needs more
   depth than was built. Reach for `--refresh` when the version string cannot move but the
   code did - editable/local installs, a package patched in place - or when a build was
-  interrupted.
+  interrupted. The hash is a SHA-256 digest of the **resolved project-root path**, so two
+  checkouts of the same project at different paths hold independent caches - a rebuild in one
+  is invisible to the other.
 - **`tree` defaults to `--max-depth 2`.** Deep packages are silently shallow at the default;
   raise it when you are hunting for a submodule rather than surveying.
 - **MCP needs the extra.** `serve` requires `fastmcp` (`uv add venv-axi[mcp]`) and exits `1`
   with a 'requires the `venv-axi[mcp]` extra' log line without it. `setup` deliberately *omits*
   the MCP entry from `.mcp.json` / `.vscode/mcp.json` when `fastmcp` is missing, so an absent
-  server entry after `setup` means the extra is not installed.
+  server entry after `setup` means the extra is not installed. The availability check runs up
+  front, at startup - a traceback *after* `fastmcp` is confirmed installed is a different
+  failure entirely: investigate it, do not re-run `setup`.
 - **`setup` writes files - it is not a diagnostic command.** It rewrites `AGENTS.md`'s ambient
-  block and `.mcp.json`/`.vscode/mcp.json` every time it runs. 'Idempotent' here only means
-  repeated runs converge on the same result, not that a run is side-effect-free - it still
-  touches tracked files. Diagnosing *whether* `fastmcp` is available is a read-only question:
-  answer it with `venvaxi show fastmcp` (raises `PackageNotFoundError` if absent) rather than
-  running `setup` to see what it does. Only run `setup` when you actually mean to (re-)register
-  the MCP server - e.g. right after installing the extra, or when told to fix a stale
-  registration - never as a way to confirm or explain a fix while investigating.
-- **Token savings are payload-shaped, not a flat ~40%.** Measured against compact JSON
-  (`tests/test_toon_benchmark.py`): `venvaxi list` ~45%, `venvaxi find` ~27%, `venvaxi inspect
-  <symbol>` ~6%. The saving comes from amortizing repeated JSON keys across a table header,
-  so it scales with row count and collapses on single-object output. Do not budget for a
-  general ~40%; on the `inspect` path, efficiency comes from truncation instead.
+  block and `.mcp.json`/`.vscode/mcp.json` every time it runs, and with `--skill` it overwrites
+  `.claude/skills/venvaxi/SKILL.md` wholesale. 'Idempotent' here only means repeated runs
+  converge on the same result, not that a run is side-effect-free - it still touches tracked
+  files. Diagnosing *whether* `fastmcp` is available is a read-only question: answer it with
+  `venvaxi show fastmcp` (raises `PackageNotFoundError` if absent) rather than running `setup`
+  to see what it does. Only run `setup` when you actually mean to (re-)register the MCP server -
+  e.g. right after installing the extra, or when told to fix a stale registration - never as a
+  way to confirm or explain a fix while investigating. Note also that `setup --skill` reports
+  only `SKILL.md: true|false` with no diff, so a `true` after a hand-edit of the installed copy
+  means those edits were just discarded, not that an update arrived.
+- **Token savings are payload-shaped, not a flat ~40%.** Measured against compact JSON:
+  `venvaxi list` ~45%, `venvaxi find` ~27%, `venvaxi inspect <symbol>` ~6%. The saving comes
+  from amortizing repeated JSON keys across a table header, so it scales with row count and
+  collapses on single-object output. Do not budget for a general ~40%; on the `inspect` path,
+  efficiency comes from truncation instead.
 
 ## Pointers
 
-- `uv run venvaxi <cmd> --help` is the authoritative flag source. If the table above ever
-  disagrees with it, `--help` wins - and this file needs updating.
-- `specs/` covers what the CLI MUST do - `specs/principles.md` for the 10 AXI design principles
-  and the measured token-efficiency benchmarks, `specs/commands/<verb>.md` per command, and
-  `specs/behaviors/qualified-name-semantics.md` for the symbol-graph invariants. Read these when
-  modifying `src/venvaxi/` itself; they are not needed to *use* the CLI.
-- The always-on summary injected into `AGENTS.md` is generated from `src/venvaxi/ambient.md`
-  and refreshed by `venvaxi setup`. Edit the markdown, not the Markdown block.
+- `venvaxi <cmd> --help` is the authoritative flag source. If the table above ever disagrees
+  with it, `--help` wins.
+- The always-on summary injected into `AGENTS.md` is owned and refreshed by `venvaxi setup` -
+  it sits between `<!-- venvaxi:begin -->`/`<!-- venvaxi:end -->` markers and hand-edits inside
+  those markers are overwritten on the next run.
+- This file is installed by `venvaxi setup --skill` and overwritten wholesale on every run -
+  edit the packaged source (`src/venvaxi/SKILL.md` in the venv-axi project), never the
+  installed copy.
