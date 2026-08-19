@@ -45,7 +45,7 @@ Other commands:
 Docstrings are truncated to a first line by default - add `--docstring` for complete bodies. The
 `--refresh` option rebuilds a stale graph after a dependency version change.
 
-Ambient context for agents can be injected into `AGENTS.md` alongside MCP server entries in
+Ambient context for agents is registered by `setup`, which writes MCP server entries into
 `.vscode/mcp.json` and `.mcp.json`:
 
 ```bash
@@ -54,15 +54,21 @@ uv run venvaxi setup
 
 The optional `--skill` flag additionally installs a Skill at `.claude/skills/venvaxi/SKILL.md`,
 covering the scan -> resolve -> inspect workflow, commands and MCP tool surface alongside common
-gotchas:
+gotchas. The Skill is the agent-facing half of ambient context, loaded on demand rather than kept
+in every session:
 
 ```bash
 uv run venvaxi setup --skill
 ```
 
+Versions before v0.3.0 also injected an always-on block into `AGENTS.md` between
+`<!-- venvaxi:begin -->` and `<!-- venvaxi:end -->` markers. That block duplicated the Skill in
+every session, and is no longer written. `setup` removes one it finds, leaving every byte outside
+the markers untouched.
+
 > [!WARNING]
-> Unlike the marked `AGENTS.md` block, `SKILL.md` is a bundled artifact - any local edits to a
-> previously installed copy are overwritten.
+> `SKILL.md` is a bundled artifact - any local edits to a previously installed copy are
+> overwritten.
 
 The AXI tools can be served over MCP (STDIO) with the `venvaxi serve` command, which requires the
 `mcp` extra:
@@ -94,7 +100,7 @@ With the MCP server extra:
 uv add venv-axi --dev --extra mcp
 ```
 
-Register ambient context (`AGENTS.md` block + MCP config) in the consuming repo:
+Register ambient context (MCP config, plus the Skill with `--skill`) in the consuming repo:
 
 ```bash
 uv run venvaxi setup

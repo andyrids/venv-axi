@@ -28,16 +28,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking for `setup` callers.** The `AGENTS.md` key in `venvaxi setup` output still reports
+  whether the file was modified, but that is now true on *removal* rather than on write. A repo
+  last set up by an earlier version reports `AGENTS.md: true` once, then `false`. The key set is
+  unchanged.
+- `venvaxi setup` strips a legacy ambient block instead of writing one, preserving every byte
+  outside the `<!-- venvaxi:begin -->`/`<!-- venvaxi:end -->` markers and collapsing the
+  separator the injection had added. It never creates `AGENTS.md`.
+- The packaged Skill states the scan-first requirement as a MUST, the one normative line the
+  removed block carried that it did not.
 - `.claude/skills/venvaxi/SKILL.md` is generated output, not a hand-maintained dev-facing fork.
 - `docs/architecture.md` documents the single-source skill model and drops the stale advice not
   to run `setup --skill` in this repo.
 
+### Removed
+
+- The always-on `AGENTS.md` ambient block, and the `src/venvaxi/ambient.md` that sourced it.
+  Ambient context is now the Skill plus the MCP registration. The block duplicated the Skill in
+  every session of every consuming repo whether or not the task touched a dependency, and
+  `specs/mcp/tools.md` already named MCP registration the primary ambient integration.
+
 ### Fixed
 
 - `install_skill()` writes bytes, so Windows newline translation cannot fork the installed copy.
-- `inject_agents_md()` reads and writes bytes, so hand-authored `AGENTS.md` content outside the
+- Ambient-block edits to `AGENTS.md` read and write bytes, so hand-authored content outside the
   markers is preserved byte-for-byte as `specs/commands/setup.md` requires, on every platform.
+  The fix landed on `inject_agents_md()` and carried into the `strip_agents_md()` that replaced
+  it before either shipped.
 - The repo skill copy no longer names the nonexistent lowercase `src/venvaxi/skill.md` path.
+- `tests/test_cli.py` mocked `setup`'s return value with a `skill` key where the implementation
+  returns `SKILL.md`, so the guard its own NOTE described - catching a rename of those keys - was
+  never armed.
 
 ## [v0.2.0] - 2026-08-13
 

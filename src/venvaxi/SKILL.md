@@ -30,13 +30,17 @@ are in scope; tutorials, worked recipes and migration guides are not.
 
 `venvaxi` is a console script installed inside the project venv. If it is not on `PATH`, run it
 through the project's runner (for example `uv run venvaxi ...`) or activate the venv first. The
-bare `venvaxi ...` spelling used in `AGENTS.md` and in the `help[]` footers assumes the console
-script is reachable on `PATH`.
+bare `venvaxi ...` spelling used throughout this file and in the `help[]` footers assumes the
+console script is reachable on `PATH`.
 
 ## Workflow
 
 `venvaxi` is keyed by *qualified* name (`rich.console::Console.print`), but the codebase references
 a *bare* one (`Console.print`). The three steps bridge that gap
+
+You MUST scan the codebase with your own tools and use those findings to drive the AXI. Querying
+it from a remembered symbol name skips the step that grounds the lookup in what the code actually
+imports, and a name recalled rather than read is the same staleness this AXI exists to remove.
 
 ### (1) Scan
 
@@ -102,7 +106,7 @@ Verified against `venvaxi --help` output; defaults shown in parentheses.
 | `venvaxi inspect <name>` | `--docstring`, `--refresh` | Symbol detail, or module children |
 | `venvaxi inherits <qname>` | `--refresh` | Classes directly subclassing a base |
 | `venvaxi serve` | - | Run the MCP server over stdio |
-| `venvaxi setup` | `--skill` | Install ambient context (AGENTS.md + MCP config) |
+| `venvaxi setup` | `--skill` | Install ambient context (MCP config, optional skill) |
 
 Notes on the positional arguments and shared flags:
 
@@ -197,9 +201,10 @@ Notable CLI differences:
   server entry after `setup` means the extra is not installed. The availability check runs up
   front, at startup - a traceback *after* `fastmcp` is confirmed installed is a different
   failure entirely: investigate it, do not re-run `setup`.
-- **`setup` writes files - it is not a diagnostic command.** It rewrites `AGENTS.md`'s ambient
-  block and `.mcp.json`/`.vscode/mcp.json` every time it runs, and with `--skill` it overwrites
-  `.claude/skills/venvaxi/SKILL.md` wholesale. 'Idempotent' here only means repeated runs
+- **`setup` writes files - it is not a diagnostic command.** It rewrites
+  `.mcp.json`/`.vscode/mcp.json` every time it runs, with `--skill` it overwrites
+  `.claude/skills/venvaxi/SKILL.md` wholesale, and it deletes a legacy ambient block from
+  `AGENTS.md` if it finds one. 'Idempotent' here only means repeated runs
   converge on the same result, not that a run is side-effect-free - it still touches tracked
   files. Diagnosing *whether* `fastmcp` is available is a read-only question: answer it with
   `venvaxi show fastmcp` (raises `PackageNotFoundError` if absent) rather than running `setup`
@@ -218,9 +223,12 @@ Notable CLI differences:
 
 - `venvaxi <cmd> --help` is the authoritative flag source. If the table above ever disagrees
   with it, `--help` wins.
-- The always-on summary injected into `AGENTS.md` is owned and refreshed by `venvaxi setup` -
-  it sits between `<!-- venvaxi:begin -->`/`<!-- venvaxi:end -->` markers and hand-edits inside
-  those markers are overwritten on the next run.
+- **This file is the ambient context.** Earlier versions also injected an always-on summary into
+  `AGENTS.md` between `<!-- venvaxi:begin -->`/`<!-- venvaxi:end -->` markers; that block
+  duplicated this file in every session whether or not the task touched a dependency, and is no
+  longer written. `setup` now strips one it finds, so `AGENTS.md: true` on a repo last set up by
+  an older `venvaxi` means the block was removed, not refreshed. Nothing outside those markers is
+  touched.
 - This file is installed by `venvaxi setup --skill` and overwritten wholesale on every run -
   edit the packaged source (`src/venvaxi/SKILL.md` in the venv-axi project), never the
   installed copy.

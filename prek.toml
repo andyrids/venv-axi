@@ -15,7 +15,6 @@ name = "Format [Ruff]"
 [[repos.hooks]]
 id = "pkgdx-markdown"
 name = "Check Markdown [PyMarkdown]"
-exclude = "^src/venvaxi/ambient\\.md$"
 
 [[repos.hooks]]
 id = "pkgdx-typing"
