@@ -4,13 +4,19 @@ AXI principle 7 (`specs/principles.md`): Make visible to an agent from an
 explicit setup command so that every conversation starts with relevant state
 already visible - before the agent takes any action.
 
-- Inject a marked block into the `AGENTS.md` of a consuming repo
 - Register an MCP server entry in `.vscode/mcp.json`
 - Register an MCP server entry in a `.mcp.json`
 - Install `.claude/skills/venvaxi/SKILL.md` (opt-in, `--skill`)
+- Remove the legacy marked block from the `AGENTS.md` of a consuming repo
 
 NOTE: The above steps are idempotent - running `venvaxi setup` multiple
 times has no adverse effect.
+
+NOTE: The `AGENTS.md` block is no longer written. It duplicated the skill
+in every session of every consuming repo whether or not the task touched a
+dependency, so the guidance moved to the artifact that loads on demand.
+`setup` strips a block left by an earlier version so a consumer stops
+paying for it, rather than leaving an orphan nothing will ever refresh.
 """
 
 import importlib.util
@@ -28,17 +34,14 @@ from venvaxi.exceptions import AmbientContextError
 
 logger = logging.getLogger(__package__)
 
-ambient_markdown = Path(__file__).parent.joinpath("ambient.md")
 skill_markdown = Path(__file__).parent.joinpath("SKILL.md")
 
 
 class Text(StrEnum):
-    """Ambient-context text components."""
+    """Legacy ambient-block markers, retained for removal."""
 
     BEGIN = "<!-- venvaxi:begin -->"
     END = "<!-- venvaxi:end -->"
-    GAP = "\n\n"
-    BODY = ambient_markdown.read_text(encoding="utf-8").strip()
 
 
 @contextmanager
@@ -112,26 +115,27 @@ def mcp_available() -> bool:
     return importlib.util.find_spec("fastmcp") is not None
 
 
-def inject_agents_md(root: Path) -> bool:
-    """Inject ambient-context block into `AGENTS.md` (idempotent).
+def strip_agents_md(root: Path) -> bool:
+    """Remove a legacy ambient block from `AGENTS.md` (idempotent).
+
+    NOTE: This never creates `AGENTS.md`. An absent file, or one
+    carrying no marker pair, is left alone and reported as unchanged -
+    there is nothing to remove, and writing to say so would be a
+    mutation the caller did not ask for.
 
     Args:
         root: The consuming repo's root path.
 
     Returns:
-        True if `AGENTS.md` was created or modified.
+        True if a block was found and removed.
 
     Raises:
         AmbientContextError: If an existing `AGENTS.md` cannot be read,
             or the write fails with an `OSError`.
     """
     path = root / "AGENTS.md"
-    block = f"{Text.BEGIN}{Text.GAP}{Text.BODY}{Text.GAP}{Text.END}"
-
     if not path.exists():
-        _atomic_write_bytes(path, f"{block}\n".encode())
-        logger.debug("Created `AGENTS.md` with axi block")
-        return True
+        return False
 
     # NOTE: Read as bytes and decoded, never `read_text` - universal
     # newlines would normalize an existing CRLF file to LF, and writing
@@ -139,26 +143,38 @@ def inject_agents_md(root: Path) -> bool:
     # preserved byte-for-byte. Splicing stays on decoded text.
     with _install_boundary(path):
         original = path.read_bytes().decode("utf-8")
-    text = original
 
-    if Text.BEGIN in text and Text.END in text:
-        start = text.index(Text.BEGIN)
-        end = text.index(Text.END) + len(Text.END)
-        updated = text[:start] + block + text[end:]
-    else:
-        # NOTE: Counts line terminators, not `\n` bytes, so a CRLF file
-        # is not read as having one fewer trailing blank line than it
-        # has - `rstrip("\n")` alone leaves the `\r` behind.
-        stripped = text.rstrip("\r\n")
-        trailing = text[len(stripped) :].count("\n") if text else 2
-        separator = "\n" * max(2 - trailing, 0)
-        updated = f"{text}{separator}{block}\n"
-
-    if updated == original:
-        logger.debug("`AGENTS.md` axi block is up-to-date")
+    if Text.BEGIN not in original or Text.END not in original:
+        logger.debug("No `AGENTS.md` axi block to remove")
         return False
+
+    start = original.index(Text.BEGIN)
+    end = original.index(Text.END) + len(Text.END)
+
+    # NOTE: The injection this undoes wrote a two-newline separator
+    # ahead of the block and one after it, so cutting the marked span
+    # alone strands a blank line at each seam. Terminators are trimmed
+    # back off both sides and the join is rebuilt, which returns the
+    # file to the shape the injection was applied to.
+    #
+    # NOTE: The rebuilt join follows the terminator the prefix already
+    # ends with, so removing the block from a CRLF file does not splice
+    # a lone LF into it. Everything inside the prefix and suffix is
+    # untouched.
+    head = original[:start]
+    terminator = "\r\n" if head.endswith("\r\n") else "\n"
+    prefix = head.rstrip("\r\n")
+    suffix = original[end:].lstrip("\r\n")
+
+    if prefix and suffix:
+        updated = f"{prefix}{terminator * 2}{suffix}"
+    elif prefix:
+        updated = f"{prefix}{terminator}"
+    else:
+        updated = suffix
+
     _atomic_write_bytes(path, updated.encode())
-    logger.debug("Updated `AGENTS.md` AXI block")
+    logger.debug("Removed `AGENTS.md` axi block")
     return True
 
 
@@ -258,15 +274,19 @@ def setup_ambient_context(
     """Install AXI ambient context into the consuming repo.
 
     NOTE: MCP registration is gated on `fastmcp` availability - the
-    `AGENTS.md` CLI guidance is valid either way, so it is not.
+    skill covers the CLI as well as the MCP surface, so it is not.
+
+    NOTE: The `AGENTS.md` entry reports a *removal*. The block is no
+    longer written; a copy left by an earlier version is stripped, so
+    True there means the file shrank rather than grew.
 
     Args:
         root: The consuming repo root path.
         skill: Whether to also install the Claude Code Skill.
 
     Returns:
-        A mapping of which artifacts were created or modified:
-        `AGENTS.md`, `.vscode`, `.mcp.json` and `skill` - the last of
+        A mapping of which artifacts were created, modified or removed:
+        `AGENTS.md`, `.vscode`, `.mcp.json` and `SKILL.md` - the last of
         which is always present, but only ever True when `skill` was
         requested.
 
@@ -276,7 +296,7 @@ def setup_ambient_context(
     """
     available = mcp_available()
     return {
-        "AGENTS.md": inject_agents_md(root),
+        "AGENTS.md": strip_agents_md(root),
         ".vscode": _update_mcp_json(
             root / ".vscode" / "mcp.json", "servers", available
         ),

@@ -19,7 +19,7 @@ judgements that resolve ambiguity live in [principles](../specs/principles.md).
 ## Module map
 
 - `__main__.py` - CLI entry point, global `--verbose`, top-level error handling
-- `_ambient.py` - Ambient context installation (`AGENTS.md`, MCP config, optional skill)
+- `_ambient.py` - Ambient context installation (MCP config, optional skill, legacy block removal)
 - `_cache.py` - On-disk symbol graph cache, version-hash invalidation
 - `_cli.py` - Argparse subcommands and their handlers
 - `_constants.py` - TOON encoder constants
@@ -36,13 +36,25 @@ judgements that resolve ambiguity live in [principles](../specs/principles.md).
 Everything except `exceptions.py` and `__main__.py` is underscore-private. The public surface is
 the CLI and the MCP tools, not the Python API.
 
+## Ambient context is the skill plus the MCP registration
+
+[Principle 7](../specs/principles.md#principle-7-ambient-context) is satisfied by two artifacts
+`venvaxi setup` writes: the MCP server entries, whose tool descriptions the harness keeps in
+context, and the opt-in skill, which loads when its `description` matches the task.
+
+An always-on `AGENTS.md` block was a third channel until it was removed. It duplicated the skill
+in every session of every consuming repo whether or not the task touched a dependency, and
+`specs/mcp/tools.md` had already named MCP registration the primary ambient integration. `setup`
+now strips a block left by an earlier version rather than leaving an orphan nothing refreshes;
+`specs/commands/setup.md` carries the clause and the reasoning.
+
 ## Two skill copies, one source
 
 - `src/venvaxi/SKILL.md` - the skill, shipped in the wheel and written into consuming repos by
   `venvaxi setup --skill`. The only hand-edited copy.
 - `.claude/skills/venvaxi/SKILL.md` - this repo's own copy, generated from the first.
   Regenerate with `just skill-sync`, which calls `install_skill` directly so the repo dogfoods
-  its own installer without `setup` also touching `AGENTS.md` and `.mcp.json`.
+  its own installer without `setup` also rewriting `.mcp.json`.
 
 `specs/commands/setup.md` declares the installed skill a byte-for-byte copy of the packaged one -
 no merge, no marker block, no per-repo variation point. There is therefore no dev-facing fork to

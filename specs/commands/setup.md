@@ -30,16 +30,22 @@ The consuming project root, and whether `fastmcp` is importable in the venv.
 
 ## Actions
 
-Four artifacts, all idempotent - repeated runs have no adverse effect:
+Three artifacts and one removal, all idempotent - repeated runs have no adverse effect:
 
-1. **`AGENTS.md`** - the `setup` command shall inject a block delimited by
-   `<!-- venvaxi:begin -->` and `<!-- venvaxi:end -->`, sourced from `src/venvaxi/ambient.md`.
-   The file is created if absent; the marked region is replaced if present, appended if the file
-   exists without markers.
+1. **`AGENTS.md`** - the `setup` command shall remove a legacy ambient block delimited by
+   `<!-- venvaxi:begin -->` and `<!-- venvaxi:end -->`, deleting the marked span along with the
+   blank-line separator that preceded it.
 
    The `setup` command shall preserve content outside the markers **byte-for-byte**.
-   Hand-authored project context lives there, and the block is machine-owned; the two coexist
-   only because replacement is bounded to the marked span.
+   Hand-authored project context lives there, and the block was machine-owned; the two coexisted
+   only because the edit is bounded to the marked span, and removal is bounded the same way.
+
+   If `AGENTS.md` does not exist, or exists without both markers, then the `setup` command shall
+   make no write and shall report `AGENTS.md: false`. It shall never create the file.
+
+   Ambient context is carried by the skill and the MCP registration below. An always-on block
+   duplicating the skill costs every session of every consuming repo whether or not the task
+   touches a dependency, so the guidance lives in the artifact that loads on demand.
 
 2. **`.vscode/mcp.json`** - register the server under the `servers` key.
 3. **`.mcp.json`** - register the server under the `mcpServers` key.
@@ -52,13 +58,17 @@ Four artifacts, all idempotent - repeated runs have no adverse effect:
 MCP registration is **gated on `fastmcp` availability**: if `fastmcp` is not importable, then the
 `setup` command shall drop the MCP entries rather than write them. A registered server that
 `venvaxi serve` cannot start would die on every agent session, which is worse than an absent
-entry. The `AGENTS.md` guidance is valid either way, so it is not gated.
+entry. The skill describes the CLI as well as the MCP surface, so it is not gated.
 
 ## Outputs
 
-The `setup` command shall emit a flat TOON object mapping each artifact to whether it was created
-or modified, keyed `AGENTS.md`, `.vscode`, `.mcp.json`, `SKILL.md`. The `SKILL.md` key shall
-always be present, and shall be true only when `--skill` was requested.
+The `setup` command shall emit a flat TOON object mapping each artifact to whether it was created,
+modified or removed, keyed `AGENTS.md`, `.vscode`, `.mcp.json`, `SKILL.md`. The `SKILL.md` key
+shall always be present, and shall be true only when `--skill` was requested.
+
+The `AGENTS.md` key means the file was modified, which is now true on removal rather than on
+write. The key set does not change with the removal pass: a caller uses it to decide whether to
+re-read a file, and stripping the block is exactly such a change.
 
 The footer shall name `venvaxi` to confirm ambient context is live, plus `uv add venv-axi[mcp]`
 when the extra is missing.
@@ -79,8 +89,14 @@ Success exits `EX_OK`, per the [exit codes](../behaviors/output-contract.md#exit
 - **A read-only status mode** - `setup` mutates; checking installation state without writing is
   not offered. No future spec is planned; the warning under Invocation exists precisely because
   a reader would assume otherwise.
-- **Removal** - artifacts are installed, never uninstalled. Never - the marked `AGENTS.md` block
-  keeps hand-removal bounded, and the other artifacts are plain files a caller can delete.
+- **Removal of the installed artifacts** - the MCP entries and the skill are installed, never
+  uninstalled. Never - they are plain files a caller can delete, and an uninstall verb would have
+  to guess which of them a repo still wants.
+
+  The legacy `AGENTS.md` block is the one exception, and it is not an uninstall verb: `setup`
+  strips it unconditionally because it is the artifact this command stopped owning, and a
+  consumer that never learns it is dead keeps paying for it in every session. Marker-bounded
+  removal is what makes that safe to do without asking.
 - **A per-repo skill variation point** - the installed skill is a verbatim copy of the packaged
   one, with no marker block or overlay for local content. Never - byte-identity is what lets a
   parity check catch drift between the two copies.

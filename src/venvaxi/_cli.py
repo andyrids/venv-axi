@@ -666,7 +666,7 @@ def add_subparser(subparsers: "argparse._SubParsersAction[Any]") -> None:
         help=" ".join(
             [
                 "Install AXI ambient context into the repo",
-                "(AGENTS.md, MCP config & optional skill)",
+                "(MCP config & optional skill)",
             ]
         ),
     )

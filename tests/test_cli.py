@@ -691,7 +691,7 @@ def test_command_setup(
         "AGENTS.md": True,
         ".vscode": False,
         ".mcp.json": False,
-        "skill": False,
+        "SKILL.md": False,
     }
     ctx = make_cli_context(args=argparse.Namespace(skill=False))
     with (
@@ -706,7 +706,7 @@ def test_command_setup(
     assert exit_code == 0
     assert "AGENTS.md: true" in out
     assert '".mcp.json": false' in out
-    assert "skill: false" in out
+    assert "SKILL.md: false" in out
     assert "venv-axi[mcp]" not in out
     setup.assert_called_once_with(tmp_path, skill=False)
 
@@ -721,7 +721,7 @@ def test_command_setup_installs_skill(
         "AGENTS.md": True,
         ".vscode": False,
         ".mcp.json": False,
-        "skill": True,
+        "SKILL.md": True,
     }
     ctx = make_cli_context(args=argparse.Namespace(skill=True))
     with (
@@ -734,7 +734,7 @@ def test_command_setup_installs_skill(
         exit_code = _cli.command_setup(ctx)
     out = capsys.readouterr().out
     assert exit_code == 0
-    assert "skill: true" in out
+    assert "SKILL.md: true" in out
     setup.assert_called_once_with(tmp_path, skill=True)
 
 
@@ -748,7 +748,7 @@ def test_command_setup_hints_missing_extra(
         "AGENTS.md": True,
         ".vscode": False,
         ".mcp.json": False,
-        "skill": False,
+        "SKILL.md": False,
     }
     ctx = make_cli_context(args=argparse.Namespace(skill=False))
     with (

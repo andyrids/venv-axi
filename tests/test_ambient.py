@@ -9,10 +9,10 @@ import pytest
 from venvaxi import __main__
 from venvaxi._ambient import (
     _update_mcp_json,
-    inject_agents_md,
     install_skill,
     setup_ambient_context,
     skill_markdown,
+    strip_agents_md,
 )
 from venvaxi._core import ExitCode
 from venvaxi.exceptions import AmbientContextError
@@ -20,137 +20,185 @@ from venvaxi.exceptions import AmbientContextError
 AMBIENT = "venvaxi._ambient"
 
 
-def test_inject_agents_md_creates_file(tmp_path: Path) -> None:
-    """A missing `AGENTS.md` is created with the axi block."""
-    changed = inject_agents_md(tmp_path)
-    text = (tmp_path / "AGENTS.md").read_text()
-    assert changed is True
-    assert "<!-- venvaxi:begin -->" in text
-    assert "<!-- venvaxi:end -->" in text
-    assert "axi" in text
-    assert "venvaxi find" in text
-    assert "venvaxi inspect" in text
-    assert "venvaxi tree" in text
-    assert "venvaxi serve" in text
-    assert "venvaxi setup" in text
+# NOTE: A distinctive sentinel for the legacy block body, never a word
+# the removal path could plausibly emit. A previous spelling of these
+# tests asserted `b"stale" not in written` and failed against correct
+# code, because the injected body itself contained 'stale graph'. Had
+# the substring been rarer the assertion would have passed vacuously,
+# which is the more dangerous direction.
+SENTINEL = b"SUPERSEDED-BLOCK-BODY"
 
 
-def test_inject_agents_md_appends_to_existing_file(tmp_path: Path) -> None:
-    """An existing `AGENTS.md` without markers gets the block appended."""
-    path = tmp_path / "AGENTS.md"
-    path.write_text("# My project\n")
-    changed = inject_agents_md(tmp_path)
-    text = path.read_text()
-    assert changed is True
-    assert "# My project" in text
-    assert "<!-- venvaxi:begin -->" in text
+def _legacy_block(body: bytes = SENTINEL) -> bytes:
+    """Build a block in the shape the removed injection wrote."""
+    return b"<!-- venvaxi:begin -->\n" + body + b"\n<!-- venvaxi:end -->"
 
 
-def test_inject_agents_md_idempotent(tmp_path: Path) -> None:
-    """Running injection twice makes no further changes."""
-    inject_agents_md(tmp_path)
-    changed = inject_agents_md(tmp_path)
+def _seed_legacy_agents_md(root: Path) -> Path:
+    """Write an `AGENTS.md` carrying a block an earlier version left.
+
+    Args:
+        root: The consuming repo root to seed.
+
+    Returns:
+        The seeded `AGENTS.md` path.
+    """
+    path = root / "AGENTS.md"
+    path.write_bytes(b"# My project\n\n" + _legacy_block() + b"\n")
+    return path
+
+
+def test_strip_agents_md_absent_file_is_noop(tmp_path: Path) -> None:
+    """A missing `AGENTS.md` is reported unchanged and never created."""
+    changed = strip_agents_md(tmp_path)
     assert changed is False
+    assert not (tmp_path / "AGENTS.md").exists()
 
 
-def test_inject_agents_md_replaces_stale_block(tmp_path: Path) -> None:
-    """An outdated block between markers is replaced in-place."""
+def test_strip_agents_md_without_markers_is_noop(tmp_path: Path) -> None:
+    """An `AGENTS.md` carrying no block is left byte-identical."""
     path = tmp_path / "AGENTS.md"
-    path.write_text(
-        "# My project\n\n"
-        "<!-- venvaxi:begin -->\nstale content\n"
-        "<!-- venvaxi:end -->\n"
-    )
-    changed = inject_agents_md(tmp_path)
-    text = path.read_text()
+    hand = b"# My project\n\nLine A\nLine B\n"
+    path.write_bytes(hand)
+    changed = strip_agents_md(tmp_path)
+    assert changed is False
+    assert path.read_bytes() == hand
+
+
+def test_strip_agents_md_removes_block(tmp_path: Path) -> None:
+    """A legacy block is removed and reported as a change."""
+    path = tmp_path / "AGENTS.md"
+    path.write_bytes(b"# My project\n\n" + _legacy_block() + b"\n")
+    changed = strip_agents_md(tmp_path)
+    written = path.read_bytes()
     assert changed is True
-    assert "stale content" not in text
-    assert "VenvAXI" in text
+    assert SENTINEL not in written
+    assert b"venvaxi:begin" not in written
+    assert b"venvaxi:end" not in written
+    assert written == b"# My project\n"
 
 
-def test_inject_agents_md_write_failure_raises(tmp_path: Path) -> None:
+def test_strip_agents_md_idempotent(tmp_path: Path) -> None:
+    """A second run over an already-stripped file changes nothing."""
+    path = tmp_path / "AGENTS.md"
+    path.write_bytes(b"# My project\n\n" + _legacy_block() + b"\n")
+    strip_agents_md(tmp_path)
+    stripped = path.read_bytes()
+    changed = strip_agents_md(tmp_path)
+    assert changed is False
+    assert path.read_bytes() == stripped
+
+
+def test_strip_agents_md_leaves_no_residual_blank_line(
+    tmp_path: Path,
+) -> None:
+    """Removing a mid-file block collapses both seams to one blank line.
+
+    NOTE: The injection wrote a two-newline separator ahead of the block
+    and one after it. Cutting only the marked span strands a blank line
+    at each seam, which accumulates every time a consumer upgrades.
+    """
+    path = tmp_path / "AGENTS.md"
+    path.write_bytes(
+        b"# My project\n\n"
+        + _legacy_block()
+        + b"\n\n## Trailing section\n\nLine B\n"
+    )
+    strip_agents_md(tmp_path)
+    written = path.read_bytes()
+    assert written == b"# My project\n\n## Trailing section\n\nLine B\n"
+    assert b"\n\n\n" not in written
+
+
+def test_strip_agents_md_block_only_file_empties(tmp_path: Path) -> None:
+    """A file holding nothing but the block is emptied, not deleted."""
+    path = tmp_path / "AGENTS.md"
+    path.write_bytes(_legacy_block() + b"\n")
+    changed = strip_agents_md(tmp_path)
+    assert changed is True
+    assert path.exists()
+    assert path.read_bytes() == b""
+
+
+def test_strip_agents_md_write_failure_raises(tmp_path: Path) -> None:
     """An `OSError` writing `AGENTS.md` raises `AmbientContextError`
     naming the destination path, chained from the `OSError`."""
+    path = tmp_path / "AGENTS.md"
+    path.write_bytes(b"# My project\n\n" + _legacy_block() + b"\n")
     with (
         mock.patch.object(Path, "write_bytes", side_effect=OSError("denied")),
         pytest.raises(AmbientContextError) as exc_info,
     ):
-        inject_agents_md(tmp_path)
-    assert str(tmp_path / "AGENTS.md") in str(exc_info.value)
+        strip_agents_md(tmp_path)
+    assert str(path) in str(exc_info.value)
     assert ".tmp" not in str(exc_info.value)
     assert isinstance(exc_info.value.__cause__, OSError)
 
 
-def test_inject_agents_md_read_failure_raises(tmp_path: Path) -> None:
+def test_strip_agents_md_read_failure_raises(tmp_path: Path) -> None:
     """An `OSError` reading an existing `AGENTS.md` raises
     `AmbientContextError`."""
-    (tmp_path / "AGENTS.md").write_text("# My project\n", encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_bytes(b"# My project\n")
     with (
         mock.patch.object(Path, "read_bytes", side_effect=OSError("denied")),
         pytest.raises(AmbientContextError) as exc_info,
     ):
-        inject_agents_md(tmp_path)
+        strip_agents_md(tmp_path)
     assert str(tmp_path / "AGENTS.md") in str(exc_info.value)
 
 
-def test_inject_agents_md_preserves_lf_bytes_outside_markers(
+def test_strip_agents_md_preserves_lf_bytes_outside_markers(
     tmp_path: Path,
 ) -> None:
     """Hand-authored LF content outside the markers survives verbatim.
 
-    NOTE: `write_text`/`read_text` translate newlines on Windows, so the
-    pre-fix implementation rewrote every `\\n` in the hand-authored span
-    as `\\r\\n` - a violation of the byte-for-byte clause in
-    `specs/commands/setup.md`.
+    NOTE: `write_text`/`read_text` translate newlines on Windows, so a
+    text-mode implementation would rewrite every `\\n` in the
+    hand-authored span as `\\r\\n` - a violation of the byte-for-byte
+    clause in `specs/commands/setup.md`. Removal has to hold the line
+    the injection did.
     """
     path = tmp_path / "AGENTS.md"
     hand = b"# My project\n\nLine A\nLine B\n"
-    path.write_bytes(hand)
-    inject_agents_md(tmp_path)
+    path.write_bytes(hand + b"\n" + _legacy_block() + b"\n")
+    strip_agents_md(tmp_path)
     written = path.read_bytes()
-    assert written.startswith(hand)
-    assert b"\r\n" not in written[: len(hand)]
+    assert written == hand
+    assert b"\r\n" not in written
 
 
-def test_inject_agents_md_preserves_crlf_bytes_outside_markers(
+def test_strip_agents_md_preserves_crlf_bytes_outside_markers(
     tmp_path: Path,
 ) -> None:
     """Hand-authored CRLF content outside the markers survives verbatim.
 
     NOTE: The mirror of the LF case - `read_text` normalizes CRLF to LF
-    on the way in, so writing the result back rewrote the span just as
-    surely as the write-side translation did.
+    on the way in, so writing the result back rewrites the span just as
+    surely as write-side translation does. This case is the one that
+    discriminates on Linux, where CI runs.
     """
     path = tmp_path / "AGENTS.md"
     hand = b"# My project\r\n\r\nLine A\r\nLine B\r\n"
-    path.write_bytes(hand)
-    inject_agents_md(tmp_path)
-    assert path.read_bytes().startswith(hand)
+    path.write_bytes(hand + b"\r\n" + _legacy_block() + b"\r\n")
+    strip_agents_md(tmp_path)
+    written = path.read_bytes()
+    assert written == hand
+    assert b"\n" not in written.replace(b"\r\n", b"")
 
 
-def test_inject_agents_md_preserves_bytes_around_existing_markers(
+def test_strip_agents_md_preserves_bytes_around_markers(
     tmp_path: Path,
 ) -> None:
-    """Replacing a stale block leaves the spans either side untouched."""
+    """Removing the block leaves the spans either side untouched."""
     path = tmp_path / "AGENTS.md"
-    head = b"# My project\n\nLine A\n\n"
-    tail = b"\n\n## Trailing section\n\nLine B\n"
-    # NOTE: A distinctive sentinel, not the word 'stale' - the injected
-    # ambient body itself contains 'stale graph', so the obvious
-    # spelling of this assertion passes vacuously.
-    sentinel = b"SUPERSEDED-BLOCK-BODY"
-    path.write_bytes(
-        head
-        + b"<!-- venvaxi:begin -->\n"
-        + sentinel
-        + b"\n<!-- venvaxi:end -->"
-        + tail
-    )
-    inject_agents_md(tmp_path)
+    head = b"# My project\n\nLine A"
+    tail = b"## Trailing section\n\nLine B\n"
+    path.write_bytes(head + b"\n\n" + _legacy_block() + b"\n\n" + tail)
+    strip_agents_md(tmp_path)
     written = path.read_bytes()
     assert written.startswith(head)
     assert written.endswith(tail)
-    assert sentinel not in written
+    assert SENTINEL not in written
 
 
 def test_update_mcp_json_creates_file(tmp_path: Path) -> None:
@@ -331,6 +379,10 @@ def test_setup_ambient_context_reports_all_artifacts(
     tmp_path: Path,
 ) -> None:
     """`setup_ambient_context` reports all four artifact statuses."""
+    # NOTE: A legacy block is seeded so the `AGENTS.md` key has
+    # something to report. Without one the removal pass is a no-op and
+    # this test would assert a False it had itself arranged.
+    _seed_legacy_agents_md(tmp_path)
     # NOTE: `mcp_available` is patched so the suite passes with or
     # without the `mcp` extra installed
     with (
@@ -341,6 +393,21 @@ def test_setup_ambient_context_reports_all_artifacts(
 
     assert set(changed) == {"AGENTS.md", ".vscode", ".mcp.json", "SKILL.md"}
     assert all(changed.values())
+
+
+def test_setup_ambient_context_never_creates_agents_md(
+    tmp_path: Path,
+) -> None:
+    """`setup` no longer writes an ambient block, so a repo without an
+    `AGENTS.md` does not gain one."""
+    with (
+        mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"),
+        mock.patch(f"{AMBIENT}.mcp_available", return_value=True),
+    ):
+        changed = setup_ambient_context(tmp_path, skill=True)
+
+    assert changed["AGENTS.md"] is False
+    assert not (tmp_path / "AGENTS.md").exists()
 
 
 def test_setup_ambient_context_skips_skill_by_default(
@@ -363,21 +430,24 @@ def test_setup_ambient_context_second_run_reports_no_change(
 ) -> None:
     """A second `setup_ambient_context` run reports every artifact as
     unchanged (the `changed` booleans are accurate, not always True)."""
+    _seed_legacy_agents_md(tmp_path)
     with (
         mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"),
         mock.patch(f"{AMBIENT}.mcp_available", return_value=True),
     ):
-        setup_ambient_context(tmp_path, skill=True)
+        first = setup_ambient_context(tmp_path, skill=True)
         changed = setup_ambient_context(tmp_path, skill=True)
 
+    assert first["AGENTS.md"] is True
     assert not any(changed.values())
 
 
 def test_setup_ambient_context_skips_mcp_when_unavailable(
     tmp_path: Path,
 ) -> None:
-    """Without `fastmcp`, `AGENTS.md` is still injected but no MCP
+    """Without `fastmcp`, the legacy block is still stripped but no MCP
     config file is registered."""
+    path = _seed_legacy_agents_md(tmp_path)
     with mock.patch(f"{AMBIENT}.mcp_available", return_value=False):
         changed = setup_ambient_context(tmp_path)
 
@@ -387,7 +457,7 @@ def test_setup_ambient_context_skips_mcp_when_unavailable(
         ".mcp.json": False,
         "SKILL.md": False,
     }
-    assert (tmp_path / "AGENTS.md").exists()
+    assert b"venvaxi:begin" not in path.read_bytes()
     assert not (tmp_path / ".vscode" / "mcp.json").exists()
     assert not (tmp_path / ".mcp.json").exists()
 
@@ -419,6 +489,11 @@ def test_main_setup_write_failure_emits_toon_and_exits_1(
 ) -> None:
     """A failed install emits the TOON error block and exits 1 (an
     `Error` reported), not 2 (venvaxi being broken)."""
+    # NOTE: Seeded so the first write is still the `AGENTS.md` one.
+    # Without a block to strip that write never happens and the failure
+    # silently relocates to `.vscode/mcp.json` - which is how this test
+    # kept passing against a defect once before.
+    _seed_legacy_agents_md(tmp_path)
     with mock.patch.object(Path, "write_bytes", side_effect=OSError("denied")):
         exit_code = _run_main_setup(tmp_path)
     out = capsys.readouterr().out
@@ -433,6 +508,7 @@ def test_main_setup_write_failure_names_path(
 ) -> None:
     """The failed-install message names the path that could not be
     written."""
+    _seed_legacy_agents_md(tmp_path)
     with mock.patch.object(Path, "write_bytes", side_effect=OSError("denied")):
         exit_code = _run_main_setup(tmp_path)
     # NOTE: TOON quotes the message and escapes backslashes, so the
@@ -448,10 +524,12 @@ def test_main_setup_success_unchanged(
 ) -> None:
     """A successful `setup` still emits the artifact mapping and exits
     0 - the failure bound must not disturb the success path."""
+    path = _seed_legacy_agents_md(tmp_path)
     exit_code = _run_main_setup(tmp_path)
     out = capsys.readouterr().out
     assert exit_code == ExitCode.EX_OK
     assert "AGENTS.md: true" in out
+    assert b"venvaxi:begin" not in path.read_bytes()
     assert '".vscode": true' in out
     assert '".mcp.json": true' in out
     assert "SKILL.md: false" in out
