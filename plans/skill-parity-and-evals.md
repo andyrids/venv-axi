@@ -2,13 +2,13 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs:
   - specs/commands/setup.md
 authors: []
 issues: []
-pr:
+pr: 41
 ---
 
 # Plan: Skill parity, robustness and evals
