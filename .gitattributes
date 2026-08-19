@@ -1,0 +1,8 @@
+# Normalize all text files to LF in the repository, and check them out as
+# LF too - `core.eol` defaults to native, so a bare `text=auto` would hand
+# this Windows tree CRLF on the next checkout.
+#
+# Windows text-mode writes (`Path.write_text`, some editors) otherwise
+# commit CRLF, which is the defect `_atomic_write_bytes` exists to prevent
+# arriving by a different route.
+* text=auto eol=lf
