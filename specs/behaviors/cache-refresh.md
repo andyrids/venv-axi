@@ -1,6 +1,6 @@
 ---
 context-hierarchy: Layer 3
-context-hierarchy-role: Desired state
+context-hierarchy-role: Reference material
 immutable: false
 tags: [behavior, cache, refresh]
 ---
