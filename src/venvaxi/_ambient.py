@@ -66,31 +66,15 @@ def _install_boundary(path: Path) -> Generator[None]:
         raise AmbientContextError(msg) from exc
 
 
-def _atomic_write_text(path: Path, text: str) -> None:
-    """Atomically write text via a same-directory temp file + rename.
+def _atomic_write_bytes(path: Path, data: bytes) -> None:
+    """Atomically write bytes via a same-directory temp file + rename.
 
     NOTE: An interrupted write leaves `path` untouched (the `.tmp` file
     is simply overwritten on the next run).
 
-    Args:
-        path: The destination file path.
-        text: The full file content to write.
-
-    Raises:
-        AmbientContextError: If the temp-file write or the rename fails
-            with an `OSError`.
-    """
-    tmp_path = path.with_suffix(f"{path.suffix}.tmp")
-    with _install_boundary(path):
-        tmp_path.write_text(text, encoding="utf-8")
-        os.replace(tmp_path, path)
-
-
-def _atomic_write_bytes(path: Path, data: bytes) -> None:
-    """Atomically write bytes via a same-directory temp file + rename.
-
-    NOTE: Bytes bypass newline translation, so the destination is a
-    byte-for-byte copy of the source on every platform - `write_text`
+    NOTE: Every caller encodes at the call site rather than handing text
+    to a second helper. Bytes bypass newline translation, so the
+    destination is a byte-for-byte copy on every platform - `write_text`
     would fork an LF source into a CRLF copy on Windows.
 
     Args:
@@ -211,7 +195,7 @@ def _update_mcp_json(path: Path, servers_key: str, available: bool) -> bool:
     if not available:
         if servers.pop("VenvAXI", None) is None:
             return False
-        _atomic_write_text(path, json.dumps(data, indent=2) + "\n")
+        _atomic_write_bytes(path, (json.dumps(data, indent=2) + "\n").encode())
         return True
 
     entry = {
@@ -226,7 +210,7 @@ def _update_mcp_json(path: Path, servers_key: str, available: bool) -> bool:
     servers["VenvAXI"] = entry
     with _install_boundary(path):
         path.parent.mkdir(parents=True, exist_ok=True)
-    _atomic_write_text(path, json.dumps(data, indent=2) + "\n")
+    _atomic_write_bytes(path, (json.dumps(data, indent=2) + "\n").encode())
     return True
 
 

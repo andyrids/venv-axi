@@ -245,7 +245,7 @@ def test_update_mcp_json_write_failure_raises(tmp_path: Path) -> None:
     path = tmp_path / ".vscode" / "mcp.json"
     with (
         mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"),
-        mock.patch.object(Path, "write_text", side_effect=OSError("denied")),
+        mock.patch.object(Path, "write_bytes", side_effect=OSError("denied")),
         pytest.raises(AmbientContextError) as exc_info,
     ):
         _update_mcp_json(path, "servers", available=True)
