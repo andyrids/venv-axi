@@ -76,8 +76,7 @@ spec change is needed here; the code is brought into conformance instead, per
    as step 3. Both halves matter - `read_text` normalizes an existing CRLF file to LF and
    `_atomic_write_text` translates LF back to CRLF, so hand-authored content outside the markers
    is rewritten either way. Splicing stays on decoded text; only the file boundary changes.
-   `_update_mcp_json` is left on the text write: its JSON is regenerated wholesale and no spec
-   clause claims byte preservation for it.
+   `_update_mcp_json` was initially left on the text write; PR review moved it too - see Notes.
 
 ## Validation
 
@@ -151,9 +150,26 @@ Windows: the pre-fix code round-tripped a CRLF file unchanged by accident, norma
 translating back on write. The CRLF case discriminates on Linux, where CI runs. It was kept for
 that reason rather than deleted as redundant.
 
-**`_update_mcp_json` deliberately stays on the text write.** Its JSON is regenerated wholesale
-from a parsed object and no spec clause claims byte preservation for it, so `_atomic_write_text`
-survives with one caller.
+**`_update_mcp_json` moved to the byte write too, after PR review.** It was first left on
+`_atomic_write_text` - its JSON is regenerated wholesale from a parsed object and no spec clause
+claims byte preservation for it. Review pointed out that this left two atomic-write helpers
+differing only in the write call, with the text one down to a single caller, which
+`ICM/_config/reference-standard-yagni.md` names directly: 'do not create a helper or abstraction
+for a one-time operation'. `_atomic_write_text` was deleted and both call sites now encode
+inline, so one atomic-write implementation exists and a future contract change - `.tmp` cleanup,
+an `fsync` before rename - cannot land in one half only. The visible consequence is that MCP
+config files are written with LF on Windows; nothing specs their line endings, and a live
+`setup --skill` confirmed both files still parse and the run stays idempotent.
+
+**Two line-ending regressions of our own, found in PR review.** `tests/test_ambient.py` and this
+plan file were committed with CRLF, because the scripts that edited them used
+`pathlib.write_text` - the very idiom this plan exists to remove. The inflated diff hid the real
+82-line change to the test module under a 458-line whole-file rewrite. Both normalized, and
+`.gitattributes` (`* text=auto eol=lf`) now makes the repo reject the mistake rather than rely on
+remembering. `eol=lf` rather than a bare `text=auto`: `core.eol` defaults to native, so the bare
+form would have handed this Windows tree CRLF on the next checkout. Twelve pre-existing CRLF
+files were renormalized in the same sweep, whitespace-only, as an isolated commit - without it
+the new attribute would leave every clone with a permanently dirty tree.
 
 **A test that tested its own fixture.** The first spelling of
 `test_inject_agents_md_preserves_bytes_around_existing_markers` asserted `b"stale" not in written`
