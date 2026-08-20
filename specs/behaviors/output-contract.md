@@ -22,9 +22,21 @@ Every CLI command and every MCP tool.
 
 - Structured output shall be written with `sys.stdout.write`, not `print`, so a console renderer
   can never line-wrap a TOON payload.
+- Structured output shall be written as UTF-8, whatever character encoding the ambient console
+  or pipe reports. Introspected docstrings carry whatever their authors wrote - rendered example
+  tables, typographic punctuation, mathematical symbols - so the payload's character set is the
+  dependency's business, and the ambient encoding of a captured pipe is an accident of the
+  caller's shell rather than a fact about the payload.
+- If a payload contains a character the ambient stream encoding cannot represent, then the
+  command shall emit the payload in full and exit on its own merits, never exit `EX_SYNTAX`
+  because of the encoding.
 - Logging shall be configured to STDERR at `WARNING`, or `DEBUG` under `--verbose`.
 - The TOON error block on STDOUT *is* the error report. It shall not also be logged at error
   level, which would duplicate it on STDERR; the log line is `DEBUG`-only.
+
+STDERR is held to the same rule. Import warnings name third-party modules and quote their
+exception text, so the commentary stream carries foreign characters for the same reason the
+report does.
 
 ### Exit codes
 
@@ -137,7 +149,7 @@ A command shall never prompt. Mutations shall be idempotent.
 
 ## Out of scope
 
-- **Alternative encodings** - no `--json` or `--format` switch; TOON is the only encoding on
+- **Alternative payload formats** - no `--json` or `--format` switch; TOON is the only encoding on
   every surface. Never - the encoding is the token-efficiency contract, and a second format
   would fork every downstream parser.
 - **Console styling** - no colour, no wrapping, no human-oriented tables. Never - the consumer
