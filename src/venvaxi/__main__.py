@@ -1,6 +1,7 @@
 """Main entry point for the `venvaxi` CLI."""
 
 import argparse
+import io
 import logging
 import sys
 from typing import NoReturn
@@ -20,6 +21,14 @@ def main() -> NoReturn:
     NOTE: The subparsers action is deliberately not `required` - a bare
     `venvaxi` invocation falls through to the home view.
     """
+    # NOTE: The payload's character set is the dependency's business - a
+    # docstring can carry anything its author wrote - so the stream is moved
+    # to UTF-8 rather than the payload being degraded to fit an ambient
+    # encoding that is an accident of the caller's shell.
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8")
+
     description = "Agent eXperience Interface (AXI)"
     parser = argparse.ArgumentParser(prog=__package__, description=description)
 
