@@ -16,7 +16,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > - `Fixed` for any bug fixes.
 > - `Security` in case of vulnerabilities.
 
-## [0.3.0rc1]
+## [unreleased] - yyyy-mm-dd
+
+### Added
+
+- An eval case for the `os error 32` sync failure, so the locked-shim misdiagnosis is a
+  specimen rather than folklore.
+
+### Changed
+
+- **Breaking for `setup` callers.** `venvaxi setup` registers the MCP server as
+  `<python> -P -m venvaxi serve` instead of the `venvaxi` console script. Entries written by
+  an earlier version are replaced on the next `setup` run, which reports `.mcp.json` and
+  `.vscode` as modified once. Anything reading the registered command out of `.mcp.json`
+  sees an interpreter path and a four-element `args` list.
+
+### Fixed
+
+- A running `venvaxi serve` no longer blocks `uv` from syncing the project on Windows. The
+  server held the `venvaxi.exe` console-script shim open, which `uv` must delete whenever it
+  reinstalls `venv-axi`, so an otherwise unrelated `uv run` or `uv sync` failed with
+  `os error 32` naming a file the caller was not thinking about. It fired only on the runs
+  that reinstall. The registered interpreter is not replaced by a package reinstall.
+
+## [0.3.0rc1] - 2026-08-20
 
 ### Added
 
@@ -30,11 +53,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Breaking for `setup` callers.** `venvaxi setup` registers the MCP server as
-  `<python> -P -m venvaxi serve` instead of the `venvaxi` console script. Entries written by
-  an earlier version are replaced on the next `setup` run, which reports `.mcp.json` and
-  `.vscode` as modified once. Anything reading the registered command out of `.mcp.json`
-  sees an interpreter path and a four-element `args` list.
 - **Breaking for `setup` callers.** The `AGENTS.md` key in `venvaxi setup` output still reports
   whether the file was modified, but that is now true on *removal* rather than on write. A repo
   last set up by an earlier version reports `AGENTS.md: true` once, then `false`. The key set is
@@ -72,11 +90,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- A running `venvaxi serve` no longer blocks `uv` from syncing the project on Windows. The
-  server held the `venvaxi.exe` console-script shim open, which `uv` must delete whenever it
-  reinstalls `venv-axi`, so an otherwise unrelated `uv run` or `uv sync` failed with
-  `os error 32` naming a file the caller was not thinking about. It fired only on the runs
-  that reinstall. The registered interpreter is not replaced by a package reinstall.
 - `install_skill()` writes bytes, so Windows newline translation cannot fork the installed copy.
 - Ambient-block edits to `AGENTS.md` read and write bytes, so hand-authored content outside the
   markers is preserved byte-for-byte as `specs/commands/setup.md` requires, on every platform.
