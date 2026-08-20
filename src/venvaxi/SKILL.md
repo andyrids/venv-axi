@@ -4,10 +4,13 @@ description: >-
   This skill should be used before writing or reviewing code that calls into a dependency
   installed in the project venv, whenever an exact signature, docstring, return type or class
   hierarchy needs verifying against the installed version rather than memory recall. Also use
+  when debugging observed misbehaviour - a wrong return value or dtype, an unexpected default
+  taking effect, a `TypeError` from a call that looks valid - where the cause may be a signature
+  fact in the installed version, even before it has been identified as one. Also use
   when setting up, refreshing or troubleshooting the `venvaxi` CLI or its MCP server - a stale
   symbol graph, MCP registration, or a missing `fastmcp` extra.
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
 ---
 
 # Driving the `venvaxi` CLI
@@ -22,6 +25,12 @@ graph and prints TOON - a compact tabular text format.
 
 You SHOULD prefer `venvaxi` over API recall from memory, which drifts from the installed version,
 whereas this AXI cannot.
+
+You SHOULD also prefer it over executing the dependency to observe it (`python -c ...`). Not
+because execution is wrong, but because it is narrow and costly: it answers only the question you
+thought to ask, needs a fresh snippet each time, and runs code with whatever side effects it
+has - and it cannot answer 'what else is on this class' or 'what subclasses it'. Reach for
+execution when you need a runtime **value**; reach for the AXI when you need the **shape**.
 
 You MUST not use `venvaxi` to explain usage - signatures, kinds, docstrings and inheritance edges
 are in scope; tutorials, worked recipes and migration guides are not.
@@ -88,8 +97,9 @@ help[1]:
   the complete docstring
 ```
 
-A follow-up query could include `inspect rich.console` for direct children discovery or
-`inherits rich.console::Console` for direct subclasses.
+A follow-up query could include `inspect rich.console` for direct children discovery, or
+`inherits` to enumerate subclasses: `inherits rich.progress::ProgressColumn` returns `count: 11`
+(`BarColumn`, `SpinnerColumn`, `TextColumn`, `TimeRemainingColumn` and seven more).
 
 ## Commands
 
@@ -127,8 +137,11 @@ Notes on the positional arguments and shared flags:
 
 Output contract, common to every command:
 
-- Structured TOON goes to **stdout**, including errors: `error: true` plus a `message:` line,
-  with exit code `1`. Success is exit code `0`.
+- Structured TOON goes to **stdout**, including errors: `error: true` plus a `message:` line.
+  Exit codes are a three-way contract. `0` is success, including a definitive empty result -
+  `count: 0` exits `0`, never `1`. `1` means venvaxi caught and reported an `Error`: fix the
+  query or the environment the message names. `2` means venvaxi itself is broken - the
+  invocation was fine, so file a bug rather than retyping the query.
 - Two package failures read differently, and the recovery differs: `is not installed in the
   active venv` means the venv has nothing by that name, so install it or check the spelling;
   `Failed to import` means it is installed and broken, so investigate it rather than
@@ -162,6 +175,9 @@ Notable CLI differences:
 
 - The CLI `inspect` splits into `getSymbolTool` (qualified names, with `::`) and
   `showModuleTool` (module names) - pick by argument shape yourself.
+- `getSymbolTool` does not mirror `inspect`'s module fallback: a dotted name with no `::` gets
+  'Symbol not found' where the CLI would say 'Module not found'. Read that message as *wrong
+  tool*, not *no such symbol* - re-issue the module name against `showModuleTool`.
 - **No tool takes a `refresh` parameter.** A stale graph can only be rebuilt from the CLI, so
   after a dependency version bump run `venvaxi <cmd> ... --refresh` once, then carry on over
   MCP.
@@ -181,11 +197,32 @@ Notable CLI differences:
   living in an unindexed package, or below the built depth, are simply invisible until you
   index that package (`find <name> --package <pkg>`) or rebuild deeper (`tree <pkg>
   --max-depth N`).
+- **`inherits` answers 'what subclasses X', never 'what does X subclass'.** There is no
+  bases-of query, so running `inherits` on the class you just resolved returns `count: 0` and
+  reads as a dead end. To find a parent, guess the likely base and run `inherits` on *that*,
+  checking your class appears among its children.
+- **Dunders are not indexed.** `find RichHandler.__init__ --package rich` returns `count: 0`
+  even though the constructor exists; constructor and operator signatures live on the class
+  symbol instead. Query the class - `inspect rich.logging::RichHandler` returns the full
+  `__init__` signature.
 - **Docstrings are truncated to a first line by default.** Add `--docstring` to `inspect` or
   to `show --api` when the parameter semantics matter, not just the signature.
 - **`doc: (no docstring)` is a definitive answer.** It means the symbol defines no docstring of
   its own - not that the lookup failed. Do not retry, and do not substitute a base class's
   docstring or your own recall; the signature is still authoritative.
+- **Namespace accessors inspect empty.** A registered accessor such as polars' `Series.struct`
+  inspects as `kind: attribute` with an empty signature and a generic one-line doc, and nothing
+  in the output links it to its implementing class. Resolve that class by name - `find
+  StructNameSpace --package polars` - and inspect it instead. This affects every `.dt`, `.str`,
+  `.list` and `.struct` style accessor.
+- **Decorators introspect as passthroughs.** `inspect numba::njit --docstring` reports
+  `(*args, **kws)`, and the fully qualified spelling reports the same. Follow the docstring's
+  pointer to the real API instead - `njit`'s docstring names `jit()`, which does document
+  `inline` and `cache`. The hard boundary: compiler and runtime semantics (does `cache=True`
+  compose with `parallel=True`; is `break` legal in a `prange`) live in no `__doc__` and no
+  signature, so no `venvaxi` command reaches them - that is a question for the project's own
+  documentation. This is the concrete face of the Overview's 'MUST not use `venvaxi` to
+  explain usage'.
 - **When to `--refresh`.** The cache lives at `~/.venvaxi/<project-hash>.db` and already
   invalidates itself when a package's installed version changes, or when a query needs more
   depth than was built. Reach for `--refresh` when the version string cannot move but the
@@ -213,11 +250,9 @@ Notable CLI differences:
   never as a way to confirm or explain a fix while investigating. Note also that `setup` reports
   only `SKILL.md: true|false` with no diff, so a `true` after a hand-edit of the installed copy
   means those edits were just discarded, not that an update arrived.
-- **Token savings are payload-shaped, not a flat ~40%.** Measured against compact JSON:
-  `venvaxi list` ~45%, `venvaxi find` ~27%, `venvaxi inspect <symbol>` ~6%. The saving comes
-  from amortizing repeated JSON keys across a table header, so it scales with row count and
-  collapses on single-object output. Do not budget for a general ~40%; on the `inspect` path,
-  efficiency comes from truncation instead.
+- **Token savings scale with row count and collapse on single-object output** - so prefer a
+  table-shaped query where either would answer, and on the `inspect` path efficiency comes from
+  truncation. The measured figures live in the venv-axi project's `specs/principles.md`.
 
 ## Pointers
 
