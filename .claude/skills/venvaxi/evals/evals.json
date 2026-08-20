@@ -112,6 +112,19 @@
         "Does not manufacture a series of venvaxi queries to 'research' tutorial content - the AXI reports what a symbol is, not how to use it",
         "Any venvaxi usage that does appear is limited to verifying a specific signature or symbol being cited, not sourcing the guidance itself"
       ]
+    },
+    {
+      "id": 10,
+      "name": "debugging-framing-fires-unprompted",
+      "prompt": "identify_outliers gives nonsense results when I pass a frame whose timestamp column is a polars Datetime rather than an integer. Diagnose it and tell me the exact fix.",
+      "expected_output": "Reaches for the AXI unprompted - the prompt never names venvaxi - and diagnoses the root cause as a signature fact: `polars.Datetime` defaults to `time_unit='us'`, so casting a Datetime column yields microseconds where the code expects epoch seconds. The fix converts the unit explicitly, grounded in the installed polars version rather than recall or ad-hoc interpreter runs.",
+      "files": [],
+      "expectations": [
+        "Uses venvaxi to verify the polars API without the prompt naming the tool - the bug-report framing alone triggers it",
+        "Identifies the root cause as the `polars.Datetime` default `time_unit='us'`, so the cast produces microseconds where epoch seconds are expected",
+        "Grounds the `time_unit` default in verified output from the installed polars version (e.g. inspecting `Datetime`) rather than presenting it as recollection",
+        "Does not diagnose primarily by executing polars snippets (`python -c`) - the question is the shape of `Datetime`, not a runtime value"
+      ]
     }
   ]
 }
