@@ -14,7 +14,6 @@ classifiers = [
     # 3 - Alpha | 4 - Beta | 5 - Production/Stable
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -42,19 +41,12 @@ Repository = "https://github.com/andyrids/venv-axi"
 Issues = "https://github.com/andyrids/venv-axi/issues"
 Changelog = "https://github.com/andyrids/venv-axi/blob/main/CHANGELOG.md"
 
-# NOTE: `pkgdx` is not on PyPI - it ships to a GitLab project package
-# registry, which is publicly readable (no auth required).
-[[tool.uv.index]]
-name = "gitlab-pkgdx"
-url = "https://gitlab.com/api/v4/projects/82928123/packages/pypi/simple"
-explicit = true
-
-[tool.uv.sources]
-pkgdx = { index = "gitlab-pkgdx" }
-
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
+
+[tool.coverage.run]
+omit = ["tests/*", "*/src_test*/*"]
 
 [tool.hatch.version]
 source = "vcs"
@@ -82,5 +74,12 @@ log_cli = true
 log_cli_level = "INFO"
 tmp_path_retention_policy = "failed"
 
-[tool.coverage.run]
-omit = ["tests/*", "*/src_test*/*"]
+# NOTE: `pkgdx` is not on PyPI - it ships to a GitLab project package
+# registry, which is publicly readable (no auth required).
+[[tool.uv.index]]
+name = "gitlab-pkgdx"
+url = "https://gitlab.com/api/v4/projects/82928123/packages/pypi/simple"
+explicit = true
+
+[tool.uv.sources]
+pkgdx = { index = "gitlab-pkgdx" }

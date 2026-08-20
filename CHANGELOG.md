@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > - `Fixed` for any bug fixes.
 > - `Security` in case of vulnerabilities.
 
-## [Unreleased]
+## [0.3.0]
 
 ### Added
 
@@ -60,7 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   returns `SKILL.md`, so the guard its own NOTE described - catching a rename of those keys - was
   never armed.
 
-## [v0.2.0] - 2026-08-13
+## [0.2.0] - 2026-08-13
 
 ### Added
 
@@ -100,7 +100,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `plans/pre-release-conformance.md` restored.
 - `plans/spec-conformance-sweep.md` follow-ups relabelled in accordance with `plans/README.md`.
 
-## [v0.1.0] - 2026-08-09
+## [0.1.0] - 2026-08-09
 
 ### Added
 
@@ -158,7 +158,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Verification requirement identifiers now come from a plan Validation checklist.
 - `ICM/_config/reference-standard-axi.md` reduced to a pointer; its content moved into `specs/`.
 
-## [v0.1.0rc1] - 2026-08-06
+## [0.1.0rc1] - 2026-08-06
 
 ### Added
 
