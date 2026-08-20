@@ -410,19 +410,50 @@ def test_setup_ambient_context_never_creates_agents_md(
     assert not (tmp_path / "AGENTS.md").exists()
 
 
-def test_setup_ambient_context_skips_skill_by_default(
+def test_setup_ambient_context_installs_skill_by_default(
     tmp_path: Path,
 ) -> None:
-    """Without `skill=True`, no skill file is written but the `skill`
-    key is still reported."""
+    """Without a `skill` argument, the skill file is written and the
+    `SKILL.md` key reports True."""
     with (
         mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"),
         mock.patch(f"{AMBIENT}.mcp_available", return_value=True),
     ):
         changed = setup_ambient_context(tmp_path)
 
+    assert changed["SKILL.md"] is True
+    path = tmp_path / ".claude" / "skills" / "venvaxi" / "SKILL.md"
+    assert path.read_bytes() == skill_markdown.read_bytes()
+
+
+def test_setup_installs_skill_without_fastmcp(tmp_path: Path) -> None:
+    """Where `fastmcp` is not importable, a bare `setup` still installs
+    the skill while dropping both MCP entries (principle 7 - the ungated
+    artifact is not also withheld)."""
+    with mock.patch(f"{AMBIENT}.mcp_available", return_value=False):
+        changed = setup_ambient_context(tmp_path)
+
+    assert changed["SKILL.md"] is True
+    assert changed[".vscode"] is False
+    assert changed[".mcp.json"] is False
+    path = tmp_path / ".claude" / "skills" / "venvaxi" / "SKILL.md"
+    assert path.read_bytes() == skill_markdown.read_bytes()
+    assert not (tmp_path / ".vscode" / "mcp.json").exists()
+    assert not (tmp_path / ".mcp.json").exists()
+
+
+def test_setup_reports_false_when_skill_unchanged(tmp_path: Path) -> None:
+    """While the installed skill matches the packaged copy
+    byte-for-byte, a bare `setup` reports `SKILL.md` as False."""
+    with (
+        mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"),
+        mock.patch(f"{AMBIENT}.mcp_available", return_value=True),
+    ):
+        first = setup_ambient_context(tmp_path)
+        changed = setup_ambient_context(tmp_path)
+
+    assert first["SKILL.md"] is True
     assert changed["SKILL.md"] is False
-    assert not (tmp_path / ".claude").exists()
 
 
 def test_setup_ambient_context_second_run_reports_no_change(
@@ -455,24 +486,25 @@ def test_setup_ambient_context_skips_mcp_when_unavailable(
         "AGENTS.md": True,
         ".vscode": False,
         ".mcp.json": False,
-        "SKILL.md": False,
+        "SKILL.md": True,
     }
     assert b"venvaxi:begin" not in path.read_bytes()
     assert not (tmp_path / ".vscode" / "mcp.json").exists()
     assert not (tmp_path / ".mcp.json").exists()
 
 
-def _run_main_setup(root: Path) -> int:
+def _run_main_setup(root: Path, *args: str) -> int:
     """Run `venvaxi setup` through the real entry point over `root`.
 
     Args:
         root: The consuming repo root `get_project_root` resolves to.
+        args: Extra CLI arguments appended after `setup`.
 
     Returns:
         The process exit code raised via `SystemExit`.
     """
     with (
-        mock.patch("sys.argv", ["venvaxi", "setup"]),
+        mock.patch("sys.argv", ["venvaxi", "setup", *args]),
         mock.patch("venvaxi.__main__.configure_cli_logging"),
         mock.patch("venvaxi._cli.get_project_root", return_value=root),
         mock.patch("venvaxi._cli.mcp_available", return_value=True),
@@ -532,5 +564,39 @@ def test_main_setup_success_unchanged(
     assert b"venvaxi:begin" not in path.read_bytes()
     assert '".vscode": true' in out
     assert '".mcp.json": true' in out
-    assert "SKILL.md: false" in out
+    assert "SKILL.md: true" in out
     assert "error: true" not in out
+
+
+def test_setup_no_skill_suppresses_install(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """`setup --no-skill` writes no skill file and reports
+    `SKILL.md: false`."""
+    exit_code = _run_main_setup(tmp_path, "--no-skill")
+    out = capsys.readouterr().out
+    assert exit_code == ExitCode.EX_OK
+    assert "SKILL.md: false" in out
+    assert "SKILL.md: true" not in out
+    assert not (tmp_path / ".claude").exists()
+
+
+def test_setup_skill_flag_matches_default(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """`setup --skill` produces the same result as a bare `setup`."""
+    bare_root = tmp_path / "bare"
+    flag_root = tmp_path / "flag"
+    bare_root.mkdir()
+    flag_root.mkdir()
+
+    bare_code = _run_main_setup(bare_root)
+    bare_out = capsys.readouterr().out
+    flag_code = _run_main_setup(flag_root, "--skill")
+    flag_out = capsys.readouterr().out
+
+    assert bare_code == flag_code == ExitCode.EX_OK
+    assert bare_out == flag_out
+    bare_skill = bare_root / ".claude" / "skills" / "venvaxi" / "SKILL.md"
+    flag_skill = flag_root / ".claude" / "skills" / "venvaxi" / "SKILL.md"
+    assert bare_skill.read_bytes() == flag_skill.read_bytes()

@@ -106,7 +106,7 @@ Verified against `venvaxi --help` output; defaults shown in parentheses.
 | `venvaxi inspect <name>` | `--docstring`, `--refresh` | Symbol detail, or module children |
 | `venvaxi inherits <qname>` | `--refresh` | Classes directly subclassing a base |
 | `venvaxi serve` | - | Run the MCP server over stdio |
-| `venvaxi setup` | `--skill` | Install ambient context (MCP config, optional skill) |
+| `venvaxi setup` | `--no-skill` | Install ambient context (MCP config & skill) |
 
 Notes on the positional arguments and shared flags:
 
@@ -122,8 +122,8 @@ Notes on the positional arguments and shared flags:
   or a bare/dotted module name - it dispatches on the presence of `::`.
 - `--refresh` exists on `show`, `find`, `tree`, `inspect` and `inherits`; it forces a graph
   rebuild before the query.
-- `setup --skill` additionally (re)installs this skill at `.claude/skills/venvaxi/SKILL.md`,
-  overwriting any existing copy.
+- `setup` (re)installs this skill at `.claude/skills/venvaxi/SKILL.md` by default, overwriting
+  any existing copy; `--no-skill` suppresses it.
 
 Output contract, common to every command:
 
@@ -202,15 +202,15 @@ Notable CLI differences:
   front, at startup - a traceback *after* `fastmcp` is confirmed installed is a different
   failure entirely: investigate it, do not re-run `setup`.
 - **`setup` writes files - it is not a diagnostic command.** It rewrites
-  `.mcp.json`/`.vscode/mcp.json` every time it runs, with `--skill` it overwrites
-  `.claude/skills/venvaxi/SKILL.md` wholesale, and it deletes a legacy ambient block from
-  `AGENTS.md` if it finds one. 'Idempotent' here only means repeated runs
-  converge on the same result, not that a run is side-effect-free - it still touches tracked
-  files. Diagnosing *whether* `fastmcp` is available is a read-only question: answer it with
-  `venvaxi show fastmcp` (raises `PackageNotFoundError` if absent) rather than running `setup`
-  to see what it does. Only run `setup` when you actually mean to (re-)register the MCP server -
-  e.g. right after installing the extra, or when told to fix a stale registration - never as a
-  way to confirm or explain a fix while investigating. Note also that `setup --skill` reports
+  `.mcp.json`/`.vscode/mcp.json` every time it runs, it overwrites
+  `.claude/skills/venvaxi/SKILL.md` wholesale unless `--no-skill` is given, and it deletes a
+  legacy ambient block from `AGENTS.md` if it finds one. 'Idempotent' here only means repeated
+  runs converge on the same result, not that a run is side-effect-free - it still touches
+  tracked files. Diagnosing *whether* `fastmcp` is available is a read-only question: answer it
+  with `venvaxi show fastmcp` (raises `PackageNotFoundError` if absent) rather than running
+  `setup` to see what it does. Only run `setup` when you actually mean to (re-)register the MCP
+  server - e.g. right after installing the extra, or when told to fix a stale registration -
+  never as a way to confirm or explain a fix while investigating. Note also that `setup` reports
   only `SKILL.md: true|false` with no diff, so a `true` after a hand-edit of the installed copy
   means those edits were just discarded, not that an update arrived.
 - **Token savings are payload-shaped, not a flat ~40%.** Measured against compact JSON:
@@ -229,6 +229,6 @@ Notable CLI differences:
   longer written. `setup` now strips one it finds, so `AGENTS.md: true` on a repo last set up by
   an older `venvaxi` means the block was removed, not refreshed. Nothing outside those markers is
   touched.
-- This file is installed by `venvaxi setup --skill` and overwritten wholesale on every run -
-  edit the packaged source (`src/venvaxi/SKILL.md` in the venv-axi project), never the
-  installed copy.
+- This file is installed by `venvaxi setup` (by default; `--no-skill` opts out) and
+  overwritten wholesale on every run - edit the packaged source (`src/venvaxi/SKILL.md` in the
+  venv-axi project), never the installed copy.

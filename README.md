@@ -46,19 +46,18 @@ Docstrings are truncated to a first line by default - add `--docstring` for comp
 `--refresh` option rebuilds a stale graph after a dependency version change.
 
 Ambient context for agents is registered by `setup`, which writes MCP server entries into
-`.vscode/mcp.json` and `.mcp.json`:
+`.vscode/mcp.json` and `.mcp.json`, and installs a Skill at `.claude/skills/venvaxi/SKILL.md`:
 
 ```bash
 uv run venvaxi setup
 ```
 
-The optional `--skill` flag additionally installs a Skill at `.claude/skills/venvaxi/SKILL.md`,
-covering the scan -> resolve -> inspect workflow, commands and MCP tool surface alongside common
-gotchas. The Skill is the agent-facing half of ambient context, loaded on demand rather than kept
-in every session:
+The Skill covers the scan -> resolve -> inspect workflow, commands and MCP tool surface alongside
+common gotchas. It is the agent-facing half of ambient context, loaded on demand rather than kept
+in every session, and it is installed by default - pass `--no-skill` to suppress it:
 
 ```bash
-uv run venvaxi setup --skill
+uv run venvaxi setup --no-skill
 ```
 
 Versions before v0.3.0 also injected an always-on block into `AGENTS.md` between
@@ -100,7 +99,7 @@ With the MCP server extra:
 uv add venv-axi --dev --extra mcp
 ```
 
-Register ambient context (MCP config, plus the Skill with `--skill`) in the consuming repo:
+Register ambient context (MCP config and the Skill; `--no-skill` opts out) in the consuming repo:
 
 ```bash
 uv run venvaxi setup

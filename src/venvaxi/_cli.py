@@ -1,11 +1,12 @@
 """Argparse CLI for `venvaxi`."""
 
+import argparse
 import logging
 import sys
 from dataclasses import asdict
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from venvaxi._ambient import mcp_available, setup_ambient_context
 from venvaxi._core import CLIContext, ExitCode, get_project_root
@@ -26,9 +27,6 @@ from venvaxi._packages import (
 )
 from venvaxi._toon import encode_object, encode_table, format_help
 from venvaxi.exceptions import InvalidArgumentError
-
-if TYPE_CHECKING:
-    import argparse
 
 logger = logging.getLogger(__package__)
 
@@ -666,16 +664,17 @@ def add_subparser(subparsers: "argparse._SubParsersAction[Any]") -> None:
         help=" ".join(
             [
                 "Install AXI ambient context into the repo",
-                "(MCP config & optional skill)",
+                "(MCP config & skill)",
             ]
         ),
     )
     parser_setup.add_argument(
         "--skill",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help=" ".join(
             [
-                "Also install the venvaxi Claude Code Skill",
+                "Install the venvaxi Claude Code Skill",
                 "(.claude/skills/venvaxi/SKILL.md) - overwrites any",
                 "existing copy",
             ]

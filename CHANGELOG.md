@@ -32,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whether the file was modified, but that is now true on *removal* rather than on write. A repo
   last set up by an earlier version reports `AGENTS.md: true` once, then `false`. The key set is
   unchanged.
+- **Breaking for `setup` callers.** `venvaxi setup` installs the Skill by default, overwriting
+  any existing copy; `--no-skill` opts out and `--skill` remains accepted, now naming the
+  default. The `SKILL.md` key reports whether the file was written - false under `--no-skill`
+  and when the installed copy already matches the packaged skill byte-for-byte.
 - `venvaxi setup` strips a legacy ambient block instead of writing one, preserving every byte
   outside the `<!-- venvaxi:begin -->`/`<!-- venvaxi:end -->` markers and collapsing the
   separator the injection had added. It never creates `AGENTS.md`.

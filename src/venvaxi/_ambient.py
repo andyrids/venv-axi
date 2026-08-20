@@ -6,7 +6,7 @@ already visible - before the agent takes any action.
 
 - Register an MCP server entry in `.vscode/mcp.json`
 - Register an MCP server entry in a `.mcp.json`
-- Install `.claude/skills/venvaxi/SKILL.md` (opt-in, `--skill`)
+- Install `.claude/skills/venvaxi/SKILL.md` (default; `--no-skill` opts out)
 - Remove the legacy marked block from the `AGENTS.md` of a consuming repo
 
 NOTE: The above steps are idempotent - running `venvaxi setup` multiple
@@ -269,7 +269,7 @@ def install_skill(root: Path) -> bool:
 
 
 def setup_ambient_context(
-    root: Path, *, skill: bool = False
+    root: Path, *, skill: bool = True
 ) -> dict[str, bool]:
     """Install AXI ambient context into the consuming repo.
 
@@ -282,13 +282,13 @@ def setup_ambient_context(
 
     Args:
         root: The consuming repo root path.
-        skill: Whether to also install the Claude Code Skill.
+        skill: Whether to install the Claude Code Skill.
 
     Returns:
         A mapping of which artifacts were created, modified or removed:
         `AGENTS.md`, `.vscode`, `.mcp.json` and `SKILL.md` - the last of
-        which is always present, but only ever True when `skill` was
-        requested.
+        which is always present, but True only when the skill file was
+        written.
 
     Raises:
         AmbientContextError: If any artifact cannot be read, created or
