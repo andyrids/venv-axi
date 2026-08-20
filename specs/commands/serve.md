@@ -11,9 +11,16 @@ tags: [command, serve, mcp]
 
 ```text
 venvaxi serve
+python -P -m venvaxi serve
 ```
 
 No arguments. Runs a dedicated AXI MCP server over STDIO.
+
+The two spellings are the same entry point, and the `serve` command shall serve an identical tool
+surface under either. The module form is what [`setup`](setup.md) registers, and `-P` is what makes
+the two equivalent - without it the module form additionally imports from the working directory.
+The equivalence is declared here because it is what makes that registration sound rather than a
+private detail of the installer.
 
 ## Data requirements
 

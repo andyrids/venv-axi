@@ -125,6 +125,18 @@
         "Grounds the `time_unit` default in verified output from the installed polars version (e.g. inspecting `Datetime`) rather than presenting it as recollection",
         "Does not diagnose primarily by executing polars snippets (`python -c`) - the question is the shape of `Datetime`, not a runtime value"
       ]
+    },
+    {
+      "id": 11,
+      "name": "axi-uv-sync-locked-shim-misdiagnosis",
+      "prompt": "On Windows, `uv run pytest` suddenly fails with \"failed to remove file `...\\.venv\\Lib\\site-packages\\../../Scripts/venvaxi.exe`: The process cannot access the file because it is being used by another process. (os error 32)\". I haven't touched venvaxi. My venv looks broken - should I delete .venv and rebuild it?",
+      "expected_output": "Recognises the locked console-script shim rather than a corrupted venv: a running `venvaxi serve` MCP server registered by an older `venvaxi setup` holds `venvaxi.exe` open, and uv must delete it to reinstall `venv-axi`. Talks the user out of rebuilding the venv, and gives the durable fix - stop the server, re-run `venvaxi setup` so the registration becomes the module form, restart it.",
+      "files": [],
+      "expectations": [
+        "Identifies the running MCP server (`venvaxi serve`) as the process holding the file, not a corrupted or half-written venv",
+        "Explicitly advises against deleting/rebuilding `.venv`, and against simply retrying the sync",
+        "Gives the durable fix: re-run `venvaxi setup` so the MCP entry becomes the module form (`-P -m venvaxi serve`), which uv can reinstall around"
+      ]
     }
   ]
 }

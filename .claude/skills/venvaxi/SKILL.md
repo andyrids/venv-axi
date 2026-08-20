@@ -240,6 +240,15 @@ Notable CLI differences:
   server entry after `setup` means the extra is not installed. The availability check runs up
   front, at startup - a traceback *after* `fastmcp` is confirmed installed is a different
   failure entirely: investigate it, do not re-run `setup`.
+- **`os error 32` on a `uv` sync names `venvaxi.exe`, not a broken venv.** On Windows a
+  running MCP server registered by an older `setup` holds the `venvaxi` console-script shim
+  open. When `uv` has to reinstall `venv-axi` - on any dependency change - it cannot delete
+  that file, and an otherwise unrelated `uv run` or `uv sync` fails with 'The process cannot
+  access the file because it is being used by another process'. It fires only on the runs
+  that reinstall, so the same command succeeding earlier does not mean the registration is
+  fine. Nothing is corrupted - do not rebuild the venv, and retrying without stopping the
+  server only defers it. Stop the server, re-run `venvaxi setup` to move the registration to
+  `<python> -P -m venvaxi serve`, and start it again; the failure does not recur.
 - **`setup` writes files - it is not a diagnostic command.** It rewrites
   `.mcp.json`/`.vscode/mcp.json` every time it runs, it overwrites
   `.claude/skills/venvaxi/SKILL.md` wholesale unless `--no-skill` is given, and it deletes a

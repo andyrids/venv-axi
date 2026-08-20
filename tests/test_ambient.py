@@ -1,6 +1,7 @@
 """Unit tests for `venvaxi._ambient`."""
 
 import json
+import sys
 from pathlib import Path
 from unittest import mock
 
@@ -8,6 +9,7 @@ import pytest
 
 from venvaxi import __main__
 from venvaxi._ambient import (
+    _axi_interpreter,
     _update_mcp_json,
     install_skill,
     setup_ambient_context,
@@ -18,6 +20,7 @@ from venvaxi._core import ExitCode
 from venvaxi.exceptions import AmbientContextError
 
 AMBIENT = "venvaxi._ambient"
+INTERPRETER = "/venv/bin/python"
 
 
 # NOTE: A distinctive sentinel for the legacy block body, never a word
@@ -201,22 +204,90 @@ def test_strip_agents_md_preserves_bytes_around_markers(
     assert SENTINEL not in written
 
 
+def test_axi_interpreter_is_verbatim_sys_executable() -> None:
+    """The registered interpreter is `sys.executable`, unresolved.
+
+    NOTE: Deliberately unmocked, unlike every other test here. A POSIX
+    venv's `bin/python` is a symlink to the base interpreter, which
+    carries none of the venv's packages, so a `Path(...).resolve()` in
+    the helper would register a server that cannot import `venvaxi`.
+    Mocking the helper is precisely what would hide that regression.
+    """
+    assert _axi_interpreter() == sys.executable
+
+
+def test_axi_interpreter_does_not_resolve_symlinks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A symlinked interpreter is registered unresolved.
+
+    NOTE: This is the assertion with teeth. The plain
+    `sys.executable` comparison above cannot fail on Windows, where the
+    venv interpreter is a real file and `resolve()` is a no-op - only a
+    symlink makes a reintroduced `Path(...).resolve()` observable. On
+    POSIX the symlink is the real shape: `.venv/bin/python` points at
+    the base interpreter, which carries none of the venv's packages.
+    """
+    link = tmp_path / "python-link"
+    try:
+        link.symlink_to(sys.executable)
+    except OSError as err:  # pragma: no cover - privilege dependent
+        pytest.skip(f"symlink creation unavailable: {err}")
+
+    monkeypatch.setattr(sys, "executable", str(link))
+    assert _axi_interpreter() == str(link)
+    assert _axi_interpreter() != str(link.resolve())
+
+
+def test_update_mcp_json_replaces_console_script_entry(
+    tmp_path: Path,
+) -> None:
+    """A shim-form entry written by an earlier version is replaced."""
+    path = tmp_path / ".mcp.json"
+    path.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "VenvAXI": {
+                        "type": "stdio",
+                        "command": "/venv/bin/venvaxi",
+                        "args": ["serve"],
+                    }
+                }
+            }
+        )
+    )
+    with mock.patch(f"{AMBIENT}._axi_interpreter", return_value=INTERPRETER):
+        changed = _update_mcp_json(path, "mcpServers", available=True)
+
+    entry = json.loads(path.read_text())["mcpServers"]["VenvAXI"]
+    assert changed is True
+    assert entry["command"] == INTERPRETER
+    assert entry["args"] == ["-P", "-m", "venvaxi", "serve"]
+
+
 def test_update_mcp_json_creates_file(tmp_path: Path) -> None:
     """A missing MCP config file is created with a VenvAXI entry."""
     path = tmp_path / ".vscode" / "mcp.json"
-    with mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"):
+    with mock.patch(f"{AMBIENT}._axi_interpreter", return_value=INTERPRETER):
         changed = _update_mcp_json(path, "servers", available=True)
 
     data = json.loads(path.read_text())
     assert changed is True
-    assert data["servers"]["VenvAXI"]["command"] == "/bin/venvaxi"
-    assert data["servers"]["VenvAXI"]["args"] == ["serve"]
+    assert data["servers"]["VenvAXI"]["command"] == INTERPRETER
+    assert data["servers"]["VenvAXI"]["args"] == [
+        "-P",
+        "-m",
+        "venvaxi",
+        "serve",
+    ]
 
 
 def test_update_mcp_json_idempotent(tmp_path: Path) -> None:
     """Running the update twice makes no further changes."""
     path = tmp_path / "mcp.json"
-    with mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"):
+    with mock.patch(f"{AMBIENT}._axi_interpreter", return_value=INTERPRETER):
         _update_mcp_json(path, "mcpServers", available=True)
         changed = _update_mcp_json(path, "mcpServers", available=True)
     assert changed is False
@@ -226,7 +297,7 @@ def test_update_mcp_json_preserves_other_keys(tmp_path: Path) -> None:
     """Existing unrelated servers/keys are preserved."""
     path = tmp_path / "mcp.json"
     path.write_text(json.dumps({"mcpServers": {"other": {"command": "x"}}}))
-    with mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"):
+    with mock.patch(f"{AMBIENT}._axi_interpreter", return_value=INTERPRETER):
         _update_mcp_json(path, "mcpServers", available=True)
 
     data = json.loads(path.read_text())
@@ -240,7 +311,7 @@ def test_update_mcp_json_recovers_from_malformed_json(
     """Malformed existing JSON is replaced rather than raising."""
     path = tmp_path / "mcp.json"
     path.write_text("{not valid json")
-    with mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"):
+    with mock.patch(f"{AMBIENT}._axi_interpreter", return_value=INTERPRETER):
         changed = _update_mcp_json(path, "mcpServers", available=True)
 
     data = json.loads(path.read_text())
@@ -292,7 +363,7 @@ def test_update_mcp_json_write_failure_raises(tmp_path: Path) -> None:
     `AmbientContextError` naming the destination path."""
     path = tmp_path / ".vscode" / "mcp.json"
     with (
-        mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"),
+        mock.patch(f"{AMBIENT}._axi_interpreter", return_value=INTERPRETER),
         mock.patch.object(Path, "write_bytes", side_effect=OSError("denied")),
         pytest.raises(AmbientContextError) as exc_info,
     ):
@@ -386,7 +457,7 @@ def test_setup_ambient_context_reports_all_artifacts(
     # NOTE: `mcp_available` is patched so the suite passes with or
     # without the `mcp` extra installed
     with (
-        mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"),
+        mock.patch(f"{AMBIENT}._axi_interpreter", return_value=INTERPRETER),
         mock.patch(f"{AMBIENT}.mcp_available", return_value=True),
     ):
         changed = setup_ambient_context(tmp_path, skill=True)
@@ -401,7 +472,7 @@ def test_setup_ambient_context_never_creates_agents_md(
     """`setup` no longer writes an ambient block, so a repo without an
     `AGENTS.md` does not gain one."""
     with (
-        mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"),
+        mock.patch(f"{AMBIENT}._axi_interpreter", return_value=INTERPRETER),
         mock.patch(f"{AMBIENT}.mcp_available", return_value=True),
     ):
         changed = setup_ambient_context(tmp_path, skill=True)
@@ -416,7 +487,7 @@ def test_setup_ambient_context_installs_skill_by_default(
     """Without a `skill` argument, the skill file is written and the
     `SKILL.md` key reports True."""
     with (
-        mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"),
+        mock.patch(f"{AMBIENT}._axi_interpreter", return_value=INTERPRETER),
         mock.patch(f"{AMBIENT}.mcp_available", return_value=True),
     ):
         changed = setup_ambient_context(tmp_path)
@@ -446,7 +517,7 @@ def test_setup_reports_false_when_skill_unchanged(tmp_path: Path) -> None:
     """While the installed skill matches the packaged copy
     byte-for-byte, a bare `setup` reports `SKILL.md` as False."""
     with (
-        mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"),
+        mock.patch(f"{AMBIENT}._axi_interpreter", return_value=INTERPRETER),
         mock.patch(f"{AMBIENT}.mcp_available", return_value=True),
     ):
         first = setup_ambient_context(tmp_path)
@@ -463,7 +534,7 @@ def test_setup_ambient_context_second_run_reports_no_change(
     unchanged (the `changed` booleans are accurate, not always True)."""
     _seed_legacy_agents_md(tmp_path)
     with (
-        mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"),
+        mock.patch(f"{AMBIENT}._axi_interpreter", return_value=INTERPRETER),
         mock.patch(f"{AMBIENT}.mcp_available", return_value=True),
     ):
         first = setup_ambient_context(tmp_path, skill=True)
@@ -509,7 +580,7 @@ def _run_main_setup(root: Path, *args: str) -> int:
         mock.patch("venvaxi._cli.get_project_root", return_value=root),
         mock.patch("venvaxi._cli.mcp_available", return_value=True),
         mock.patch(f"{AMBIENT}.mcp_available", return_value=True),
-        mock.patch(f"{AMBIENT}._axi_command", return_value="/bin/venvaxi"),
+        mock.patch(f"{AMBIENT}._axi_interpreter", return_value=INTERPRETER),
         pytest.raises(SystemExit) as exc_info,
     ):
         __main__.main()

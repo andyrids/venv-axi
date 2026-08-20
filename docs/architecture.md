@@ -40,7 +40,14 @@ the CLI and the MCP tools, not the Python API.
 
 [Principle 7](../specs/principles.md#principle-7-ambient-context) is satisfied by two artifacts
 `venvaxi setup` writes: the MCP server entries, whose tool descriptions the harness keeps in
-context, and the opt-in skill, which loads when its `description` matches the task.
+context, and the skill, which loads when its `description` matches the task.
+
+The registered command is the module form - `<python> -P -m venvaxi serve` - never the `venvaxi`
+console-script shim. A long-lived server holding the shim open blocks the package manager from
+reinstalling `venv-axi` on the next dependency change, which surfaces as an `os error 32` on an
+unrelated `uv` sync; an interpreter is not replaced by a package reinstall. `-P` keeps the working
+directory off `sys.path`, where a shim launch never put it. `specs/commands/setup.md` carries the
+clause and the reasoning.
 
 An always-on `AGENTS.md` block was a third channel until it was removed. It duplicated the skill
 in every session of every consuming repo whether or not the task touched a dependency, and

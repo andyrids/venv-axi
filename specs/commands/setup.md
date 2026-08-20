@@ -60,6 +60,26 @@ Three artifacts and one removal, all idempotent - repeated runs have no adverse 
    This item governs the skill's installation only. What the packaged skill must contain is
    declared in [Packaged skill content](../behaviors/skill-content.md).
 
+Both entries name the same STDIO command, and the `setup` command shall register it as the running
+interpreter invoking the package as a module with the working directory excluded from the import
+path - `<python> -P -m venvaxi serve` - never the `venvaxi` console-script shim.
+
+The shim and the module form are equivalent entry points; what separates them is which file the
+long-lived server process holds open. The shim is owned by the `venv-axi` distribution, so a
+package manager reinstalling it - which `uv` does on any dependency change - must delete a file the
+running server has locked, and the sync fails naming a file the caller was not thinking about. The
+interpreter is not replaced by a package reinstall. The working directory is excluded because a
+module-form launch would otherwise import a consuming repo's top-level modules ahead of the ones
+the server needs.
+
+The `setup` command shall register the interpreter running it, as that interpreter reports itself,
+and shall not resolve the path through symlinks. A POSIX virtual environment's interpreter is a
+symlink to the base interpreter, which has none of the venv's packages, so a resolved path
+registers a server that cannot import itself.
+
+If a registered entry names any command other than the one above, then the `setup` command shall
+replace it on the next run and report the file as modified.
+
 MCP registration is **gated on `fastmcp` availability**: if `fastmcp` is not importable, then the
 `setup` command shall drop the MCP entries rather than write them. A registered server that
 `venvaxi serve` cannot start would die on every agent session, which is worse than an absent
@@ -103,6 +123,10 @@ Success exits `EX_OK`, per the [exit codes](../behaviors/output-contract.md#exit
 - **A read-only status mode** - `setup` mutates; checking installation state without writing is
   not offered. No future spec is planned; the warning under Invocation exists precisely because
   a reader would assume otherwise.
+- **Migrating an existing registration without running `setup`** - no install or upgrade hook
+  rewrites a consuming repo's `.mcp.json`; the entry changes the next time `setup` runs. Never -
+  `setup` is the only writer, and a package install that edited a consuming repo's tracked files
+  unasked would be worse than a stale entry.
 - **Removal of the installed artifacts** - the MCP entries and the skill are installed, never
   uninstalled. Never - they are plain files a caller can delete, and an uninstall verb would have
   to guess which of them a repo still wants.

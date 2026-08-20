@@ -94,13 +94,19 @@ def _atomic_write_bytes(path: Path, data: bytes) -> None:
         os.replace(tmp_path, path)
 
 
-def _axi_command() -> str:
-    """Resolve absolute path of the `venvaxi` executable.
+def _axi_interpreter() -> str:
+    """Resolve absolute path of the running Python interpreter.
+
+    NOTE: Returned verbatim, never `Path(...).resolve()`. A POSIX venv's
+    `bin/python` is a symlink to the base interpreter, which has none of
+    the venv's packages - a resolved path would register a server that
+    cannot import `venvaxi` at all. `sys.executable` is already absolute,
+    so there is nothing to normalize.
 
     Returns:
-        The absolute path of the invoked `venvaxi` script.
+        The absolute path of the interpreter running this process.
     """
-    return str(Path(sys.argv[0]).resolve())
+    return sys.executable
 
 
 def mcp_available() -> bool:
@@ -214,10 +220,17 @@ def _update_mcp_json(path: Path, servers_key: str, available: bool) -> bool:
         _atomic_write_bytes(path, (json.dumps(data, indent=2) + "\n").encode())
         return True
 
+    # NOTE: The module form, not the `venvaxi` console-script shim. The
+    # shim is owned by the `venv-axi` distribution, so a reinstall - which
+    # `uv` does on any dependency change - must delete a file a running
+    # server holds open, and the sync fails naming a file the caller was
+    # not thinking about. `-P` keeps the working directory off `sys.path`,
+    # which a shim launch never puts there; without it a consuming repo's
+    # top-level modules would shadow the ones the server imports.
     entry = {
         "type": "stdio",
-        "command": _axi_command(),
-        "args": ["serve"],
+        "command": _axi_interpreter(),
+        "args": ["-P", "-m", "venvaxi", "serve"],
     }
 
     if servers.get("VenvAXI") == entry:
