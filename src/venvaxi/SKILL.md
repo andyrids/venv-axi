@@ -116,7 +116,7 @@ Verified against `venvaxi --help` output; defaults shown in parentheses.
 | `venvaxi inspect <name>` | `--docstring`, `--refresh` | Symbol detail, or module children |
 | `venvaxi inherits <qname>` | `--refresh` | Classes directly subclassing a base |
 | `venvaxi serve` | - | Run the MCP server over stdio |
-| `venvaxi setup` | `--no-skill` | Install ambient context (MCP config & skill) |
+| `venvaxi setup` | `--skill`, `--no-skill` | Install ambient context (MCP config & skill) |
 
 Notes on the positional arguments and shared flags:
 

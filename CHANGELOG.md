@@ -44,11 +44,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `.claude/skills/venvaxi/SKILL.md` is generated output, not a hand-maintained dev-facing fork.
 - `docs/architecture.md` documents the single-source skill model and drops the stale advice not
   to run `setup --skill` in this repo.
-- The packaged skill's content is now governed by `specs/behaviors/skill-content.md`. It states
-  the three-way exit-code contract, adds gotchas for four observed failure modes (`inherits`
-  direction, unindexed dunders, empty namespace accessors, decorator passthroughs), makes the
-  case against executing the dependency, flips the `inherits` worked example to a populated
-  result, and points at `specs/principles.md` for the measured token figures it used to carry.
+- The packaged skill's content is now governed by `specs/behaviors/skill-content.md`. It corrects
+  the exit-code contract, which had claimed every error exits `1`: exit `2` now has both its
+  causes named and told apart by stdout - an argparse rejection emits no TOON, a venvaxi fault
+  emits an `Unexpected error:` block. It also adds gotchas for four observed failure modes
+  (`inherits` direction, unindexed dunders, empty namespace accessors, decorator passthroughs),
+  makes the case against executing the dependency, flips the `inherits` worked example to a
+  populated result, completes the `setup` row's flag list, and points at `specs/principles.md`
+  for the measured token figures it used to carry.
 - The skill `description` names debugging framings - observed misbehaviour whose cause is a
   signature fact - and the eval suite grows to 10 cases, one framed as a bug report that never
   names `venvaxi`.
