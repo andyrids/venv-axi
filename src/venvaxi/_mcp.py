@@ -6,7 +6,8 @@ from collections.abc import Callable
 from dataclasses import asdict
 from typing import Any
 
-from venvaxi._core import get_project_root
+from venvaxi._constants import NO_PROJECT_ROOT
+from venvaxi._core import get_project_root, resolve_binding
 from venvaxi._introspect import (
     MCP_ESCAPE_HATCH,
     SYMBOL_INFO_FIELDS,
@@ -91,6 +92,50 @@ def camel_case(name: str) -> str:
         return str(match.group(1)).upper()
 
     return re.sub(r"_([a-zA-Z])", match_upper, name)
+
+
+def describe_binding_tool() -> str:
+    """Identify the project and venv this server answers from.
+
+    Call this first: every other tool returns results about a binding
+    it never names, so a server bound to the wrong project or venv
+    returns plausible answers with no warning. Reports the resolved
+    project `root`, the serving `venv` and the venv `status`.
+    """
+    # NOTE: The docstring above is the registered MCP description -
+    # FastMCP reads `__doc__` - and `specs/mcp/tools.md` makes it part
+    # of the contract: it must state what the tool identifies and that
+    # it is the tool to call first. Functional text, not commentary.
+    root, venv, status = resolve_binding()
+    output = encode_object({"root": root, "venv": venv, "status": status})
+    if root == NO_PROJECT_ROOT:
+        # NOTE: The degraded hint names the registration, not an
+        # invocation - an MCP caller cannot change the server's working
+        # directory, and naming a file to inspect is not a shell
+        # spelling (`specs/mcp/tools.md`, Hint wording).
+        return _with_help(
+            output,
+            [
+                (
+                    "This server is bound to no project - check the"
+                    " `VenvAXI` entry in the consuming repository's"
+                    " `.mcp.json` and re-register from inside that"
+                    " project"
+                )
+            ],
+        )
+    list_name = camel_case(list_packages_tool.__name__)
+    find_name = camel_case(find_symbol_tool.__name__)
+    return _with_help(
+        output,
+        [
+            (
+                f"Call `{list_name}` with include_dev=true for the"
+                " declared dependencies"
+            ),
+            f"Call `{find_name}` with a query to search the symbol graph",
+        ],
+    )
 
 
 def list_packages_tool(include_dev: bool = False) -> str:
@@ -294,6 +339,7 @@ def get_module_tree_tool(name: str, max_depth: int = 2) -> str:
 
 
 _TOOLS: tuple[Callable[..., str], ...] = (
+    describe_binding_tool,
     list_packages_tool,
     show_package_tool,
     show_package_api_tool,
@@ -318,7 +364,22 @@ def build_server() -> Any:
     """
     from fastmcp import FastMCP
 
-    server = FastMCP("VenvAXI")
+    # NOTE: Computed once, at startup - nothing in the server changes
+    # its working directory afterwards, so the instructions stay equal
+    # to what `describe_binding_tool` resolves per call. Going through
+    # `resolve_binding` means the unresolvable-root case degrades to
+    # the same `(no project root)` marker instead of raising, so the
+    # server starts anyway (`specs/commands/serve.md`, Failure modes).
+    root, venv, status = resolve_binding()
+    binding = encode_object({"root": root, "venv": venv, "status": status})
+    cname = camel_case(describe_binding_tool.__name__)
+    instructions = (
+        "This server answers from the binding below - a wrong `root` or"
+        " `venv` means every tool answers about the wrong project.\n"
+        f"{binding}\n"
+        f"Call `{cname}` to re-check the binding at any time."
+    )
+    server = FastMCP("VenvAXI", instructions=instructions)
     for fn in _TOOLS:
         # get_module_tree_tool -> getModuleTreeTool etc. (camelCase)
         server.tool(_toon_errors(fn), name=camel_case(fn.__name__))

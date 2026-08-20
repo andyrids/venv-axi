@@ -76,9 +76,9 @@ The AXI tools can be served over MCP (STDIO) with the `venvaxi serve` command, w
 uv add venv-axi --dev --extra mcp
 ```
 
-The MCP server exposes; `listPackagesTool`, `showPackageTool`, `showPackageApiTool`,
-`showModuleTool`, `getSymbolTool`, `findSymbolTool`, `getInheritorsTool` and
-`getModuleTreeTool`
+The MCP server exposes; `describeBindingTool`, `listPackagesTool`, `showPackageTool`,
+`showPackageApiTool`, `showModuleTool`, `getSymbolTool`, `findSymbolTool`, `getInheritorsTool`
+and `getModuleTreeTool`
 
 > [!NOTE]
 > Tool names are in camelCase format, generated from the snake_case function names (`_mcp.py`).

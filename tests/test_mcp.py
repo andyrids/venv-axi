@@ -9,13 +9,17 @@ import pytest
 
 pytest.importorskip("fastmcp")
 # ruff: disable[E402]
+from venvaxi._constants import NO_PROJECT_ROOT
+from venvaxi._core import resolve_binding
 from venvaxi._introspect import MCP_ESCAPE_HATCH, SymbolInfo
 from venvaxi._mcp import build_server
 from venvaxi._packages import PackageInfo
 from venvaxi._store import NodeKind, SymbolNode
-from venvaxi.exceptions import SymbolNotFoundError
+from venvaxi._toon import encode_object
+from venvaxi.exceptions import ProjectRootNotFoundError, SymbolNotFoundError
 
 # ruff: enable[E402]
+CORE = "venvaxi._core"
 MCP = "venvaxi._mcp"
 
 NodeFactory = Callable[..., SymbolNode]
@@ -33,13 +37,14 @@ def camel_case(name: str) -> str:
 
 
 def test_build_server_registers_tools() -> None:
-    """`build_server` registers all eight expected MCP tools."""
+    """`build_server` registers all nine expected MCP tools."""
     from venvaxi import _mcp
 
     server = build_server()
     names = {tool.name for tool in asyncio.run(server.list_tools())}
 
     assert names == {
+        camel_case(_mcp.describe_binding_tool.__name__),
         camel_case(_mcp.list_packages_tool.__name__),
         camel_case(_mcp.show_package_tool.__name__),
         camel_case(_mcp.show_package_api_tool.__name__),
@@ -49,6 +54,111 @@ def test_build_server_registers_tools() -> None:
         camel_case(_mcp.get_inheritors_tool.__name__),
         camel_case(_mcp.get_module_tree_tool.__name__),
     }
+
+
+def test_describe_binding_tool_reports_binding(tmp_path: Path) -> None:
+    """The tool emits the flat `root`/`venv`/`status` object."""
+    server = build_server()
+    with mock.patch(f"{CORE}.get_project_root", return_value=tmp_path):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "root:" in result
+    assert "venv:" in result
+    assert "status:" in result
+
+
+def test_describe_binding_tool_footer_names_camel_case(
+    tmp_path: Path,
+) -> None:
+    """The success footer names next-step tools by camelCase name and
+    carries no `venvaxi` shell spelling."""
+    server = build_server()
+    with mock.patch(f"{CORE}.get_project_root", return_value=tmp_path):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "help[2]:" in result
+    assert "listPackagesTool" in result
+    assert "include_dev=true" in result
+    assert "findSymbolTool" in result
+    assert "list_packages_tool" not in result
+    assert "venvaxi " not in result
+
+
+def test_describe_binding_tool_no_root_reports_marker() -> None:
+    """No resolvable root degrades to the marker with no error block,
+    and the hint names the registration rather than an invocation."""
+    server = build_server()
+    with mock.patch(
+        f"{CORE}.get_project_root",
+        side_effect=ProjectRootNotFoundError("nope"),
+    ):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert f"root: {NO_PROJECT_ROOT}" in result
+    assert "venv:" in result
+    assert "error: true" not in result
+    assert ".mcp.json" in result
+    assert "venvaxi " not in result
+
+
+def test_describe_binding_tool_unexpected_error_returns_error_block() -> None:
+    """A non-`ProjectRootNotFoundError` returns the `Unexpected error:`
+    block, never the marker - the degrade is scoped to its trigger."""
+    server = build_server()
+    with mock.patch(f"{CORE}.get_project_root", side_effect=OSError("gone")):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "error: true" in result
+    assert "Unexpected error: gone" in result
+    assert NO_PROJECT_ROOT not in result
+
+
+def test_describe_binding_tool_description_is_call_first() -> None:
+    """The registered description identifies the binding and carries
+    the call-me-first signal (`specs/mcp/tools.md`)."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("describe_binding_tool")))
+    description = tool.description or ""
+    assert "project" in description
+    assert "venv" in description
+    assert "answers from" in description
+    assert "Call this first" in description
+
+
+def test_build_server_instructions_carry_binding() -> None:
+    """The initialization instructions carry the bound root and venv."""
+    with mock.patch(
+        f"{CORE}.get_project_root", return_value=Path.home() / "proj"
+    ):
+        server = build_server()
+        _, venv, _ = resolve_binding()
+    # NOTE: `~/proj` holds no TOON-escapable characters, so it appears
+    # verbatim; the venv line is matched in its encoded form because a
+    # Windows path is escaped-and-quoted by the encoder.
+    assert "root: ~/proj" in server.instructions
+    assert encode_object({"venv": venv}) in server.instructions
+
+
+def test_build_server_no_root_still_builds_with_marker() -> None:
+    """An unresolvable root at startup degrades to the marker - the
+    server still builds and serves the full tool surface."""
+    with mock.patch(
+        f"{CORE}.get_project_root",
+        side_effect=ProjectRootNotFoundError("nope"),
+    ):
+        server = build_server()
+    assert NO_PROJECT_ROOT in server.instructions
+    names = {tool.name for tool in asyncio.run(server.list_tools())}
+    assert len(names) == 9
+    assert camel_case("describe_binding_tool") in names
 
 
 def test_list_packages_tool_returns_toon(

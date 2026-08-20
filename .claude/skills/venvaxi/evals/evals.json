@@ -137,6 +137,19 @@
         "Explicitly advises against deleting/rebuilding `.venv`, and against simply retrying the sync",
         "Gives the durable fix: re-run `venvaxi setup` so the MCP entry becomes the module form (`-P -m venvaxi serve`), which uv can reinstall around"
       ]
+    },
+    {
+      "id": 12,
+      "name": "mcp-wrong-binding-plausible-answers",
+      "prompt": "Something is off with the VenvAXI MCP server in this repo. listPackagesTool with include_dev=true returns a dependency list that doesn't match our pyproject.toml at all - it names packages we never declared and misses half of our actual dependencies, yet every answer is well-formed with no error. Is the symbol cache stale? Should I run venvaxi list --refresh or rebuild the graph somehow?",
+      "expected_output": "Diagnoses a wrong binding rather than a stale cache: calls describeBindingTool first and compares the reported root/venv against the project being edited, identifies the mismatch as a registration problem (an `.mcp.json` VenvAXI entry pointing at another project or venv), and gives re-running `venvaxi setup` from inside the working project as the fix - explicitly not `--refresh`, which rebuilds the wrong project's graph.",
+      "files": [],
+      "expectations": [
+        "Calls (or instructs calling) `describeBindingTool` first to learn which project root and venv the server answers from, before touching the cache",
+        "Identifies the mismatch as a binding/registration problem - the `VenvAXI` entry in `.mcp.json` answering for another project or venv - not a stale symbol graph",
+        "Does not recommend `--refresh` or a cache rebuild as the fix, since a wrongly bound server would only rebuild the wrong project's graph",
+        "Names re-registering from inside the working project (re-running `venvaxi setup` there) as the remedy"
+      ]
     }
   ]
 }

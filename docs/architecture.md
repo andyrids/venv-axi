@@ -42,6 +42,11 @@ the CLI and the MCP tools, not the Python API.
 `venvaxi setup` writes: the MCP server entries, whose tool descriptions the harness keeps in
 context, and the skill, which loads when its `description` matches the task.
 
+The served initialization instructions are a best-effort third channel: `build_server` resolves
+the binding once at startup and passes the project root, venv and status to `FastMCP` as
+`instructions=`, so a client that surfaces them gives the agent the binding without a tool call;
+`specs/commands/serve.md` carries the clause.
+
 The registered command is the module form - `<python> -P -m venvaxi serve` - never the `venvaxi`
 console-script shim. A long-lived server holding the shim open blocks the package manager from
 reinstalling `venv-axi` on the next dependency change, which surfaces as an `os error 32` on an
