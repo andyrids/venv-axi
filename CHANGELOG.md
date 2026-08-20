@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > - `Fixed` for any bug fixes.
 > - `Security` in case of vulnerabilities.
 
-## [0.3.0]
+## [0.3.0rc1]
 
 ### Added
 
@@ -59,6 +59,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tests/test_cli.py` mocked `setup`'s return value with a `skill` key where the implementation
   returns `SKILL.md`, so the guard its own NOTE described - catching a rename of those keys - was
   never armed.
+- The CLI reconfigures STDOUT and STDERR to UTF-8 at entry, so a docstring carrying a character
+  the ambient pipe encoding cannot represent - box-drawing tables, Greek letters - no longer
+  crashes `inspect --docstring` with a `UnicodeEncodeError` and exit 2 (issue 45).
 
 ## [0.2.0] - 2026-08-13
 
