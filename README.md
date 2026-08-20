@@ -109,6 +109,16 @@ uv run venvaxi setup
 > The MCP config (`.mcp.json`) is only created on `setup` when `venv-axi` is installed with the
 > `mcp` optional dependency. On adding this extra dependency, rerun the `setup` command.
 
+`setup` registers the server as `<python> -P -m venvaxi serve` rather than the `venvaxi`
+console-script. A running server holds whatever it was launched from open, and on Windows that
+stops `uv` from reinstalling `venv-axi` on the next dependency change - the sync fails with
+`os error 32` naming `venvaxi.exe`. An interpreter is not replaced by a package reinstall, so the
+module form leaves the sync unobstructed.
+
+> [!NOTE]
+> An entry written by an earlier version still names the console script. Re-run `setup` to
+> migrate it; stop the running server first, or it blocks the sync that `setup` itself triggers.
+
 The symbol graph is cached per-project under `~/.venvaxi/`.
 
 ## A note on AI usage

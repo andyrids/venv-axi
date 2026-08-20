@@ -17,6 +17,20 @@ will activate the project virtual environment if necessary.
 
 The project dependencies can be listed with the `uv pip list` command.
 
+### A locked console-script shim on Windows
+
+If `uv run` or `uv sync` fails with `os error 32` naming `.venv\Scripts\venvaxi.exe`, an MCP
+server process is holding the shim open and uv cannot delete it to reinstall `venv-axi`. Nothing
+is corrupted - the venv survives and the CLI still works.
+
+It means the registration in `.mcp.json` predates the module form. Stop the server, run
+`uv run venvaxi setup` to rewrite the entry as `<python> -P -m venvaxi serve`, and start it
+again. An interpreter is not replaced by a package reinstall, so the sync is unobstructed from
+then on.
+
+The order matters: `setup` is itself run through `uv`, so a server started from the old entry can
+block the very command that fixes it.
+
 ## Scripts
 
 Scripts can be read from `stdin`:
