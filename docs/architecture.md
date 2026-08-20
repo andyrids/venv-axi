@@ -51,7 +51,7 @@ now strips a block left by an earlier version rather than leaving an orphan noth
 ## Two skill copies, one source
 
 - `src/venvaxi/SKILL.md` - the skill, shipped in the wheel and written into consuming repos by
-  `venvaxi setup --skill`. The only hand-edited copy.
+  `venvaxi setup` (by default; `--no-skill` opts out). The only hand-edited copy.
 - `.claude/skills/venvaxi/SKILL.md` - this repo's own copy, generated from the first.
   Regenerate with `just skill-sync`, which calls `install_skill` directly so the repo dogfoods
   its own installer without `setup` also rewriting `.mcp.json`.
