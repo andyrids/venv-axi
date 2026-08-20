@@ -57,6 +57,9 @@ Three artifacts and one removal, all idempotent - repeated runs have no adverse 
    packaged skill, then the `setup` command shall replace it wholesale, and the returned
    `SKILL.md` key shall report `true` without describing what was discarded.
 
+   This item governs the skill's installation only. What the packaged skill must contain is
+   declared in [Packaged skill content](../behaviors/skill-content.md).
+
 MCP registration is **gated on `fastmcp` availability**: if `fastmcp` is not importable, then the
 `setup` command shall drop the MCP entries rather than write them. A registered server that
 `venvaxi serve` cannot start would die on every agent session, which is worse than an absent
