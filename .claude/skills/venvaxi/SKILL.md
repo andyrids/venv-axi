@@ -138,10 +138,12 @@ Notes on the positional arguments and shared flags:
 Output contract, common to every command:
 
 - Structured TOON goes to **stdout**, including errors: `error: true` plus a `message:` line.
-  Exit codes are a three-way contract. `0` is success, including a definitive empty result -
-  `count: 0` exits `0`, never `1`. `1` means venvaxi caught and reported an `Error`: fix the
-  query or the environment the message names. `2` means venvaxi itself is broken - the
-  invocation was fine, so file a bug rather than retyping the query.
+  `0` is success, including a definitive empty result - `count: 0` exits `0`, never `1`. `1`
+  means venvaxi caught and reported an `Error`: fix the query or the environment the message
+  names. `2` has two causes, told apart by stdout. Argparse rejecting an unknown flag or a
+  missing positional prints usage to **stderr** and no TOON at all - retype the command. A TOON
+  block prefixed `Unexpected error:` on stdout means venvaxi itself is broken - that invocation
+  was fine, so file a bug rather than retyping it.
 - Two package failures read differently, and the recovery differs: `is not installed in the
   active venv` means the venv has nothing by that name, so install it or check the spelling;
   `Failed to import` means it is installed and broken, so investigate it rather than
