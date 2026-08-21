@@ -785,7 +785,10 @@ def test_main_maps_error_to_toon_and_exit_1(
     assert exit_code == ExitCode.EX_FAILURE
     assert "error: true" in out
     assert "boom" in out
+    # NOTE: The CLI keeps its generic footer unchanged - the footer is
+    # surface-addressed, and this is the CLI surface.
     assert "help[1]:" in out
+    assert "Run `venvaxi --help` for available commands" in out
 
 
 def test_main_maps_unexpected_error_to_exit_2() -> None:
@@ -807,6 +810,7 @@ def test_main_unexpected_error_emits_toon_on_stdout(
     assert "error: true" in out
     assert "oops" in out
     assert "Traceback" not in out
+    assert "Run `venvaxi --help` for available commands" in out
 
 
 def test_main_verbose_flag_reaches_context() -> None:
