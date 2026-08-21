@@ -2,7 +2,7 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs:
   - specs/mcp/tools.md
@@ -10,7 +10,7 @@ specs:
 authors:
   - specs/commands/home.md
 issues: [46]
-pr:
+pr: 61
 ---
 
 # Plan: The MCP surface reports its binding
@@ -88,27 +88,60 @@ survive it.
 
 ## Validation
 
-- [ ] When `describeBindingTool` is called with the server's working directory inside a project, the
+- [x] When `describeBindingTool` is called with the server's working directory inside a project, the
       tool shall report that project's resolved root, the serving venv and `status`, with both paths
       `~/`-prefixed when under the home directory.
-- [ ] If no project root resolves from the server's working directory or from beside the venv, then
+      — `tests/test_core.py::test_resolve_binding_reports_root_venv_and_status`,
+      `::test_format_path_prefixes_paths_under_home`,
+      `::test_format_path_keeps_paths_outside_home_absolute`,
+      `tests/test_mcp.py::test_describe_binding_tool_reports_binding`, and a live
+      `StdioTransport` session where a root under `$HOME` rendered `~/`-prefixed and a venv on
+      `D:` rendered absolute - both directions of the path rule observed
+- [x] If no project root resolves from the server's working directory or from beside the venv, then
       `describeBindingTool` shall report `root: (no project root)` and return no error block.
-- [ ] If resolving the root raises anything other than a failure to find one, then
+      — `tests/test_core.py::test_resolve_binding_no_root_returns_marker`,
+      `tests/test_mcp.py::test_describe_binding_tool_no_root_reports_marker`, and a live session
+      from a rootless directory under an ephemeral tool venv, emitting the marker with the
+      remaining fields and no `error: true` in the payload
+- [x] If resolving the root raises anything other than a failure to find one, then
       `describeBindingTool` shall return the `Unexpected error:` block rather than the marker.
-- [ ] When `describeBindingTool` succeeds, the payload shall end with a `help[]` footer naming
+      — `tests/test_core.py::test_resolve_binding_unexpected_error_propagates`,
+      `tests/test_mcp.py::test_describe_binding_tool_unexpected_error_returns_error_block`, both
+      shown failing against a deliberately widened `except Exception` (`2 failed, 37 passed`)
+      while every marker test still passed - see Notes
+- [x] When `describeBindingTool` succeeds, the payload shall end with a `help[]` footer naming
       next-step tools by their camelCase names and no `venvaxi` shell spelling.
-- [ ] When the registered command is spawned as an MCP stdio server, the `serve` command shall
+      — `tests/test_mcp.py::test_describe_binding_tool_footer_names_camel_case`, and the live
+      session's `help[2]:` naming `listPackagesTool` with `include_dev=true` and `findSymbolTool`
+- [x] When the registered command is spawned as an MCP stdio server, the `serve` command shall
       connect and advertise the nine tools in `specs/mcp/tools.md`.
-- [ ] When the server starts, the `serve` command shall carry the bound project root and venv in the
+      — a `fastmcp` `StdioTransport` client spawning the `command`/`args` read out of this repo's
+      `.mcp.json`, whose live listing returned exactly the nine names in the spec's table with
+      `describeBindingTool` first; unit
+      `tests/test_mcp.py::test_build_server_registers_tools`
+- [x] When the server starts, the `serve` command shall carry the bound project root and venv in the
       server's initialization instructions.
-- [ ] If no project root resolves when the instructions are built, then the `serve` command shall
+      — the `initialize` result's `instructions` read off a live client session, carrying `root:`
+      and `venv:`; unit `tests/test_mcp.py::test_build_server_instructions_carry_binding`
+- [x] If no project root resolves when the instructions are built, then the `serve` command shall
       start, serve the full tool surface, and carry the `(no project root)` marker in its
       instructions.
-- [ ] When a client spawns the registered command from a second project's directory, the
+      — a live server started from a rootless directory under an ephemeral tool venv, serving all
+      nine tools with the marker in its instructions; unit
+      `tests/test_mcp.py::test_build_server_no_root_still_builds_with_marker`
+- [x] When a client spawns the registered command from a second project's directory, the
       `describeBindingTool` shall report the second project's root alongside the registering
       project's venv.
-- [ ] The registered description of `describeBindingTool` shall state that it identifies the project
+      — a live `StdioTransport` session spawning the registered command with `cwd` in a throwaway
+      second project, reporting that project's `root` beside
+      the registering project's own `.venv`; in the same session
+      `listPackagesTool(include_dev=true)` answered a plausible `count: 1` assembled from both
+      halves with no signal of the mismatch
+- [x] The registered description of `describeBindingTool` shall state that it identifies the project
       and venv the server answers from and that it is the tool to call first.
+      — the description read off the live tool listing, not `__doc__`: "Identify the project and
+      venv this server answers from." plus "Call this first: ..."; unit
+      `tests/test_mcp.py::test_describe_binding_tool_description_is_call_first`
 
 ## Risks / unknowns
 
@@ -149,4 +182,103 @@ survive it.
 
 ## Notes
 
+**The binding is two axes, and the issue only saw one.** #46 framed this as a single binding.
+Reading `_core.py` and `_packages.py` showed two that resolve independently: `venv` is the serving
+interpreter's `sys.prefix`, fixed when the client spawns the process; `root` is walked from that
+process's working directory, which the client also chooses, and decides both which
+`pyproject.toml` declares dependencies and which cache key the symbol graph lands under. Reporting
+only the venv - which mirroring the home view would have done - leaves the half that selects the
+answer invisible. Verified at stage 03 rather than argued: spawning the registered command with
+`cwd` in a second project reports that project's `root` beside this one's `venv`, and
+`listPackagesTool` then answers a confident `count: 1` assembled from both halves.
+
+Worth recording that the *observed* `mpctraj` incident never showed this. There both axes agreed,
+and the failure was simply that neither was stated. The divergence case was derived from the code
+and only reproduced afterwards. Had the design followed the observation rather than the source, it
+would have shipped a tool reporting one axis and would have looked correct.
+
+**Why option 2 was rejected, honestly.** The issue offered a `project:`/`venv:` line on
+`listPackagesTool`. The argument used against it at stage 01 - that it only helps a caller who
+thought to call `list` - is symmetric and does not survive contact: option 1 only helps a caller
+who thought to call the ninth tool, and option 2 is the one option that would have caught the
+observed incident with the agent doing nothing differently. It was rejected on
+[principle 2, minimal default schemas](../specs/principles.md#principle-2-minimal-default-schemas)
+and because identity on one of eight tools protects only that tool. The guaranteed-ambient channel
+turned out to be neither option: it is the registered tool description, which the harness keeps in
+context without a call, and which `docs/architecture.md` already named. Authoring it deliberately
+is why the spec makes it contract rather than leaving it a docstring.
+
+**The degrade is one keyword wide, and that keyword is the whole feature.** `resolve_binding`
+catches `ProjectRootNotFoundError` exactly. A broad `except Exception` passes every other test in
+the suite and converts an unreadable or deleted working directory into a confident
+`(no project root)` - a wrong answer wearing the shape of a right one, which is the failure class
+this plan exists to remove. Both discriminating tests were shown failing against the widened arm
+before being trusted, at stage 02 and again independently at stage 03.
+
+**The marker is close to diagnostic of a `uvx` registration.** `get_project_root` falls back to
+`sys.prefix.parent`, and a conventional in-project `.venv` has the project root as its parent - so
+for a normally installed venv-axi the marker is unreachable from *any* working directory,
+confirmed by running `resolve_binding` from a verified rootless directory and still getting the
+repo back. Reaching it live needed an ephemeral tool venv. That is the case
+[`plans/mcp-registration-module-form.md`](mcp-registration-module-form.md) handed to #46, so the
+degraded path is not a contrived edge - it is the shape of the misregistration the report exists
+to expose.
+
+**`serve` degrades through the same helper, and that was a late catch.** The first draft specified
+the degrade for the tool only. Building the instructions calls the same resolution at server
+construction, so an unresolvable root would have killed `venvaxi serve` at startup - in precisely
+the misconfiguration the feature exists to diagnose, presenting as a server that will not connect
+rather than a server bound to nothing. Caught in stage 01 review before any code existed.
+
+**The instructions clause is worded as an obligation to advertise, not to be read.** `fastmcp`
+3.4.6 takes `instructions: str | None` and serializes it into the `initialize` result - checked
+against the installed version through the AXI itself, and read back off a live client. Whether any
+client puts that string in front of a model cannot be established from this repo, the package or
+the MCP specification, which leaves client use optional. So the tool carries the guarantee and the
+instructions are the half that costs nothing when it happens to work. A future verification
+reporting "the instructions reached the agent" has proven something about one client.
+
+**`home.md` kept its Never but lost its reason.** The old wording said reaching for the project
+root would break the view's broken-project guarantee. The degrading design is a working
+counterexample. Rather than leave a rule standing on a falsified justification - the decay
+`reference-standard-spec.md` warns about - the entry was split and re-founded: the root is
+derivable from a CLI caller's own working directory, so it tells them nothing, while an MCP caller
+chose neither the directory nor the interpreter. Also worth knowing: no CLI command reports the
+resolved root either, so the issue's claim that the binding is fully discoverable via the CLI
+holds for the venv axis only.
+
+**Five tests were moved out of `test_mcp.py` after the stage 02 gate.** `format_path` and
+`resolve_binding` are plain `_core` helpers, but their tests were written into a module opening
+with `pytest.importorskip("fastmcp")` - gating them, and the criterion-3 discriminator among them,
+on an unrelated extra. Not an active gap, since `fastmcp` sits in the `dev` group and CI always
+installs it, but the reasoning that made it safe is the reasoning that leaves gaps. Moved to
+`tests/test_core.py` and proven with `fastmcp` made unfindable: 5 pass there, `test_mcp.py` skips
+wholesale. Before the move all five went with it.
+
+**A `git checkout --` during verification briefly wiped this branch's uncommitted `_core.py`.**
+Restoring the widened-catch experiment that way reverts to HEAD, and stage 02 was still
+uncommitted. The file was restored from a capture and checked three ways. Nothing was lost, but
+the run carried uncommitted work across three stages, which is what made a routine revert
+dangerous. Commit at the stage boundary next time.
+
 ## Follow-ups
+
+- **Issue [#60](https://github.com/andyrids/venv-axi/issues/60)** - opened during this run.
+  `format_error` hardcodes a `Run venvaxi --help` footer that `_toon_errors` routes onto the MCP
+  surface, contradicting the Hint wording rule in the same spec this plan amended. The new tool
+  inherits it. Pre-existing and orthogonal, so it was filed rather than folded in; the
+  criterion-3 tests assert on `error: true` and `Unexpected error:` only, never the footer, so
+  they do not enshrine it. Fixing it needs the Error shape block in
+  `specs/behaviors/output-contract.md` amended first, which is its own stage 01.
+- **Issue [#49](https://github.com/andyrids/venv-axi/issues/49)** - cache state remains unowned.
+  `specs/mcp/tools.md` Out of scope now names this tool as where it lands, so a future spec
+  extends the binding report rather than adding a tenth tool.
+- **Tracked as** - no live evidence that any MCP client surfaces `instructions` to a model. The
+  server advertises it and that is what the spec obliges; the gap is recorded here rather than
+  pretended shut. No issue filed - it is a fact about clients, not a defect in this repo.
+- **Tracked as** - `get_project_root`'s fallback and raise (`_core.py:47-52`) have no direct test
+  coverage, which is why `_core.py` sits at 88% against a 98% total. Pre-existing: from any
+  working directory inside the repo the first loop returns before reaching them. Not this plan's
+  scope, noted because this run is what made the lines interesting.
+- **None deferred** - no `Deferred to` entries, so no downstream plan required absorption in this
+  commit.
