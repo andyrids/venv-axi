@@ -2,14 +2,14 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs:
   - specs/behaviors/output-contract.md
   - specs/mcp/tools.md
 authors: []
 issues: [47, 60]
-pr:
+pr: 62
 ---
 
 # Plan: mcp-error-surface
