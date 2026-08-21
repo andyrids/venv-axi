@@ -28,10 +28,13 @@ Every tool shall return **TOON text**, not JSON, and shall mirror the CLI's
 [output contract](../behaviors/output-contract.md): `count:` aggregates, definitive empty states
 (including the `(no docstring)` marker), truncation at 200 characters, and a `help[]` footer.
 
-If an `Error` is raised inside a tool, then the tool shall catch it and return the same TOON
-error block the CLI emits. It shall not escape into FastMCP's generic error path, which would
-present a different failure shape to the agent depending on which surface it happened to be
-using.
+If an `Error` is raised inside a tool, then the tool shall catch it and return the TOON error
+object the CLI emits - without the CLI's generic `venvaxi --help` footer, per the
+surface-addressed [error shape](../behaviors/output-contract.md#error-shape). It shall not
+escape into FastMCP's generic error path, which would present a different failure shape to the
+agent depending on which surface it happened to be using. If an error carries no error-specific
+hint, then the `help[N]:` footer shall be omitted entirely, never padded with a generic
+substitute.
 
 **No exception escapes**, not just no `Error`. If an unexpected exception is raised, then the
 tool shall catch it at the same boundary, return the `Unexpected error:` block the CLI renders,
@@ -148,7 +151,8 @@ These are deliberate and MUST be preserved:
   rebuild is an explicit, potentially slow operation that belongs at the CLI.
 - **`inspect` is split into two tools.** The CLI dispatches on whether the argument contains
   `::`; MCP exposes `getSymbolTool` and `showModuleTool` separately, because a typed tool schema
-  should not hide two different return shapes behind one parameter.
+  should not hide two different return shapes behind one parameter. The split's malformed-input
+  diagnosis is specified in [Malformed qualified names](#malformed-qualified-names).
 - **`show` is split into two tools** for the same reason - `showPackageTool` (metadata) and
   `showPackageApiTool` (API), rather than a boolean `--api` switch.
 - **`showPackageTool` returns fixed fields** (`name`, `version`, `location`); there is no
@@ -161,6 +165,28 @@ already required of both surfaces by the suppression rule in
 [Output contract](../behaviors/output-contract.md#contextual-disclosure). It was listed here once
 as a `getSymbolTool` divergence; it never was one, and listing parity as divergence is as
 misleading as omitting a real one.
+
+## Malformed qualified names
+
+The `inspect` split above leaves `getSymbolTool` symbol-only, so the commonest spelling mistake -
+a fully-dotted name where `module::Symbol` was meant - cannot fall through to a module lookup as
+it does on the CLI. Answered as a plain symbol miss, `Symbol ... not found` reads as a definitive
+negative about the package rather than a malformed-input diagnosis, and an agent that believes it
+stops looking for a symbol it had correctly named.
+
+- If `qualified_name` contains no `::`, then `getSymbolTool` shall return the TOON error block
+  with a message that diagnoses the input: the tool requires a `module::Symbol` name, the given
+  name carries no `::`, and `showModuleTool` is the tool for module lookups. It shall not report
+  a bare symbol miss.
+- The diagnosis applies before any lookup. If a no-`::` name would resolve as a module, then
+  `getSymbolTool` shall still return the diagnosis rather than the module's node - a module
+  answer from the symbol tool is exactly the two-shapes-behind-one-parameter collapse the split
+  exists to prevent, and `showModuleTool` gives the fuller answer for the same spelling.
+- The tool references in the message are next-step hints and take every
+  [Hint wording](#hint-wording) rule, including derivation of the camelCase names.
+
+The tool shall not fall back to a module lookup; the split is a deliberate divergence above and
+MUST be preserved.
 
 ## Hint wording
 
