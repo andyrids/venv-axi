@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > - `Fixed` for any bug fixes.
 > - `Security` in case of vulnerabilities.
 
-## [unreleased] - yyyy-mm-dd
+## [0.3.0] - 2026-08-21
 
 ### Added
 
@@ -38,9 +38,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an earlier version are replaced on the next `setup` run, which reports `.mcp.json` and
   `.vscode` as modified once. Anything reading the registered command out of `.mcp.json`
   sees an interpreter path and a four-element `args` list.
+- **Breaking for `setup` callers.** `venvaxi setup` installs the Skill by default, overwriting
+  any existing copy; `--no-skill` opts out and `--skill` remains accepted, now naming the
+  default. The `SKILL.md` key reports whether the file was written - false under `--no-skill`
+  and when the installed copy already matches the packaged skill byte-for-byte.
+- The packaged skill's content is now governed by `specs/behaviors/skill-content.md`. It corrects
+  the exit-code contract, which had claimed every error exits `1`: exit `2` now has both its
+  causes named and told apart by stdout - an argparse rejection emits no TOON, a venvaxi fault
+  emits an `Unexpected error:` block. It also adds gotchas for four observed failure modes
+  (`inherits` direction, unindexed dunders, empty namespace accessors, decorator passthroughs),
+  makes the case against executing the dependency, flips the `inherits` worked example to a
+  populated result, completes the `setup` row's flag list, and points at `specs/principles.md`
+  for the measured token figures it used to carry.
+- The skill `description` names debugging framings - observed misbehaviour whose cause is a
+  signature fact - and the eval suite grows to 10 cases, one framed as a bug report that never
+  names `venvaxi`.
 
 ### Fixed
 
+- The CLI reconfigures STDOUT and STDERR to UTF-8 at entry, so a docstring carrying a character
+  the ambient pipe encoding cannot represent - box-drawing tables, Greek letters - no longer
+  crashes `inspect --docstring` with a `UnicodeEncodeError` and exit 2 (issue 45).
 - A running `venvaxi serve` no longer blocks `uv` from syncing the project on Windows. The
   server held the `venvaxi.exe` console-script shim open, which `uv` must delete whenever it
   reinstalls `venv-axi`, so an otherwise unrelated `uv run` or `uv sync` failed with
@@ -61,6 +79,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.0rc1] - 2026-08-20
 
+> [!NOTE]
+> This section records only what the published `0.3.0rc1` wheel contains. Work merged after the
+> `v0.3.0rc1` tag is under `[0.3.0]` above, even where it was drafted while this heading was the
+> unreleased one.
+
 ### Added
 
 - `specs/commands/setup.md` declares the installed skill a byte-for-byte copy of the packaged one.
@@ -68,8 +91,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `just skill-sync` regenerates `.claude/skills/venvaxi/SKILL.md` through the real installer.
 - The packaged skill gains an Invocation section and gotchas for its documented failure modes.
 - The skill eval suite grows from 3 to 9 cases, plus a README recording the manual loop.
-- An eval case for the `os error 32` sync failure, so the locked-shim misdiagnosis is a
-  specimen rather than folklore.
 
 ### Changed
 
@@ -77,10 +98,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whether the file was modified, but that is now true on *removal* rather than on write. A repo
   last set up by an earlier version reports `AGENTS.md: true` once, then `false`. The key set is
   unchanged.
-- **Breaking for `setup` callers.** `venvaxi setup` installs the Skill by default, overwriting
-  any existing copy; `--no-skill` opts out and `--skill` remains accepted, now naming the
-  default. The `SKILL.md` key reports whether the file was written - false under `--no-skill`
-  and when the installed copy already matches the packaged skill byte-for-byte.
 - `venvaxi setup` strips a legacy ambient block instead of writing one, preserving every byte
   outside the `<!-- venvaxi:begin -->`/`<!-- venvaxi:end -->` markers and collapsing the
   separator the injection had added. It never creates `AGENTS.md`.
@@ -89,17 +106,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `.claude/skills/venvaxi/SKILL.md` is generated output, not a hand-maintained dev-facing fork.
 - `docs/architecture.md` documents the single-source skill model and drops the stale advice not
   to run `setup --skill` in this repo.
-- The packaged skill's content is now governed by `specs/behaviors/skill-content.md`. It corrects
-  the exit-code contract, which had claimed every error exits `1`: exit `2` now has both its
-  causes named and told apart by stdout - an argparse rejection emits no TOON, a venvaxi fault
-  emits an `Unexpected error:` block. It also adds gotchas for four observed failure modes
-  (`inherits` direction, unindexed dunders, empty namespace accessors, decorator passthroughs),
-  makes the case against executing the dependency, flips the `inherits` worked example to a
-  populated result, completes the `setup` row's flag list, and points at `specs/principles.md`
-  for the measured token figures it used to carry.
-- The skill `description` names debugging framings - observed misbehaviour whose cause is a
-  signature fact - and the eval suite grows to 10 cases, one framed as a bug report that never
-  names `venvaxi`.
 
 ### Removed
 
@@ -119,9 +125,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tests/test_cli.py` mocked `setup`'s return value with a `skill` key where the implementation
   returns `SKILL.md`, so the guard its own NOTE described - catching a rename of those keys - was
   never armed.
-- The CLI reconfigures STDOUT and STDERR to UTF-8 at entry, so a docstring carrying a character
-  the ambient pipe encoding cannot represent - box-drawing tables, Greek letters - no longer
-  crashes `inspect --docstring` with a `UnicodeEncodeError` and exit 2 (issue 45).
 
 ## [0.2.0] - 2026-08-13
 
