@@ -2,13 +2,13 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs:
   - specs/behaviors/package-resolution.md
 authors: []
 issues: [65]
-pr:
+pr: 70
 ---
 
 # Plan: malformed-package-name

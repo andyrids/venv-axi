@@ -2,7 +2,7 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs:
   - specs/behaviors/output-contract.md
@@ -10,7 +10,7 @@ specs:
   - specs/commands/tree.md
 authors: []
 issues: [64]
-pr:
+pr: 70
 ---
 
 # Plan: import-crash-containment

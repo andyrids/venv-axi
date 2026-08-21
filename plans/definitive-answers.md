@@ -2,7 +2,7 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs:
   - specs/commands/inspect.md
@@ -11,7 +11,7 @@ specs:
 authors:
   - specs/behaviors/output-contract.md
 issues: [66, 69]
-pr:
+pr: 70
 ---
 
 # Plan: definitive-answers
