@@ -14,6 +14,11 @@ logger = logging.getLogger(__package__)
 
 __all__: list[str] = ["main"]
 
+# NOTE: CLI spelling, so it lives here rather than in `_toon.py` - the
+# formatter is surface-neutral and each surface supplies its own footer
+# (`specs/behaviors/output-contract.md`, Error shape).
+CLI_ERROR_HINT = "Run `venvaxi --help` for available commands"
+
 
 def main() -> NoReturn:
     """Provide the `venvaxi` CLI entrypoint.
@@ -60,11 +65,15 @@ def main() -> NoReturn:
         # NOTE: The TOON block on stdout *is* the error report - logging
         # it again at error level would duplicate it on stderr, so the
         # log line is debug-only (`--verbose`).
-        sys.stdout.write(f"{format_error(str(err))}\n")
+        report = format_error(str(err), hints=[CLI_ERROR_HINT])
+        sys.stdout.write(f"{report}\n")
         logger.debug(str(err))
         exit_code = _core.ExitCode.EX_FAILURE
     except Exception as err:
-        sys.stdout.write(f"{format_error(f'Unexpected error: {err}')}\n")
+        report = format_error(
+            f"Unexpected error: {err}", hints=[CLI_ERROR_HINT]
+        )
+        sys.stdout.write(f"{report}\n")
         logger.exception("Unexpected error")
         exit_code = _core.ExitCode.EX_SYNTAX
     sys.exit(exit_code)

@@ -26,7 +26,7 @@ from venvaxi._toon import (
     format_error,
     format_help,
 )
-from venvaxi.exceptions import Error
+from venvaxi.exceptions import Error, InvalidArgumentError
 
 logger = logging.getLogger(__package__)
 
@@ -34,11 +34,13 @@ logger = logging.getLogger(__package__)
 def _toon_errors(fn: Callable[..., str]) -> Callable[..., str]:
     """Wrap an MCP tool so no exception escapes into FastMCP.
 
-    NOTE: Mirrors the CLI error contract - `Error`s return the same
-    `format_error` block the CLI emits on stdout, and anything else
-    returns the CLI's `Unexpected error:` block. Without the broad arm,
-    a non-`Error` exception escapes into FastMCP's generic error path -
-    see `specs/mcp/tools.md`.
+    NOTE: Mirrors the CLI catch discipline - `Error`s return the TOON
+    error object, and anything else returns the `Unexpected error:`
+    shape. Both arms pass no hints, so no tool error carries the CLI's
+    generic footer - the footer is surface-addressed, and this surface
+    has no generic next step to name (`specs/mcp/tools.md`). Without
+    the broad arm, a non-`Error` exception escapes into FastMCP's
+    generic error path.
 
     Args:
         fn: The tool function to wrap.
@@ -238,6 +240,19 @@ def show_module_tool(name: str, docstring: bool = False) -> str:
 
 def get_symbol_tool(qualified_name: str, docstring: bool = False) -> str:
     """Show full detail for a single symbol (TOON format)."""
+    # NOTE: Diagnosed before any lookup (`specs/mcp/tools.md`, Malformed
+    # qualified names) - a no-`::` name that would resolve as a module
+    # must get the diagnosis, not the module's node. Tool names are
+    # derived, per the Hint wording rule.
+    if "::" not in qualified_name:
+        gname = camel_case(get_symbol_tool.__name__)
+        sname = camel_case(show_module_tool.__name__)
+        msg = (
+            f"`{gname}` requires a `module::Symbol` name;"
+            f" `{qualified_name}` has no `::` - call `{sname}` for a"
+            " module, or re-spell with `::`"
+        )
+        raise InvalidArgumentError(msg)
     node = get_symbol(qualified_name)
     output = encode_object(
         {

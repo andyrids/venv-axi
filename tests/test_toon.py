@@ -11,6 +11,7 @@ from venvaxi._toon import (
     encode_object,
     encode_primitive,
     encode_table,
+    format_error,
     format_help,
 )
 
@@ -162,3 +163,20 @@ def test_format_help() -> None:
     """The help footer numbers and indents each suggestion."""
     result = format_help(["do this", "do that"])
     assert result == "help[2]:\n  do this\n  do that"
+
+
+def test_format_error_without_hints_omits_footer() -> None:
+    """No hints means the bare error object - no `help[N]:` footer at
+    all (previously: a hardcoded `venvaxi --help` footer)."""
+    result = format_error("boom")
+    assert result == "error: true\nmessage: boom"
+    assert "help[" not in result
+    assert "venvaxi --help" not in result
+
+
+def test_format_error_with_hints_appends_footer() -> None:
+    """Supplied hints append a `help[N]:` footer after the object."""
+    result = format_error("boom", hints=["Run `venvaxi --help` now"])
+    assert result == (
+        "error: true\nmessage: boom\nhelp[1]:\n  Run `venvaxi --help` now"
+    )

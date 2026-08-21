@@ -1,6 +1,7 @@
 """Unit tests for `venvaxi._mcp`."""
 
 import asyncio
+import logging
 from collections.abc import Callable
 from pathlib import Path
 from unittest import mock
@@ -398,6 +399,38 @@ def test_get_symbol_tool_resolves_facade_spelled_method(
     assert "kind: method" in result
 
 
+def test_get_symbol_tool_no_separator_diagnoses_before_lookup() -> None:
+    """A no-`::` name returns the malformed-input diagnosis before any
+    lookup - the message names `module::Symbol`, the missing `::` and
+    `showModuleTool` (previously: a bare `Symbol not found` miss)."""
+    server = build_server()
+    with mock.patch(f"{MCP}.get_symbol") as mock_get_symbol:
+        tool = asyncio.run(server.get_tool(camel_case("get_symbol_tool")))
+        result = tool.fn(qualified_name="rich.console")
+    mock_get_symbol.assert_not_called()
+    assert "error: true" in result
+    assert "requires a `module::Symbol` name" in result
+    assert "`rich.console` has no `::`" in result
+    assert "showModuleTool" in result
+    assert "show_module_tool" not in result
+    assert "not found" not in result
+    assert "help[" not in result
+
+
+def test_get_symbol_tool_module_resolving_name_still_diagnosed(
+    fake_package: str,
+) -> None:
+    """A no-`::` name that resolves as a real module returns the
+    diagnosis through the real call path, never the module's node
+    (previously: succeeded by accident with the bare module node)."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("get_symbol_tool")))
+    result = tool.fn(qualified_name=f"{fake_package}.api")
+    assert "error: true" in result
+    assert "requires a `module::Symbol` name" in result
+    assert "kind: module" not in result
+
+
 def test_find_symbol_tool_returns_toon(
     make_symbol_node: NodeFactory,
 ) -> None:
@@ -485,6 +518,11 @@ def test_tool_axi_error_returns_toon_error_block() -> None:
     assert "error: true" in result
     assert "nope" in result
     assert "Unexpected error" not in result
+    # NOTE: The footer is surface-addressed - an MCP tool error with no
+    # error-specific hint carries no `help[N]:` footer at all
+    # (previously: the CLI's generic `venvaxi --help` footer).
+    assert "help[" not in result
+    assert "venvaxi --help" not in result
 
 
 def test_tool_unexpected_error_returns_toon_error_block() -> None:
@@ -496,6 +534,29 @@ def test_tool_unexpected_error_returns_toon_error_block() -> None:
         result = tool.fn(qualified_name="rich::Nope")
     assert "error: true" in result
     assert "Unexpected error: kaboom" in result
+    # NOTE: An unexpected error has no next step to name, so over MCP
+    # it carries no footer at all (previously: `venvaxi --help`).
+    assert "help[" not in result
+    assert "venvaxi --help" not in result
+
+
+def test_tool_unexpected_error_logs_traceback(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The unexpected arm logs the traceback at ERROR, so a genuine bug
+    fails loudly in the logs rather than vanishing into the TOON payload."""
+    server = build_server()
+    with caplog.at_level(logging.ERROR, logger="venvaxi"):
+        with mock.patch(f"{MCP}.get_symbol", side_effect=ValueError("kaboom")):
+            tool = asyncio.run(server.get_tool(camel_case("get_symbol_tool")))
+            tool.fn(qualified_name="rich::Nope")
+    records = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(records) == 1
+    # NOTE: `exc_info` is the point - `logger.exception`, not a plain
+    # `logger.error`, so the traceback reaches the logs.
+    assert records[0].exc_info is not None
+    assert "Traceback" in caplog.text
+    assert "ValueError: kaboom" in caplog.text
 
 
 def test_get_module_tree_tool_malformed_name_returns_toon_error() -> None:
