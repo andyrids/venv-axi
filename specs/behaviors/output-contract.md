@@ -142,6 +142,12 @@ are chosen to be distinct from any real value and to contain no TOON structural 
 Markers shall be applied at **emission**, never recorded. Storing one would put its literal text
 into the searchable index, so a `find` for its wording would match every symbol carrying it.
 
+`(signature unavailable)` is the deliberate exception, and [inspect](../commands/inspect.md)
+declares it: the marker records a fact about introspection that is discoverable only at build
+time, while the live object is in hand, so emission cannot recompute it. Search reads names and
+docstring text, never signatures, so the recorded marker stays out of `find`'s reach and the
+rationale above is untouched.
+
 ### Aggregates
 
 Collection output shall be preceded by a `count:` line, so the caller never has to count rows to

@@ -456,6 +456,40 @@ def test_find_symbol_tool_returns_toon(
     assert 'Console|class|"rich::Console"' in result
 
 
+def test_find_symbol_tool_at_limit_appends_bounded_hint(
+    make_symbol_node: NodeFactory,
+) -> None:
+    """A count equal to the active `limit` gains the bounded-results
+    hint, spelled for this surface - the parameter, not the CLI flag
+    (#69)."""
+    server = build_server()
+    nodes = [
+        make_symbol_node(qualified_name=f"rich::Sym{i}", name=f"Sym{i}")
+        for i in range(2)
+    ]
+    with mock.patch(f"{MCP}.find_symbol", return_value=nodes):
+        tool = asyncio.run(server.get_tool(camel_case("find_symbol_tool")))
+        result = tool.fn(query="Sym", limit=2)
+    assert "count: 2" in result
+    assert "Results capped at limit=2" in result
+    assert "higher limit" in result
+    assert "--limit" not in result
+
+
+def test_find_symbol_tool_below_limit_omits_bounded_hint(
+    make_symbol_node: NodeFactory,
+) -> None:
+    """A count below the active `limit` is definitive - no
+    bounded-results hint (#69)."""
+    server = build_server()
+    nodes = [make_symbol_node(qualified_name="rich::Console", name="Console")]
+    with mock.patch(f"{MCP}.find_symbol", return_value=nodes):
+        tool = asyncio.run(server.get_tool(camel_case("find_symbol_tool")))
+        result = tool.fn(query="Console")
+    assert "Results capped" not in result
+    assert "getSymbolTool" in result
+
+
 def test_find_symbol_tool_empty_without_package_hints_indexing() -> None:
     """No match without a package hints at re-calling with one, and
     names no package list at all.

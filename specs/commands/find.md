@@ -51,6 +51,24 @@ nothing' and 'nothing was searched' are different answers:
   with a hint naming `find <query> --package <package>` - nothing was indexed to search, and that
   invocation would index one.
 
+### Bounded results
+
+`--limit` caps the row count, so a `count:` equal to the active limit does not carry the
+definitive weight the aggregates rule gives it elsewhere - it means *at least* that many
+matched, and the caller cannot tell a complete answer from a capped one without being told.
+
+- When the returned count equals the active limit, the `find` command shall append a hint
+  stating that further matches may exist and naming a higher limit as the escape hatch,
+  spelled for the caller's surface - the CLI flag on the CLI, the tool parameter over MCP,
+  per [Hint wording](../mcp/tools.md#hint-wording).
+- When the returned count is below the active limit, the count is definitive and the `find`
+  command shall not emit the bounded-results hint.
+
+The rule lives here, not in [Output contract](../behaviors/output-contract.md), until
+`show --api` bounds its collection too
+([#67](https://github.com/andyrids/venv-axi/issues/67)) - generalizing it while only one
+command conforms would manufacture a spec/code divergence.
+
 ### Result ordering
 
 The `find` command shall order results by the following keys, in order, each applied only to break

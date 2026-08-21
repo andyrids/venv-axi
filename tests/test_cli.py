@@ -407,6 +407,44 @@ def test_command_find_with_results(
     assert "help[1]:" in out
 
 
+def test_command_find_at_limit_appends_bounded_hint(
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+    make_symbol_node: NodeFactory,
+) -> None:
+    """A count equal to the active `--limit` gains the bounded-results
+    hint - the answer may be truncated and must say so (#69)."""
+    nodes = [
+        make_symbol_node(qualified_name=f"rich::Sym{i}", name=f"Sym{i}")
+        for i in range(2)
+    ]
+    ctx = make_cli_context(args=argparse.Namespace(query="Sym", limit=2))
+    with mock.patch(f"{CLI}.find_symbol", return_value=nodes):
+        exit_code = _cli.command_find(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "count: 2" in out
+    assert "Results capped at --limit 2" in out
+    assert "higher --limit" in out
+
+
+def test_command_find_below_limit_omits_bounded_hint(
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+    make_symbol_node: NodeFactory,
+) -> None:
+    """A count below the active `--limit` is definitive - no
+    bounded-results hint (#69)."""
+    nodes = [make_symbol_node(qualified_name="rich::Console", name="Console")]
+    ctx = make_cli_context(args=argparse.Namespace(query="Console", limit=20))
+    with mock.patch(f"{CLI}.find_symbol", return_value=nodes):
+        exit_code = _cli.command_find(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Results capped" not in out
+    assert "venvaxi inspect <qualified_name>" in out
+
+
 def test_command_find_empty(
     capsys: pytest.CaptureFixture, make_cli_context: ContextFactory
 ) -> None:

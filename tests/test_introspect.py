@@ -895,6 +895,46 @@ def test_walk_module_keeps_instance_constants_without_all(
     assert by_name["MAX_RETRIES"].kind is NodeKind.ATTRIBUTE
 
 
+def test_callable_instance_records_call_signature(fake_package: str) -> None:
+    """A module-level callable instance records the signature derived
+    from its class `__call__` - the `pl.col` shape (#66). Previously
+    the kind guard recorded `""` for every attribute."""
+    node = get_symbol(f"{fake_package}.constants::col")
+    assert node.kind is NodeKind.ATTRIBUTE
+    assert "column" in node.signature
+
+
+def test_callable_instance_failing_signature_records_marker(
+    fake_package: str,
+) -> None:
+    """A callable whose signature introspection raises records
+    `(signature unavailable)` - introspection failed, distinct from
+    'takes no arguments' and from 'not callable' (#66)."""
+    node = get_symbol(f"{fake_package}.constants::opaque")
+    assert node.kind is NodeKind.ATTRIBUTE
+    assert node.signature == SIGNATURE_UNAVAILABLE
+
+
+def test_non_callable_attribute_records_empty_signature(
+    fake_package: str,
+) -> None:
+    """A non-callable attribute's `signature` is `""` - the definitive
+    'this symbol is not callable' answer, no third marker (#66)."""
+    node = get_symbol(f"{fake_package}.constants::MAX_RETRIES")
+    assert node.kind is NodeKind.ATTRIBUTE
+    assert node.signature == ""
+
+
+def test_get_public_api_keeps_class_function_filter(
+    fake_package: str,
+) -> None:
+    """`show --api` keeps its class/function filter - callable
+    instances gaining signatures must not silently widen the listing
+    (#66)."""
+    symbols = get_public_api(f"{fake_package}.constants")
+    assert [symbol.name for symbol in symbols] == []
+
+
 def test_walk_module_keeps_private_home_facade_reexports(
     fake_package: str,
 ) -> None:

@@ -301,10 +301,16 @@ def find_symbol_tool(
     table = encode_table("symbols", rows, ["name", "kind", "qualified_name"])
 
     cname = camel_case(get_symbol_tool.__name__)
-    return _with_help(
-        f"count: {len(nodes)}\n{table}",
-        [f"Call `{cname}` with a qualified_name for full detail"],
-    )
+    hints = [f"Call `{cname}` with a qualified_name for full detail"]
+    if len(nodes) == limit:
+        # NOTE: Mirrors the CLI's bounded-results hint in the spelling
+        # of this surface - the parameter, not the flag (#69;
+        # `specs/commands/find.md`, Bounded results).
+        hints.append(
+            f"Results capped at limit={limit}"
+            " - re-call with a higher limit to see more"
+        )
+    return _with_help(f"count: {len(nodes)}\n{table}", hints)
 
 
 def get_inheritors_tool(qualified_name: str) -> str:

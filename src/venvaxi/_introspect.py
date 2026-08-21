@@ -434,11 +434,13 @@ def _record_symbol(
         if kind in (NodeKind.CLASS, NodeKind.FUNCTION)
         else symbol_qualified_name
     )
-    signature = (
-        _signature_of(obj)
-        if kind in (NodeKind.CLASS, NodeKind.FUNCTION)
-        else ""
-    )
+    # NOTE: Callability, not kind, decides the signature - a
+    # module-level instance whose class defines `__call__` (`pl.col`)
+    # classifies as ATTRIBUTE yet has a signature the caller needs, and
+    # the kind guard withheld it as `""` (#66). Non-callables keep `""`:
+    # 'not callable' is the definitive answer, not a silent blank
+    # (`specs/commands/inspect.md`).
+    signature = _signature_of(obj) if callable(obj) else ""
     store.upsert_node(
         SymbolNode(
             qualified_name=symbol_qualified_name,
