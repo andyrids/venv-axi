@@ -46,6 +46,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reinstalls `venv-axi`, so an otherwise unrelated `uv run` or `uv sync` failed with
   `os error 32` naming a file the caller was not thinking about. It fired only on the runs
   that reinstall. The registered interpreter is not replaced by a package reinstall.
+- MCP tool errors no longer tell the caller to run `venvaxi --help`. Every error from all nine
+  tools carried the CLI's generic `help[1]: Run venvaxi --help` footer - a shell command a
+  tool-calling agent cannot run. An MCP error now carries an error-specific hint where one
+  exists and otherwise omits the `help[N]:` footer entirely; CLI error output is unchanged,
+  byte-for-byte, on both error paths.
+- **Breaking for `getSymbolTool` callers.** `getSymbolTool` diagnoses a `qualified_name` with
+  no `::` before any lookup - the error names the required `module::Symbol` form, the missing
+  `::` and `showModuleTool` - instead of answering `Symbol ... not found`, a definitive-sounding
+  negative about the package where the real fault was malformed input. Deliberately breaking:
+  a no-`::` name that previously resolved as a module by accident (`rich.console`, `rich`) now
+  returns the diagnosis instead of the bare module node; `showModuleTool` returns the fuller
+  answer for the same spelling.
 
 ## [0.3.0rc1] - 2026-08-20
 

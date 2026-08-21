@@ -178,9 +178,10 @@ Notable CLI differences:
 
 - The CLI `inspect` splits into `getSymbolTool` (qualified names, with `::`) and
   `showModuleTool` (module names) - pick by argument shape yourself.
-- `getSymbolTool` does not mirror `inspect`'s module fallback: a dotted name with no `::` gets
-  'Symbol not found' where the CLI would say 'Module not found'. Read that message as *wrong
-  tool*, not *no such symbol* - re-issue the module name against `showModuleTool`.
+- `getSymbolTool` does not mirror `inspect`'s module fallback: any name without `::` - even
+  one naming a real module - is rejected before lookup with a diagnosis pointing at
+  `showModuleTool`. Send module names straight to `showModuleTool` rather than spending the
+  round trip.
 - **No tool takes a `refresh` parameter.** A stale graph can only be rebuilt from the CLI, so
   after a dependency version bump run `venvaxi <cmd> ... --refresh` once, then carry on over
   MCP.
