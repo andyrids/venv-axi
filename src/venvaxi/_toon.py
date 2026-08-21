@@ -230,9 +230,9 @@ def encode_table(
 def format_help(lines: Sequence[str]) -> str:
     """Format the contextual-disclosure `help[]` footer.
 
-    NOTE: AXI principle 9 (contextual disclosure, see
-    `ICM/_config/reference-standard-axi.md`): concrete next-step commands
-    are surfaced instead of a static usage summary.
+    NOTE: AXI principle 9 (contextual disclosure, see `specs/principles.md`):
+    concrete next-step commands are surfaced instead of a static usage
+    summary.
 
     Args:
         lines: Concrete next-step command suggestions.
@@ -250,15 +250,24 @@ def format_help(lines: Sequence[str]) -> str:
     return f"help[{len(lines)}]:\n{body}"
 
 
-def format_error(message: str) -> str:
-    """Format a structured TOON error object and help footer.
+def format_error(message: str, hints: Sequence[str] | None = None) -> str:
+    """Format a structured TOON error object, with an optional footer.
+
+    NOTE: The footer is surface-addressed (`specs/behaviors/
+    output-contract.md`, Error shape) - the caller supplies its own
+    spelling, and no hints means no `help[N]:` footer at all, never an
+    empty one.
 
     Args:
         message: The human-readable error message.
+        hints: Next-step hint lines for the caller's surface, or `None`
+            to omit the footer entirely.
 
     Returns:
-        The TOON-encoded error object, followed by a help footer.
+        The TOON-encoded error object, followed by a help footer when
+        `hints` is supplied.
     """
     body = encode_object({"error": True, "message": message})
-    footer = format_help(["Run `venvaxi --help` for available commands"])
-    return f"{body}\n{footer}"
+    if not hints:
+        return body
+    return f"{body}\n{format_help(hints)}"

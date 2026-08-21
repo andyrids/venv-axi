@@ -691,7 +691,7 @@ def test_command_setup(
         "AGENTS.md": True,
         ".vscode": False,
         ".mcp.json": False,
-        "skill": False,
+        "SKILL.md": False,
     }
     ctx = make_cli_context(args=argparse.Namespace(skill=False))
     with (
@@ -706,7 +706,7 @@ def test_command_setup(
     assert exit_code == 0
     assert "AGENTS.md: true" in out
     assert '".mcp.json": false' in out
-    assert "skill: false" in out
+    assert "SKILL.md: false" in out
     assert "venv-axi[mcp]" not in out
     setup.assert_called_once_with(tmp_path, skill=False)
 
@@ -721,7 +721,7 @@ def test_command_setup_installs_skill(
         "AGENTS.md": True,
         ".vscode": False,
         ".mcp.json": False,
-        "skill": True,
+        "SKILL.md": True,
     }
     ctx = make_cli_context(args=argparse.Namespace(skill=True))
     with (
@@ -734,7 +734,7 @@ def test_command_setup_installs_skill(
         exit_code = _cli.command_setup(ctx)
     out = capsys.readouterr().out
     assert exit_code == 0
-    assert "skill: true" in out
+    assert "SKILL.md: true" in out
     setup.assert_called_once_with(tmp_path, skill=True)
 
 
@@ -748,7 +748,7 @@ def test_command_setup_hints_missing_extra(
         "AGENTS.md": True,
         ".vscode": False,
         ".mcp.json": False,
-        "skill": False,
+        "SKILL.md": False,
     }
     ctx = make_cli_context(args=argparse.Namespace(skill=False))
     with (
@@ -785,7 +785,10 @@ def test_main_maps_error_to_toon_and_exit_1(
     assert exit_code == ExitCode.EX_FAILURE
     assert "error: true" in out
     assert "boom" in out
+    # NOTE: The CLI keeps its generic footer unchanged - the footer is
+    # surface-addressed, and this is the CLI surface.
     assert "help[1]:" in out
+    assert "Run `venvaxi --help` for available commands" in out
 
 
 def test_main_maps_unexpected_error_to_exit_2() -> None:
@@ -807,6 +810,7 @@ def test_main_unexpected_error_emits_toon_on_stdout(
     assert "error: true" in out
     assert "oops" in out
     assert "Traceback" not in out
+    assert "Run `venvaxi --help` for available commands" in out
 
 
 def test_main_verbose_flag_reaches_context() -> None:

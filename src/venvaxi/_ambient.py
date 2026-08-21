@@ -1,16 +1,22 @@
 """Agent eXperience Interface (AXI) ambient-context installation.
 
-AXI principle 7 (`ICM/_config/reference-standard-axi.md`): Make visible to an
-agent from an explicit setup command so that every conversation starts with
-relevant state already visible - before the agent takes any action.
+AXI principle 7 (`specs/principles.md`): Make visible to an agent from an
+explicit setup command so that every conversation starts with relevant state
+already visible - before the agent takes any action.
 
-- Inject a marked block into the `AGENTS.md` of a consuming repo
 - Register an MCP server entry in `.vscode/mcp.json`
 - Register an MCP server entry in a `.mcp.json`
-- Install `.claude/skills/venvaxi/SKILL.md` (opt-in, `--skill`)
+- Install `.claude/skills/venvaxi/SKILL.md` (default; `--no-skill` opts out)
+- Remove the legacy marked block from the `AGENTS.md` of a consuming repo
 
 NOTE: The above steps are idempotent - running `venvaxi setup` multiple
 times has no adverse effect.
+
+NOTE: The `AGENTS.md` block is no longer written. It duplicated the skill
+in every session of every consuming repo whether or not the task touched a
+dependency, so the guidance moved to the artifact that loads on demand.
+`setup` strips a block left by an earlier version so a consumer stops
+paying for it, rather than leaving an orphan nothing will ever refresh.
 """
 
 import importlib.util
@@ -18,7 +24,7 @@ import json
 import logging
 import os
 import sys
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from enum import StrEnum
 from pathlib import Path
@@ -28,21 +34,18 @@ from venvaxi.exceptions import AmbientContextError
 
 logger = logging.getLogger(__package__)
 
-ambient_markdown = Path(__file__).parent.joinpath("ambient.md")
 skill_markdown = Path(__file__).parent.joinpath("SKILL.md")
 
 
 class Text(StrEnum):
-    """Ambient-context text components."""
+    """Legacy ambient-block markers, retained for removal."""
 
     BEGIN = "<!-- venvaxi:begin -->"
     END = "<!-- venvaxi:end -->"
-    GAP = "\n\n"
-    BODY = ambient_markdown.read_text(encoding="utf-8").strip()
 
 
 @contextmanager
-def _install_boundary(path: Path) -> Iterator[None]:
+def _install_boundary(path: Path) -> Generator[None]:
     """Reraise an `OSError` at a filesystem call as an install failure.
 
     NOTE: The bound stays visible at the call site - only the wrapped
@@ -66,15 +69,20 @@ def _install_boundary(path: Path) -> Iterator[None]:
         raise AmbientContextError(msg) from exc
 
 
-def _atomic_write_text(path: Path, text: str) -> None:
-    """Atomically write text via a same-directory temp file + rename.
+def _atomic_write_bytes(path: Path, data: bytes) -> None:
+    """Atomically write bytes via a same-directory temp file + rename.
 
     NOTE: An interrupted write leaves `path` untouched (the `.tmp` file
     is simply overwritten on the next run).
 
+    NOTE: Every caller encodes at the call site rather than handing text
+    to a second helper. Bytes bypass newline translation, so the
+    destination is a byte-for-byte copy on every platform - `write_text`
+    would fork an LF source into a CRLF copy on Windows.
+
     Args:
         path: The destination file path.
-        text: The full file content to write.
+        data: The full file content to write.
 
     Raises:
         AmbientContextError: If the temp-file write or the rename fails
@@ -82,17 +90,23 @@ def _atomic_write_text(path: Path, text: str) -> None:
     """
     tmp_path = path.with_suffix(f"{path.suffix}.tmp")
     with _install_boundary(path):
-        tmp_path.write_text(text, encoding="utf-8")
+        tmp_path.write_bytes(data)
         os.replace(tmp_path, path)
 
 
-def _axi_command() -> str:
-    """Resolve absolute path of the `venvaxi` executable.
+def _axi_interpreter() -> str:
+    """Resolve absolute path of the running Python interpreter.
+
+    NOTE: Returned verbatim, never `Path(...).resolve()`. A POSIX venv's
+    `bin/python` is a symlink to the base interpreter, which has none of
+    the venv's packages - a resolved path would register a server that
+    cannot import `venvaxi` at all. `sys.executable` is already absolute,
+    so there is nothing to normalize.
 
     Returns:
-        The absolute path of the invoked `venvaxi` script.
+        The absolute path of the interpreter running this process.
     """
-    return str(Path(sys.argv[0]).resolve())
+    return sys.executable
 
 
 def mcp_available() -> bool:
@@ -107,45 +121,66 @@ def mcp_available() -> bool:
     return importlib.util.find_spec("fastmcp") is not None
 
 
-def inject_agents_md(root: Path) -> bool:
-    """Inject ambient-context block into `AGENTS.md` (idempotent).
+def strip_agents_md(root: Path) -> bool:
+    """Remove a legacy ambient block from `AGENTS.md` (idempotent).
+
+    NOTE: This never creates `AGENTS.md`. An absent file, or one
+    carrying no marker pair, is left alone and reported as unchanged -
+    there is nothing to remove, and writing to say so would be a
+    mutation the caller did not ask for.
 
     Args:
         root: The consuming repo's root path.
 
     Returns:
-        True if `AGENTS.md` was created or modified.
+        True if a block was found and removed.
 
     Raises:
         AmbientContextError: If an existing `AGENTS.md` cannot be read,
             or the write fails with an `OSError`.
     """
     path = root / "AGENTS.md"
-    block = f"{Text.BEGIN}{Text.GAP}{Text.BODY}{Text.GAP}{Text.END}"
-
     if not path.exists():
-        _atomic_write_text(path, f"{block}\n")
-        logger.debug("Created `AGENTS.md` with axi block")
-        return True
-
-    with _install_boundary(path):
-        original = path.read_text(encoding="utf-8")
-    text = original
-
-    if Text.BEGIN in text and Text.END in text:
-        start = text.index(Text.BEGIN)
-        end = text.index(Text.END) + len(Text.END)
-        updated = text[:start] + block + text[end:]
-    else:
-        trailing = len(text) - len(text.rstrip("\n")) if text else 2
-        separator = "\n" * max(2 - trailing, 0)
-        updated = f"{text}{separator}{block}\n"
-
-    if updated == original:
-        logger.debug("`AGENTS.md` axi block is up-to-date")
         return False
-    _atomic_write_text(path, updated)
-    logger.debug("Updated `AGENTS.md` AXI block")
+
+    # NOTE: Read as bytes and decoded, never `read_text` - universal
+    # newlines would normalize an existing CRLF file to LF, and writing
+    # that back rewrites the hand-authored span the spec requires
+    # preserved byte-for-byte. Splicing stays on decoded text.
+    with _install_boundary(path):
+        original = path.read_bytes().decode("utf-8")
+
+    if Text.BEGIN not in original or Text.END not in original:
+        logger.debug("No `AGENTS.md` axi block to remove")
+        return False
+
+    start = original.index(Text.BEGIN)
+    end = original.index(Text.END) + len(Text.END)
+
+    # NOTE: The injection this undoes wrote a two-newline separator
+    # ahead of the block and one after it, so cutting the marked span
+    # alone strands a blank line at each seam. Terminators are trimmed
+    # back off both sides and the join is rebuilt, which returns the
+    # file to the shape the injection was applied to.
+    #
+    # NOTE: The rebuilt join follows the terminator the prefix already
+    # ends with, so removing the block from a CRLF file does not splice
+    # a lone LF into it. Everything inside the prefix and suffix is
+    # untouched.
+    head = original[:start]
+    terminator = "\r\n" if head.endswith("\r\n") else "\n"
+    prefix = head.rstrip("\r\n")
+    suffix = original[end:].lstrip("\r\n")
+
+    if prefix and suffix:
+        updated = f"{prefix}{terminator * 2}{suffix}"
+    elif prefix:
+        updated = f"{prefix}{terminator}"
+    else:
+        updated = suffix
+
+    _atomic_write_bytes(path, updated.encode())
+    logger.debug("Removed `AGENTS.md` axi block")
     return True
 
 
@@ -182,13 +217,20 @@ def _update_mcp_json(path: Path, servers_key: str, available: bool) -> bool:
     if not available:
         if servers.pop("VenvAXI", None) is None:
             return False
-        _atomic_write_text(path, json.dumps(data, indent=2) + "\n")
+        _atomic_write_bytes(path, (json.dumps(data, indent=2) + "\n").encode())
         return True
 
+    # NOTE: The module form, not the `venvaxi` console-script shim. The
+    # shim is owned by the `venv-axi` distribution, so a reinstall - which
+    # `uv` does on any dependency change - must delete a file a running
+    # server holds open, and the sync fails naming a file the caller was
+    # not thinking about. `-P` keeps the working directory off `sys.path`,
+    # which a shim launch never puts there; without it a consuming repo's
+    # top-level modules would shadow the ones the server imports.
     entry = {
         "type": "stdio",
-        "command": _axi_command(),
-        "args": ["serve"],
+        "command": _axi_interpreter(),
+        "args": ["-P", "-m", "venvaxi", "serve"],
     }
 
     if servers.get("VenvAXI") == entry:
@@ -197,7 +239,7 @@ def _update_mcp_json(path: Path, servers_key: str, available: bool) -> bool:
     servers["VenvAXI"] = entry
     with _install_boundary(path):
         path.parent.mkdir(parents=True, exist_ok=True)
-    _atomic_write_text(path, json.dumps(data, indent=2) + "\n")
+    _atomic_write_bytes(path, (json.dumps(data, indent=2) + "\n").encode())
     return True
 
 
@@ -219,42 +261,47 @@ def install_skill(root: Path) -> bool:
             the skill directory cannot be created, or the write fails
             with an `OSError`.
     """
-    # NOTE: Written verbatim - the bytes on disk *are* the file, so the
-    # round-trip must match exactly for the comparison below to hold.
-    text = skill_markdown.read_text(encoding="utf-8")
+    # NOTE: Read, compared and written as raw bytes - the bytes on disk
+    # *are* the file, and text mode's newline translation would fork an
+    # LF source into a CRLF copy on Windows.
+    data = skill_markdown.read_bytes()
     path = root / ".claude" / "skills" / "venvaxi" / "SKILL.md"
 
     if path.exists():
         with _install_boundary(path):
-            installed = path.read_text(encoding="utf-8")
-        if installed == text:
+            installed = path.read_bytes()
+        if installed == data:
             logger.debug("`SKILL.md` is up-to-date")
             return False
 
     with _install_boundary(path):
         path.parent.mkdir(parents=True, exist_ok=True)
-    _atomic_write_text(path, text)
+    _atomic_write_bytes(path, data)
     logger.debug("Installed `SKILL.md` skill")
     return True
 
 
 def setup_ambient_context(
-    root: Path, *, skill: bool = False
+    root: Path, *, skill: bool = True
 ) -> dict[str, bool]:
     """Install AXI ambient context into the consuming repo.
 
     NOTE: MCP registration is gated on `fastmcp` availability - the
-    `AGENTS.md` CLI guidance is valid either way, so it is not.
+    skill covers the CLI as well as the MCP surface, so it is not.
+
+    NOTE: The `AGENTS.md` entry reports a *removal*. The block is no
+    longer written; a copy left by an earlier version is stripped, so
+    True there means the file shrank rather than grew.
 
     Args:
         root: The consuming repo root path.
-        skill: Whether to also install the Claude Code Skill.
+        skill: Whether to install the Claude Code Skill.
 
     Returns:
-        A mapping of which artifacts were created or modified:
-        `AGENTS.md`, `.vscode`, `.mcp.json` and `skill` - the last of
-        which is always present, but only ever True when `skill` was
-        requested.
+        A mapping of which artifacts were created, modified or removed:
+        `AGENTS.md`, `.vscode`, `.mcp.json` and `SKILL.md` - the last of
+        which is always present, but True only when the skill file was
+        written.
 
     Raises:
         AmbientContextError: If any artifact cannot be read, created or
@@ -262,7 +309,7 @@ def setup_ambient_context(
     """
     available = mcp_available()
     return {
-        "AGENTS.md": inject_agents_md(root),
+        "AGENTS.md": strip_agents_md(root),
         ".vscode": _update_mcp_json(
             root / ".vscode" / "mcp.json", "servers", available
         ),

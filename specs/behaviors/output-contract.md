@@ -1,6 +1,6 @@
 ---
 context-hierarchy: Layer 3
-context-hierarchy-role: Desired state
+context-hierarchy-role: Reference material
 immutable: false
 tags: [behavior, output, TOON]
 ---
@@ -22,9 +22,21 @@ Every CLI command and every MCP tool.
 
 - Structured output shall be written with `sys.stdout.write`, not `print`, so a console renderer
   can never line-wrap a TOON payload.
+- Structured output shall be written as UTF-8, whatever character encoding the ambient console
+  or pipe reports. Introspected docstrings carry whatever their authors wrote - rendered example
+  tables, typographic punctuation, mathematical symbols - so the payload's character set is the
+  dependency's business, and the ambient encoding of a captured pipe is an accident of the
+  caller's shell rather than a fact about the payload.
+- If a payload contains a character the ambient stream encoding cannot represent, then the
+  command shall emit the payload in full and exit on its own merits, never exit `EX_SYNTAX`
+  because of the encoding.
 - Logging shall be configured to STDERR at `WARNING`, or `DEBUG` under `--verbose`.
 - The TOON error block on STDOUT *is* the error report. It shall not also be logged at error
   level, which would duplicate it on STDERR; the log line is `DEBUG`-only.
+
+STDERR is held to the same rule. Import warnings name third-party modules and quote their
+exception text, so the commentary stream carries foreign characters for the same reason the
+report does.
 
 ### Exit codes
 
@@ -44,11 +56,17 @@ positional is a separate, earlier failure and keeps argparse's own exit status.
 
 ### Error shape
 
-If a `venvaxi.exceptions.Error` is raised, then the entry point shall catch it and render:
+If a `venvaxi.exceptions.Error` is raised, then the entry point shall catch it and render the
+TOON error object:
 
 ```text
 error: true
 message: <human-readable message>
+```
+
+On the CLI, the error object shall be followed by the generic footer:
+
+```text
 help[1]:
   Run `venvaxi --help` for available commands
 ```
@@ -57,8 +75,17 @@ If an unexpected exception escapes, then the entry point shall render the same s
 `Unexpected error:` prefix, log it to STDERR at `ERROR` level with the traceback attached
 (`logger.exception`), and exit `2`.
 
-MCP tools shall mirror this exactly: `Error` is caught and returned as the same TOON block rather
-than escaping into FastMCP's generic error path.
+MCP tools shall mirror the error object and the catch discipline - `Error` is caught and
+returned as the same TOON block rather than escaping into FastMCP's generic error path - and
+shall never carry the CLI footer. That footer names a shell command a tool-calling agent cannot
+run, and `venvaxi --help` has no tool-surface equivalent: a connected agent already holds the
+tool list, so a generic substitute would be a manufactured step, which
+[contextual disclosure](#contextual-disclosure) below forbids. An MCP tool error carries an
+error-specific hint where a genuine next step exists, phrased per the
+[MCP hint wording rule](../mcp/tools.md#hint-wording); if none exists, then the `help[N]:`
+footer shall be omitted entirely rather than emitted empty, per the same suppression rule. The
+`Unexpected error:` shape takes the identical per-surface footer - an unexpected error has no
+next step to name, so over MCP it carries no footer at all.
 
 ### Definitive empty states
 
@@ -137,7 +164,7 @@ A command shall never prompt. Mutations shall be idempotent.
 
 ## Out of scope
 
-- **Alternative encodings** - no `--json` or `--format` switch; TOON is the only encoding on
+- **Alternative payload formats** - no `--json` or `--format` switch; TOON is the only encoding on
   every surface. Never - the encoding is the token-efficiency contract, and a second format
   would fork every downstream parser.
 - **Console styling** - no colour, no wrapping, no human-oriented tables. Never - the consumer

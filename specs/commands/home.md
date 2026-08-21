@@ -1,6 +1,6 @@
 ---
 context-hierarchy: Layer 3
-context-hierarchy-role: Desired state
+context-hierarchy-role: Reference material
 immutable: false
 tags: [command, home, status]
 ---
@@ -48,8 +48,15 @@ the first thing an agent runs and it has to answer before anything else works.
 
 - **Project and dependency introspection** - the view reports process state (`bin`, `venv`,
   `status`) only; dependency data belongs to `list` and package data to `show`. Never - reaching
-  for the project root or the symbol store here would break the guarantee that this view works in
-  a broken project.
+  for the symbol store here would break the guarantee that this view works in a broken project.
+- **The resolved project root** - not reported, though it could be. Never, but not for the reason
+  above: [`describeBindingTool`](../mcp/tools.md#the-binding-report) resolves the root and degrades
+  to a marker rather than raising, which is a working demonstration that a root lookup need not
+  cost this view its broken-project guarantee. The reason is that it would tell a CLI caller
+  nothing. The root is the nearest ancestor of the working directory holding a `pyproject.toml`,
+  and a CLI caller chose that directory - so the answer is one they already have. An MCP caller
+  chose neither the directory nor the interpreter, which is why the same field is load-bearing
+  over there and inert here.
 
 ## Principles
 

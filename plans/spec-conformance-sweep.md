@@ -57,8 +57,8 @@ authorship, not conformance work.
 
 1. Author this plan at `status: planned`.
 2. Normalize frontmatter on every migrated file: `context-hierarchy: Layer 3`,
-   `context-hierarchy-role: Desired state`, `immutable: false`, `tags: [...]`; no
-   `maximum-context-tokens` (specs are unbudgeted per `AGENTS.md`).
+   `context-hierarchy-role: Reference material`, `immutable: false`, `tags: [...]`; no
+   `recommended-context-tokens` (specs are unbudgeted per `AGENTS.md`).
 3. Restructure the nine command specs to the interface template: `## Invocation / inputs`,
    `## Data requirements`, `## Outputs`, `## Failure modes` (absorbing `## Exit codes` and
    `## Errors`), `## Out of scope`, `## Principles`. Exit-code enums stop being restated - link
@@ -80,12 +80,12 @@ authorship, not conformance work.
 ## Validation
 
 - [x] Every spec file under `specs/` except `README.md` shall carry
-      `context-hierarchy: Layer 3`, `context-hierarchy-role: Desired state`, `immutable: false`
+      `context-hierarchy: Layer 3`, `context-hierarchy-role: Reference material`, `immutable: false`
       and a `tags:` key. — `for k in 'context-hierarchy: Layer 3' 'context-hierarchy-role:
-      Desired state' 'immutable: false' 'tags:'; do grep -rL "^$k" specs --include='*.md' |
+      Reference material' 'immutable: false' 'tags:'; do grep -rL "^$k" specs --include='*.md' |
       grep -v README.md; done` reports no file, over 16
-- [x] No spec file under `specs/` except `README.md` shall carry a `maximum-context-tokens`
-      key. — `grep -rln 'maximum-context-tokens' specs --include='*.md' | grep -v README.md`
+- [x] No spec file under `specs/` except `README.md` shall carry a `recommended-context-tokens`
+      key. — `grep -rln 'recommended-context-tokens' specs --include='*.md' | grep -v README.md`
       reports no file
 - [x] Every command spec shall present the interface template headings in template order, and no
       spec shall retain a `## Output rules`, `## Exit codes` or `## Errors` heading. —

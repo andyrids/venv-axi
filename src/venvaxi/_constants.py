@@ -33,3 +33,15 @@ ESCAPES = {
     "\r": "\\r",
     "\t": "\\t",
 }
+
+NO_PROJECT_ROOT = "(no project root)"
+"""Marker emitted when no project root resolves for the binding report.
+
+NOTE: A `venvaxi` emission marker, not part of the adapted TOON subset
+above. AXI principle 5 (definitive empty states) - it states that no
+`pyproject.toml` was found from the working directory upward nor beside
+the venv, which is a fact about the binding rather than a failure.
+Distinct from every real path and contains no TOON structural
+characters, so the encoder never has to quote it. Applied at emission
+only - see `specs/mcp/tools.md`.
+"""

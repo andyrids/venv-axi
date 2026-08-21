@@ -16,7 +16,117 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > - `Fixed` for any bug fixes.
 > - `Security` in case of vulnerabilities.
 
-## [v0.2.0] - 2026-08-13
+## [0.3.0] - 2026-08-21
+
+### Added
+
+- `describeBindingTool`, a ninth MCP tool reporting the project root, venv and status the
+  server answers from - a wrongly bound server previously returned plausible wrong-project
+  answers with no signal. Degrades to a `(no project root)` marker instead of raising.
+- `venvaxi serve` advertises the bound project root and venv in the MCP initialization
+  instructions, computed once at startup; an unresolvable root carries the marker and the
+  server starts anyway.
+- An eval case for the `os error 32` sync failure, so the locked-shim misdiagnosis is a
+  specimen rather than folklore.
+- A wrong-binding gotcha in the packaged skill, plus an eval specimen for the
+  plausible-wrong-answers misdiagnosis.
+
+### Changed
+
+- **Breaking for `setup` callers.** `venvaxi setup` registers the MCP server as
+  `<python> -P -m venvaxi serve` instead of the `venvaxi` console script. Entries written by
+  an earlier version are replaced on the next `setup` run, which reports `.mcp.json` and
+  `.vscode` as modified once. Anything reading the registered command out of `.mcp.json`
+  sees an interpreter path and a four-element `args` list.
+- **Breaking for `setup` callers.** `venvaxi setup` installs the Skill by default, overwriting
+  any existing copy; `--no-skill` opts out and `--skill` remains accepted, now naming the
+  default. The `SKILL.md` key reports whether the file was written - false under `--no-skill`
+  and when the installed copy already matches the packaged skill byte-for-byte.
+- The packaged skill's content is now governed by `specs/behaviors/skill-content.md`. It corrects
+  the exit-code contract, which had claimed every error exits `1`: exit `2` now has both its
+  causes named and told apart by stdout - an argparse rejection emits no TOON, a venvaxi fault
+  emits an `Unexpected error:` block. It also adds gotchas for four observed failure modes
+  (`inherits` direction, unindexed dunders, empty namespace accessors, decorator passthroughs),
+  makes the case against executing the dependency, flips the `inherits` worked example to a
+  populated result, completes the `setup` row's flag list, and points at `specs/principles.md`
+  for the measured token figures it used to carry.
+- The skill `description` names debugging framings - observed misbehaviour whose cause is a
+  signature fact - and the eval suite grows to 10 cases, one framed as a bug report that never
+  names `venvaxi`.
+
+### Fixed
+
+- The CLI reconfigures STDOUT and STDERR to UTF-8 at entry, so a docstring carrying a character
+  the ambient pipe encoding cannot represent - box-drawing tables, Greek letters - no longer
+  crashes `inspect --docstring` with a `UnicodeEncodeError` and exit 2 (issue 45).
+- A running `venvaxi serve` no longer blocks `uv` from syncing the project on Windows. The
+  server held the `venvaxi.exe` console-script shim open, which `uv` must delete whenever it
+  reinstalls `venv-axi`, so an otherwise unrelated `uv run` or `uv sync` failed with
+  `os error 32` naming a file the caller was not thinking about. It fired only on the runs
+  that reinstall. The registered interpreter is not replaced by a package reinstall.
+- MCP tool errors no longer tell the caller to run `venvaxi --help`. Every error from all nine
+  tools carried the CLI's generic `help[1]: Run venvaxi --help` footer - a shell command a
+  tool-calling agent cannot run. An MCP error now carries an error-specific hint where one
+  exists and otherwise omits the `help[N]:` footer entirely; CLI error output is unchanged,
+  byte-for-byte, on both error paths.
+- **Breaking for `getSymbolTool` callers.** `getSymbolTool` diagnoses a `qualified_name` with
+  no `::` before any lookup - the error names the required `module::Symbol` form, the missing
+  `::` and `showModuleTool` - instead of answering `Symbol ... not found`, a definitive-sounding
+  negative about the package where the real fault was malformed input. Deliberately breaking:
+  a no-`::` name that previously resolved as a module by accident (`rich.console`, `rich`) now
+  returns the diagnosis instead of the bare module node; `showModuleTool` returns the fuller
+  answer for the same spelling.
+
+## [0.3.0rc1] - 2026-08-20
+
+> [!NOTE]
+> This section records only what the published `0.3.0rc1` wheel contains. Work merged after the
+> `v0.3.0rc1` tag is under `[0.3.0]` above, even where it was drafted while this heading was the
+> unreleased one.
+
+### Added
+
+- `specs/commands/setup.md` declares the installed skill a byte-for-byte copy of the packaged one.
+- `tests/test_skill_parity.py` fails when the repo skill copy drifts from `src/venvaxi/SKILL.md`.
+- `just skill-sync` regenerates `.claude/skills/venvaxi/SKILL.md` through the real installer.
+- The packaged skill gains an Invocation section and gotchas for its documented failure modes.
+- The skill eval suite grows from 3 to 9 cases, plus a README recording the manual loop.
+
+### Changed
+
+- **Breaking for `setup` callers.** The `AGENTS.md` key in `venvaxi setup` output still reports
+  whether the file was modified, but that is now true on *removal* rather than on write. A repo
+  last set up by an earlier version reports `AGENTS.md: true` once, then `false`. The key set is
+  unchanged.
+- `venvaxi setup` strips a legacy ambient block instead of writing one, preserving every byte
+  outside the `<!-- venvaxi:begin -->`/`<!-- venvaxi:end -->` markers and collapsing the
+  separator the injection had added. It never creates `AGENTS.md`.
+- The packaged Skill states the scan-first requirement as a MUST, the one normative line the
+  removed block carried that it did not.
+- `.claude/skills/venvaxi/SKILL.md` is generated output, not a hand-maintained dev-facing fork.
+- `docs/architecture.md` documents the single-source skill model and drops the stale advice not
+  to run `setup --skill` in this repo.
+
+### Removed
+
+- The always-on `AGENTS.md` ambient block, and the `src/venvaxi/ambient.md` that sourced it.
+  Ambient context is now the Skill plus the MCP registration. The block duplicated the Skill in
+  every session of every consuming repo whether or not the task touched a dependency, and
+  `specs/mcp/tools.md` already named MCP registration the primary ambient integration.
+
+### Fixed
+
+- `install_skill()` writes bytes, so Windows newline translation cannot fork the installed copy.
+- Ambient-block edits to `AGENTS.md` read and write bytes, so hand-authored content outside the
+  markers is preserved byte-for-byte as `specs/commands/setup.md` requires, on every platform.
+  The fix landed on `inject_agents_md()` and carried into the `strip_agents_md()` that replaced
+  it before either shipped.
+- The repo skill copy no longer names the nonexistent lowercase `src/venvaxi/skill.md` path.
+- `tests/test_cli.py` mocked `setup`'s return value with a `skill` key where the implementation
+  returns `SKILL.md`, so the guard its own NOTE described - catching a rename of those keys - was
+  never armed.
+
+## [0.2.0] - 2026-08-13
 
 ### Added
 
@@ -56,7 +166,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `plans/pre-release-conformance.md` restored.
 - `plans/spec-conformance-sweep.md` follow-ups relabelled in accordance with `plans/README.md`.
 
-## [v0.1.0] - 2026-08-09
+## [0.1.0] - 2026-08-09
 
 ### Added
 
@@ -114,7 +224,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Verification requirement identifiers now come from a plan Validation checklist.
 - `ICM/_config/reference-standard-axi.md` reduced to a pointer; its content moved into `specs/`.
 
-## [v0.1.0rc1] - 2026-08-06
+## [0.1.0rc1] - 2026-08-06
 
 ### Added
 

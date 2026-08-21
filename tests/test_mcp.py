@@ -1,6 +1,7 @@
 """Unit tests for `venvaxi._mcp`."""
 
 import asyncio
+import logging
 from collections.abc import Callable
 from pathlib import Path
 from unittest import mock
@@ -9,13 +10,17 @@ import pytest
 
 pytest.importorskip("fastmcp")
 # ruff: disable[E402]
+from venvaxi._constants import NO_PROJECT_ROOT
+from venvaxi._core import resolve_binding
 from venvaxi._introspect import MCP_ESCAPE_HATCH, SymbolInfo
 from venvaxi._mcp import build_server
 from venvaxi._packages import PackageInfo
 from venvaxi._store import NodeKind, SymbolNode
-from venvaxi.exceptions import SymbolNotFoundError
+from venvaxi._toon import encode_object
+from venvaxi.exceptions import ProjectRootNotFoundError, SymbolNotFoundError
 
 # ruff: enable[E402]
+CORE = "venvaxi._core"
 MCP = "venvaxi._mcp"
 
 NodeFactory = Callable[..., SymbolNode]
@@ -33,13 +38,14 @@ def camel_case(name: str) -> str:
 
 
 def test_build_server_registers_tools() -> None:
-    """`build_server` registers all eight expected MCP tools."""
+    """`build_server` registers all nine expected MCP tools."""
     from venvaxi import _mcp
 
     server = build_server()
     names = {tool.name for tool in asyncio.run(server.list_tools())}
 
     assert names == {
+        camel_case(_mcp.describe_binding_tool.__name__),
         camel_case(_mcp.list_packages_tool.__name__),
         camel_case(_mcp.show_package_tool.__name__),
         camel_case(_mcp.show_package_api_tool.__name__),
@@ -49,6 +55,111 @@ def test_build_server_registers_tools() -> None:
         camel_case(_mcp.get_inheritors_tool.__name__),
         camel_case(_mcp.get_module_tree_tool.__name__),
     }
+
+
+def test_describe_binding_tool_reports_binding(tmp_path: Path) -> None:
+    """The tool emits the flat `root`/`venv`/`status` object."""
+    server = build_server()
+    with mock.patch(f"{CORE}.get_project_root", return_value=tmp_path):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "root:" in result
+    assert "venv:" in result
+    assert "status:" in result
+
+
+def test_describe_binding_tool_footer_names_camel_case(
+    tmp_path: Path,
+) -> None:
+    """The success footer names next-step tools by camelCase name and
+    carries no `venvaxi` shell spelling."""
+    server = build_server()
+    with mock.patch(f"{CORE}.get_project_root", return_value=tmp_path):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "help[2]:" in result
+    assert "listPackagesTool" in result
+    assert "include_dev=true" in result
+    assert "findSymbolTool" in result
+    assert "list_packages_tool" not in result
+    assert "venvaxi " not in result
+
+
+def test_describe_binding_tool_no_root_reports_marker() -> None:
+    """No resolvable root degrades to the marker with no error block,
+    and the hint names the registration rather than an invocation."""
+    server = build_server()
+    with mock.patch(
+        f"{CORE}.get_project_root",
+        side_effect=ProjectRootNotFoundError("nope"),
+    ):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert f"root: {NO_PROJECT_ROOT}" in result
+    assert "venv:" in result
+    assert "error: true" not in result
+    assert ".mcp.json" in result
+    assert "venvaxi " not in result
+
+
+def test_describe_binding_tool_unexpected_error_returns_error_block() -> None:
+    """A non-`ProjectRootNotFoundError` returns the `Unexpected error:`
+    block, never the marker - the degrade is scoped to its trigger."""
+    server = build_server()
+    with mock.patch(f"{CORE}.get_project_root", side_effect=OSError("gone")):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "error: true" in result
+    assert "Unexpected error: gone" in result
+    assert NO_PROJECT_ROOT not in result
+
+
+def test_describe_binding_tool_description_is_call_first() -> None:
+    """The registered description identifies the binding and carries
+    the call-me-first signal (`specs/mcp/tools.md`)."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("describe_binding_tool")))
+    description = tool.description or ""
+    assert "project" in description
+    assert "venv" in description
+    assert "answers from" in description
+    assert "Call this first" in description
+
+
+def test_build_server_instructions_carry_binding() -> None:
+    """The initialization instructions carry the bound root and venv."""
+    with mock.patch(
+        f"{CORE}.get_project_root", return_value=Path.home() / "proj"
+    ):
+        server = build_server()
+        _, venv, _ = resolve_binding()
+    # NOTE: `~/proj` holds no TOON-escapable characters, so it appears
+    # verbatim; the venv line is matched in its encoded form because a
+    # Windows path is escaped-and-quoted by the encoder.
+    assert "root: ~/proj" in server.instructions
+    assert encode_object({"venv": venv}) in server.instructions
+
+
+def test_build_server_no_root_still_builds_with_marker() -> None:
+    """An unresolvable root at startup degrades to the marker - the
+    server still builds and serves the full tool surface."""
+    with mock.patch(
+        f"{CORE}.get_project_root",
+        side_effect=ProjectRootNotFoundError("nope"),
+    ):
+        server = build_server()
+    assert NO_PROJECT_ROOT in server.instructions
+    names = {tool.name for tool in asyncio.run(server.list_tools())}
+    assert len(names) == 9
+    assert camel_case("describe_binding_tool") in names
 
 
 def test_list_packages_tool_returns_toon(
@@ -288,6 +399,38 @@ def test_get_symbol_tool_resolves_facade_spelled_method(
     assert "kind: method" in result
 
 
+def test_get_symbol_tool_no_separator_diagnoses_before_lookup() -> None:
+    """A no-`::` name returns the malformed-input diagnosis before any
+    lookup - the message names `module::Symbol`, the missing `::` and
+    `showModuleTool` (previously: a bare `Symbol not found` miss)."""
+    server = build_server()
+    with mock.patch(f"{MCP}.get_symbol") as mock_get_symbol:
+        tool = asyncio.run(server.get_tool(camel_case("get_symbol_tool")))
+        result = tool.fn(qualified_name="rich.console")
+    mock_get_symbol.assert_not_called()
+    assert "error: true" in result
+    assert "requires a `module::Symbol` name" in result
+    assert "`rich.console` has no `::`" in result
+    assert "showModuleTool" in result
+    assert "show_module_tool" not in result
+    assert "not found" not in result
+    assert "help[" not in result
+
+
+def test_get_symbol_tool_module_resolving_name_still_diagnosed(
+    fake_package: str,
+) -> None:
+    """A no-`::` name that resolves as a real module returns the
+    diagnosis through the real call path, never the module's node
+    (previously: succeeded by accident with the bare module node)."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("get_symbol_tool")))
+    result = tool.fn(qualified_name=f"{fake_package}.api")
+    assert "error: true" in result
+    assert "requires a `module::Symbol` name" in result
+    assert "kind: module" not in result
+
+
 def test_find_symbol_tool_returns_toon(
     make_symbol_node: NodeFactory,
 ) -> None:
@@ -375,6 +518,11 @@ def test_tool_axi_error_returns_toon_error_block() -> None:
     assert "error: true" in result
     assert "nope" in result
     assert "Unexpected error" not in result
+    # NOTE: The footer is surface-addressed - an MCP tool error with no
+    # error-specific hint carries no `help[N]:` footer at all
+    # (previously: the CLI's generic `venvaxi --help` footer).
+    assert "help[" not in result
+    assert "venvaxi --help" not in result
 
 
 def test_tool_unexpected_error_returns_toon_error_block() -> None:
@@ -386,6 +534,29 @@ def test_tool_unexpected_error_returns_toon_error_block() -> None:
         result = tool.fn(qualified_name="rich::Nope")
     assert "error: true" in result
     assert "Unexpected error: kaboom" in result
+    # NOTE: An unexpected error has no next step to name, so over MCP
+    # it carries no footer at all (previously: `venvaxi --help`).
+    assert "help[" not in result
+    assert "venvaxi --help" not in result
+
+
+def test_tool_unexpected_error_logs_traceback(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The unexpected arm logs the traceback at ERROR, so a genuine bug
+    fails loudly in the logs rather than vanishing into the TOON payload."""
+    server = build_server()
+    with caplog.at_level(logging.ERROR, logger="venvaxi"):
+        with mock.patch(f"{MCP}.get_symbol", side_effect=ValueError("kaboom")):
+            tool = asyncio.run(server.get_tool(camel_case("get_symbol_tool")))
+            tool.fn(qualified_name="rich::Nope")
+    records = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(records) == 1
+    # NOTE: `exc_info` is the point - `logger.exception`, not a plain
+    # `logger.error`, so the traceback reaches the logs.
+    assert records[0].exc_info is not None
+    assert "Traceback" in caplog.text
+    assert "ValueError: kaboom" in caplog.text
 
 
 def test_get_module_tree_tool_malformed_name_returns_toon_error() -> None:

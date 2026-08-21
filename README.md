@@ -45,24 +45,29 @@ Other commands:
 Docstrings are truncated to a first line by default - add `--docstring` for complete bodies. The
 `--refresh` option rebuilds a stale graph after a dependency version change.
 
-Ambient context for agents can be injected into `AGENTS.md` alongside MCP server entries in
-`.vscode/mcp.json` and `.mcp.json`:
+Ambient context for agents is registered by `setup`, which writes MCP server entries into
+`.vscode/mcp.json` and `.mcp.json`, and installs a Skill at `.claude/skills/venvaxi/SKILL.md`:
 
 ```bash
 uv run venvaxi setup
 ```
 
-The optional `--skill` flag additionally installs a Skill at `.claude/skills/venvaxi/SKILL.md`,
-covering the scan -> resolve -> inspect workflow, commands and MCP tool surface alongside common
-gotchas:
+The Skill covers the scan -> resolve -> inspect workflow, commands and MCP tool surface alongside
+common gotchas. It is the agent-facing half of ambient context, loaded on demand rather than kept
+in every session, and it is installed by default - pass `--no-skill` to suppress it:
 
 ```bash
-uv run venvaxi setup --skill
+uv run venvaxi setup --no-skill
 ```
 
+Versions before v0.3.0 also injected an always-on block into `AGENTS.md` between
+`<!-- venvaxi:begin -->` and `<!-- venvaxi:end -->` markers. That block duplicated the Skill in
+every session, and is no longer written. `setup` removes one it finds, leaving every byte outside
+the markers untouched.
+
 > [!WARNING]
-> Unlike the marked `AGENTS.md` block, `SKILL.md` is a bundled artifact - any local edits to a
-> previously installed copy are overwritten.
+> `SKILL.md` is a bundled artifact - any local edits to a previously installed copy are
+> overwritten.
 
 The AXI tools can be served over MCP (STDIO) with the `venvaxi serve` command, which requires the
 `mcp` extra:
@@ -71,9 +76,9 @@ The AXI tools can be served over MCP (STDIO) with the `venvaxi serve` command, w
 uv add venv-axi --dev --extra mcp
 ```
 
-The MCP server exposes; `listPackagesTool`, `showPackageTool`, `showPackageApiTool`,
-`showModuleTool`, `getSymbolTool`, `findSymbolTool`, `getInheritorsTool` and
-`getModuleTreeTool`
+The MCP server exposes; `describeBindingTool`, `listPackagesTool`, `showPackageTool`,
+`showPackageApiTool`, `showModuleTool`, `getSymbolTool`, `findSymbolTool`, `getInheritorsTool`
+and `getModuleTreeTool`
 
 > [!NOTE]
 > Tool names are in camelCase format, generated from the snake_case function names (`_mcp.py`).
@@ -94,7 +99,7 @@ With the MCP server extra:
 uv add venv-axi --dev --extra mcp
 ```
 
-Register ambient context (`AGENTS.md` block + MCP config) in the consuming repo:
+Register ambient context (MCP config and the Skill; `--no-skill` opts out) in the consuming repo:
 
 ```bash
 uv run venvaxi setup
@@ -103,6 +108,16 @@ uv run venvaxi setup
 > [!NOTE]
 > The MCP config (`.mcp.json`) is only created on `setup` when `venv-axi` is installed with the
 > `mcp` optional dependency. On adding this extra dependency, rerun the `setup` command.
+
+`setup` registers the server as `<python> -P -m venvaxi serve` rather than the `venvaxi`
+console-script. A running server holds whatever it was launched from open, and on Windows that
+stops `uv` from reinstalling `venv-axi` on the next dependency change - the sync fails with
+`os error 32` naming `venvaxi.exe`. An interpreter is not replaced by a package reinstall, so the
+module form leaves the sync unobstructed.
+
+> [!NOTE]
+> An entry written by an earlier version still names the console script. Re-run `setup` to
+> migrate it; stop the running server first, or it blocks the sync that `setup` itself triggers.
 
 The symbol graph is cached per-project under `~/.venvaxi/`.
 
@@ -182,16 +197,3 @@ and informed the creation of `venv-axi` - a future contribution to the AXI Commu
   - [kunchenguid/axi](https://github.com/kunchenguid/axi)
   - [kunchenguid/gh-axi](https://github.com/kunchenguid/gh-axi)
 - **License**: MIT License - Copyright (c) 2026 Kun Chen
-
-### `JarvusInnovations/specops` | `IBM/iac-spec-kit` | `github/spec-kit`
-
-I looked at existing repos focused on spec-driven development (SSD), which were useful in
-determining what functionality and aspects are best to combine with ICM.
-
-- **Repository**:
-  - [JarvusInnovations/specops](https://github.com/JarvusInnovations/specops)
-    - **License**: N/A
-  - [IBM/iac-spec-kit](https://github.com/IBM/iac-spec-kit)
-    - **License**: MIT License - Copyright (c) 2025 Copyright International Business Machines
-  - [IBM/iac-spec-kit](https://github.com/github/spec-kit)
-    - **License**: MIT License - Copyright (c) 2026 Copyright GitHub, Inc

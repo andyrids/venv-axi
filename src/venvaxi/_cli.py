@@ -1,14 +1,20 @@
 """Argparse CLI for `venvaxi`."""
 
+import argparse
 import logging
 import sys
 from dataclasses import asdict
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from venvaxi._ambient import mcp_available, setup_ambient_context
-from venvaxi._core import CLIContext, ExitCode, get_project_root
+from venvaxi._core import (
+    CLIContext,
+    ExitCode,
+    format_path,
+    get_project_root,
+)
 from venvaxi._introspect import (
     SYMBOL_INFO_FIELDS,
     find_symbol,
@@ -27,9 +33,6 @@ from venvaxi._packages import (
 from venvaxi._toon import encode_object, encode_table, format_help
 from venvaxi.exceptions import InvalidArgumentError
 
-if TYPE_CHECKING:
-    import argparse
-
 logger = logging.getLogger(__package__)
 
 
@@ -43,22 +46,6 @@ def _emit(text: str) -> None:
         text: The text to write, without a trailing newline.
     """
     sys.stdout.write(f"{text}\n")
-
-
-def _format_path(path: Path) -> str:
-    """Format a path relative to $HOME.
-
-    Args:
-        path: The absolute path to format.
-
-    Returns:
-        A `~/`-prefixed path when under the home directory, else the
-        unmodified absolute path.
-    """
-    try:
-        return f"~/{path.relative_to(Path.home())}"
-    except ValueError:
-        return str(path)
 
 
 def _parse_fields(raw: str) -> list[str]:
@@ -112,8 +99,8 @@ def command_home(_: CLIContext) -> int:
 
     fields = {
         "description": "Fetch dependency API info from a project's venv",
-        "bin": _format_path(bin_path),
-        "venv": _format_path(venv_path),
+        "bin": format_path(bin_path),
+        "venv": format_path(venv_path),
         "status": "active" if active else "inactive",
     }
     _emit(encode_object(fields))
@@ -666,16 +653,17 @@ def add_subparser(subparsers: "argparse._SubParsersAction[Any]") -> None:
         help=" ".join(
             [
                 "Install AXI ambient context into the repo",
-                "(AGENTS.md, MCP config & optional skill)",
+                "(MCP config & skill)",
             ]
         ),
     )
     parser_setup.add_argument(
         "--skill",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help=" ".join(
             [
-                "Also install the venvaxi Claude Code Skill",
+                "Install the venvaxi Claude Code Skill",
                 "(.claude/skills/venvaxi/SKILL.md) - overwrites any",
                 "existing copy",
             ]
