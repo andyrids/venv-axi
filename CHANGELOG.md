@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.0rc2] - 2026-08-21
 
 > [!NOTE]
-> Supersedes the yanked `0.3.0` and contains everything that release did. This section records
+> Supersedes the withdrawn `0.3.0` and contains everything that release did. This section records
 > only rc2's own fixes; the release content it carries forward is under `[0.3.0]` below.
 
 ### Fixed
@@ -50,9 +50,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.0] - 2026-08-21 [YANKED]
 
 > [!NOTE]
-> Yanked on PyPI and superseded by `0.3.0rc2`: issue 64 crashes `tree numpy` at an ordinary
+> Removed from PyPI and superseded by `0.3.0rc2`: issue 64 crashes `tree numpy` at an ordinary
 > `max_depth` and drops the MCP connection, and issue 66 withholds the signature on the headline
-> use case. The section stands as the record of what the yanked wheel contains. `0.3.0` will
+> use case. The section stands as the record of what the withdrawn wheel contains. `0.3.0` will
 > never be re-published - PyPI reserves an uploaded filename permanently - so the eventual final
 > release is `0.3.1`.
 

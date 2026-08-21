@@ -76,9 +76,13 @@ contains, with a NOTE block where it is not obvious.
 
 ## Notes
 
-- `status` stays `in-progress` with `pr:` empty. `plans/README.md` puts the flip to `done`
-  plus the PR number in the last commit *before merge*, and no PR exists yet. Closeout is
-  otherwise complete: boxes ticked with citations, Notes and Follow-ups populated.
+- The withdrawal was executed as a PyPI **deletion**, not the yank this plan proposed.
+  Both spend the version number permanently, so `0.3.1` remains the eventual final
+  either way, but deletion is irreversible and breaks anyone who had pinned `0.3.0`.
+  The `[0.3.0]` NOTE in `CHANGELOG.md` was corrected from 'Yanked on PyPI' to
+  'Removed from PyPI' to match. The `[YANKED]` heading suffix stays: it is Keep a
+  Changelog's only marker for a withdrawn release, and no `[DELETED]` convention
+  exists.
 - The three fix plans this record depends on have all landed in the tree
   (`import-crash-containment`, `malformed-package-name`, `definitive-answers`), so every rc2
   bullet describes behaviour the tree now holds. One bullet was corrected mid-run: #66's

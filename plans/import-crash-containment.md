@@ -127,9 +127,6 @@ crash was a violation of them.
 - The changelog entry lives under `[0.3.0rc2]` in `CHANGELOG.md`, written by
   `plans/withdraw-0-3-0.md`'s release-record edit rather than an `[unreleased]` section -
   this run is part of that release.
-- `status` stays `in-progress` with `pr:` empty. `plans/README.md` puts the flip to `done`
-  plus the PR number in the last commit *before merge*, and no PR exists yet. Closeout is
-  otherwise complete: boxes ticked with citations, Notes and Follow-ups populated.
 
 ## Follow-ups
 
