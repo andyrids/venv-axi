@@ -69,7 +69,16 @@ def main() -> NoReturn:
         sys.stdout.write(f"{report}\n")
         logger.debug(str(err))
         exit_code = _core.ExitCode.EX_FAILURE
-    except Exception as err:
+    except (KeyboardInterrupt, SystemExit):
+        # NOTE: Neither is a report about the venv - the first is the
+        # caller aborting, the second venvaxi itself exiting. A
+        # third-party `SystemExit` never reaches here: import
+        # boundaries contain it (`specs/behaviors/output-contract.md`).
+        raise
+    except BaseException as err:
+        # NOTE: `BaseException` - a dependency can raise anything at
+        # import time, and `except Exception` let `_pytest.outcomes.
+        # Skipped` escape as a traceback with a foreign exit (#64).
         report = format_error(
             f"Unexpected error: {err}", hints=[CLI_ERROR_HINT]
         )

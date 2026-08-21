@@ -764,6 +764,88 @@ def test_walk_submodules_skips_import_failure(
     assert "Skipping submodule" in caplog.text
 
 
+def test_walk_submodules_contains_base_exception_import(
+    fake_package: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A submodule raising a `BaseException` subclass at import time -
+    the #64 specimen: `numpy.f2py` raises `_pytest.outcomes.Skipped` -
+    is skipped like any other broken submodule and the walk completes
+    (previously: it escaped `except Exception` and took the whole
+    command down)."""
+    with caplog.at_level(logging.WARNING, logger="venvaxi"):
+        _, children = show_module(fake_package)
+    names = [child.name for child in children]
+    assert "module" in names
+    assert "base_error" not in names
+    assert "Skipping submodule `package.base_error`" in caplog.text
+
+
+def test_walk_submodules_contains_system_exit_import(
+    fake_package: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A submodule raising `SystemExit` at import time is contained at
+    the import boundary - the walk completes on its own result, never
+    the submodule's exit status (#64)."""
+    with caplog.at_level(logging.WARNING, logger="venvaxi"):
+        _, children = show_module(fake_package)
+    names = [child.name for child in children]
+    assert "module" in names
+    assert "exit_error" not in names
+    assert "Skipping submodule `package.exit_error`" in caplog.text
+
+
+def test_walk_submodules_reraises_keyboard_interrupt(
+    fake_package: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`KeyboardInterrupt` propagates out of the walk unswallowed - a
+    long walk must stay abortable (#64)."""
+    real_import = importlib.import_module
+
+    def _interrupt(name: str, *args: object, **kwargs: object) -> object:
+        if name == "package.module":
+            raise KeyboardInterrupt
+        return real_import(name, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr("importlib.import_module", _interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        show_module(fake_package)
+
+
+def test_build_store_for_base_exception_import_reports_broken(
+    isolated_cache: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The requested package itself raising a `BaseException` at import
+    time reports `PackageImportError` - broken, exit 1 - never an
+    unexpected-error crash (#64)."""
+
+    class ImportCrash(BaseException):
+        """A `BaseException` subclass that is not an `Exception`."""
+
+    def _raise(name: str) -> types.ModuleType:
+        raise ImportCrash(name)
+
+    monkeypatch.setattr("importlib.import_module", _raise)
+    with pytest.raises(PackageImportError):
+        get_module_tree("rich")
+
+
+def test_get_public_api_base_exception_import_reports_broken(
+    isolated_cache: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`get_public_api` classes any import-time raise as broken - its
+    guard covered only `ImportError` (#64)."""
+
+    class ImportCrash(BaseException):
+        """A `BaseException` subclass that is not an `Exception`."""
+
+    def _raise(name: str) -> types.ModuleType:
+        raise ImportCrash(name)
+
+    monkeypatch.setattr("importlib.import_module", _raise)
+    with pytest.raises(PackageImportError):
+        get_public_api("rich")
+
+
 def test_resolve_import_name_returns_import_name_key_unchanged() -> None:
     """A name already present as an import-name key keeps its case."""
     with mock.patch(
@@ -811,6 +893,46 @@ def test_walk_module_keeps_instance_constants_without_all(
     by_name = {child.name: child for child in children}
     assert by_name["PATTERN"].kind is NodeKind.ATTRIBUTE
     assert by_name["MAX_RETRIES"].kind is NodeKind.ATTRIBUTE
+
+
+def test_callable_instance_records_call_signature(fake_package: str) -> None:
+    """A module-level callable instance records the signature derived
+    from its class `__call__` - the `pl.col` shape (#66). Previously
+    the kind guard recorded `""` for every attribute."""
+    node = get_symbol(f"{fake_package}.constants::col")
+    assert node.kind is NodeKind.ATTRIBUTE
+    assert "column" in node.signature
+
+
+def test_callable_instance_failing_signature_records_marker(
+    fake_package: str,
+) -> None:
+    """A callable whose signature introspection raises records
+    `(signature unavailable)` - introspection failed, distinct from
+    'takes no arguments' and from 'not callable' (#66)."""
+    node = get_symbol(f"{fake_package}.constants::opaque")
+    assert node.kind is NodeKind.ATTRIBUTE
+    assert node.signature == SIGNATURE_UNAVAILABLE
+
+
+def test_non_callable_attribute_records_empty_signature(
+    fake_package: str,
+) -> None:
+    """A non-callable attribute's `signature` is `""` - the definitive
+    'this symbol is not callable' answer, no third marker (#66)."""
+    node = get_symbol(f"{fake_package}.constants::MAX_RETRIES")
+    assert node.kind is NodeKind.ATTRIBUTE
+    assert node.signature == ""
+
+
+def test_get_public_api_keeps_class_function_filter(
+    fake_package: str,
+) -> None:
+    """`show --api` keeps its class/function filter - callable
+    instances gaining signatures must not silently widen the listing
+    (#66)."""
+    symbols = get_public_api(f"{fake_package}.constants")
+    assert [symbol.name for symbol in symbols] == []
 
 
 def test_walk_module_keeps_private_home_facade_reexports(

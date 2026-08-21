@@ -16,7 +16,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > - `Fixed` for any bug fixes.
 > - `Security` in case of vulnerabilities.
 
-## [0.3.0] - 2026-08-21
+## [0.3.0rc2] - 2026-08-21
+
+> [!NOTE]
+> Supersedes the yanked `0.3.0` and contains everything that release did. This section records
+> only rc2's own fixes; the release content it carries forward is under `[0.3.0]` below.
+
+### Fixed
+
+- A third-party submodule raising a `BaseException` at import time - `numpy.f2py` raises
+  `_pytest.outcomes.Skipped` - no longer crashes `tree` with a traceback and exit 2, and no
+  longer drops the whole MCP connection over `getModuleTreeTool`. Import boundaries now guard
+  `BaseException`, not `Exception`: a broken submodule is skipped with a warning, a broken
+  requested package reports `PackageImportError` and exit 1, third-party `SystemExit` is
+  contained, `KeyboardInterrupt` still aborts, and an aborted build releases the cache database
+  instead of leaking a locked half-built store (issue 64).
+- `show ""` - and any malformed package name in metadata mode - reports `Invalid package name`
+  and exits 1, instead of an unhandled `importlib.metadata` traceback and exit 2;
+  `showPackageTool` returns the same TOON error block. A malformed requirement string in
+  `pyproject.toml` now leaves `list` a skip rather than a failure. The dotted-name answer
+  (`metadata mode takes a distribution name`) is unchanged (issue 65).
+- `inspect "polars::col"` reports a real signature - or `(signature unavailable)` where
+  introspection fails - instead of an empty `signature:`. Signatures are now computed for every
+  callable symbol whatever its kind, not only classes and functions; a non-callable attribute's
+  empty signature definitively means 'not callable'. The cache schema version is bumped, so
+  graphs recorded by an earlier version rebuild themselves on first use - no `--refresh` needed
+  (issue 66).
+- A `find` result capped at the limit now says so: when the returned count equals the active
+  `--limit` (CLI) / `limit` (MCP), a hint states that further matches may exist and names a
+  higher limit in the caller's surface spelling. A count below the limit stays definitive and
+  carries no such hint (issue 69).
+
+## [0.3.0] - 2026-08-21 [YANKED]
+
+> [!NOTE]
+> Yanked on PyPI and superseded by `0.3.0rc2`: issue 64 crashes `tree numpy` at an ordinary
+> `max_depth` and drops the MCP connection, and issue 66 withholds the signature on the headline
+> use case. The section stands as the record of what the yanked wheel contains. `0.3.0` will
+> never be re-published - PyPI reserves an uploaded filename permanently - so the eventual final
+> release is `0.3.1`.
 
 ### Added
 

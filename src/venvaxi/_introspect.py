@@ -16,13 +16,16 @@ import importlib.util
 import inspect
 import logging
 import pkgutil
-import re
 import sys
 from dataclasses import dataclass, fields
 from importlib import metadata
 from types import ModuleType
 from typing import Any, cast
 
+# NOTE: `_ensure_valid_name` lives in `_packages` - the module
+# `specs/behaviors/package-resolution.md` names as the resolution
+# boundary - and is shared here for qualified-name roots.
+from venvaxi._packages import _ensure_valid_name
 from venvaxi._store import (
     EdgeKind,
     NodeKind,
@@ -40,9 +43,6 @@ from venvaxi.exceptions import (
 
 logger = logging.getLogger(__package__)
 
-# NOTE: The single-character alternative is load-bearing - `_`, `a` and
-# `2` are legal names, so the trailing group must be optional.
-_VALID_NAME_RE = re.compile(r"^[A-Za-z0-9_]([A-Za-z0-9._-]*[A-Za-z0-9_])?$")
 DEFAULT_TRUNCATE_LIMIT = 200
 DEFAULT_MAX_DEPTH = 2
 
@@ -220,28 +220,6 @@ def _resolve_import_name(name: str) -> str:
             if dist_name.lower().replace("-", "_") == normalized:
                 return import_name
     return name.replace("-", "_")
-
-
-def _ensure_valid_name(root: str, name: str) -> None:
-    """Raise if `root` cannot possibly be a package name.
-
-    NOTE: Boundary validation of caller input, run before resolution -
-    the dash/case fallback can only disguise a malformed name, never
-    repair one. The message carries `name` because the root of a
-    degenerate spelling (`.foo`) is `""`, which names nothing the
-    caller can fix. See `specs/behaviors/package-resolution.md`.
-
-    Args:
-        root: The top-level component to validate, as supplied.
-        name: The caller's original spelling, used for the message.
-
-    Raises:
-        InvalidArgumentError: On `root` not being a possible package
-            name.
-    """
-    if not _VALID_NAME_RE.match(root):
-        msg = f"Invalid package name `{name}`"
-        raise InvalidArgumentError(msg)
 
 
 def _ensure_installed(import_name: str, name: str) -> None:
@@ -456,11 +434,13 @@ def _record_symbol(
         if kind in (NodeKind.CLASS, NodeKind.FUNCTION)
         else symbol_qualified_name
     )
-    signature = (
-        _signature_of(obj)
-        if kind in (NodeKind.CLASS, NodeKind.FUNCTION)
-        else ""
-    )
+    # NOTE: Callability, not kind, decides the signature - a
+    # module-level instance whose class defines `__call__` (`pl.col`)
+    # classifies as ATTRIBUTE yet has a signature the caller needs, and
+    # the kind guard withheld it as `""` (#66). Non-callables keep `""`:
+    # 'not callable' is the definitive answer, not a silent blank
+    # (`specs/commands/inspect.md`).
+    signature = _signature_of(obj) if callable(obj) else ""
     store.upsert_node(
         SymbolNode(
             qualified_name=symbol_qualified_name,
@@ -534,9 +514,18 @@ def _walk_submodules(
             continue
         try:
             submodule = importlib.import_module(subname)
-        except Exception as err:
-            # NOTE: Broad on purpose - importing third-party submodules
-            # runs arbitrary module-level code, which can raise anything
+        except KeyboardInterrupt:
+            # NOTE: A long walk must stay abortable - never swallow the
+            # caller's interrupt (`specs/behaviors/output-contract.md`,
+            # Import boundaries).
+            raise
+        except BaseException as err:
+            # NOTE: `BaseException`, and broad, on purpose - importing
+            # third-party submodules runs arbitrary module-level code,
+            # which can raise anything: `numpy.f2py` raises
+            # `_pytest.outcomes.Skipped`, a `BaseException` that sailed
+            # through the previous `except Exception` and took the whole
+            # command (and MCP connection) down (#64).
 
             logger.warning(
                 "Skipping submodule `%s` (import failed: %s)", subname, err
@@ -1007,7 +996,14 @@ def get_public_api(
     _ensure_installed(resolved, name)
     try:
         importlib.import_module(resolved)
-    except ImportError as err:
+    except KeyboardInterrupt:
+        raise
+    except BaseException as err:
+        # NOTE: An import boundary guards `BaseException`, not merely
+        # `ImportError` - the requested package runs arbitrary code at
+        # import time, and whatever it raises means 'broken', which is
+        # `PackageImportError`'s class (#64;
+        # `specs/behaviors/output-contract.md`, Import boundaries).
         msg = f"Failed to import `{resolved}` (from `{name}`)"
         raise PackageImportError(msg) from err
 

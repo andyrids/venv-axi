@@ -284,11 +284,16 @@ def command_find(ctx: CLIContext) -> int:
     rows = [node.as_row() for node in nodes]
     _emit(f"count: {len(nodes)}")
     _emit(encode_table("symbols", rows, ["name", "kind", "qualified_name"]))
-    _emit(
-        format_help(
-            ["Run `venvaxi inspect <qualified_name>` for complete metadata"]
+    hints = ["Run `venvaxi inspect <qualified_name>` for complete metadata"]
+    if len(nodes) == ctx.args.limit:
+        # NOTE: A count equal to the cap means 'at least', not 'exactly'
+        # - without the hint a truncated answer reads as definitive
+        # (#69; `specs/commands/find.md`, Bounded results).
+        hints.append(
+            f"Results capped at --limit {ctx.args.limit}"
+            " - re-run with a higher --limit to see more"
         )
-    )
+    _emit(format_help(hints))
     return ExitCode.EX_OK
 
 

@@ -55,10 +55,21 @@ Rules binding both modes:
   `(no docstring)`, not an empty string, in both truncated and `--docstring` modes. See
   [Definitive empty states](../behaviors/output-contract.md#definitive-empty-states) for why a
   bare `""` is insufficient.
-- The `inspect` command shall report the real signature from live introspection. If
-  `inspect.signature` fails on a callable, then the marker `(signature unavailable)` shall be
-  recorded - distinct from every real signature, so 'introspection failed' is never confused
-  with 'takes no arguments'.
+- The `inspect` command shall report the real signature from live introspection for every
+  callable symbol, whatever its `kind`. A module-level instance whose class defines `__call__`
+  is as callable as a function - `polars::col` is exactly such an instance - and narrowing the
+  rule to class and function kinds withholds an answer the walk had in hand.
+- If `inspect.signature` fails on a callable, then the marker `(signature unavailable)` shall
+  be recorded - distinct from every real signature, so 'introspection failed' is never
+  confused with 'takes no arguments'. Recording it is a deliberate exception to the
+  applied-at-emission rule in
+  [Definitive empty states](../behaviors/output-contract.md#definitive-empty-states): the
+  marker is a fact about introspection, discoverable only at build time while the live object
+  is in hand.
+- A non-callable symbol's `signature` shall be `""`. The empty signature states 'this symbol
+  is not callable' - a definitive answer, distinct from the marker above, not a silent blank.
+  No third marker: it would change every attribute row in every module listing for no gain,
+  and callability already tells the two apart.
 - The `inspect` command shall truncate docstrings at 200 characters unless `--docstring` is set,
   and the footer shall suggest `--docstring` only when it is not already set.
 - When a module has no children, the `inspect` command shall emit the header object then

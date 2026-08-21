@@ -257,6 +257,18 @@ def test_show_package_tool_returns_toon(
     assert "name: rich" in result
 
 
+def test_show_package_tool_malformed_name_returns_error_block() -> None:
+    """A malformed package name returns the domain-error TOON block -
+    `InvalidArgumentError` through `_toon_errors`, never the
+    `Unexpected error:` shape and never a transport error (#65)."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("show_package_tool")))
+    result = tool.fn(name="")
+    assert "error: true" in result
+    assert "Invalid package name" in result
+    assert "Unexpected error" not in result
+
+
 def test_show_package_api_tool_returns_toon() -> None:
     """The API tool returns TOON-encoded public symbols."""
     server = build_server()
@@ -444,6 +456,40 @@ def test_find_symbol_tool_returns_toon(
     assert 'Console|class|"rich::Console"' in result
 
 
+def test_find_symbol_tool_at_limit_appends_bounded_hint(
+    make_symbol_node: NodeFactory,
+) -> None:
+    """A count equal to the active `limit` gains the bounded-results
+    hint, spelled for this surface - the parameter, not the CLI flag
+    (#69)."""
+    server = build_server()
+    nodes = [
+        make_symbol_node(qualified_name=f"rich::Sym{i}", name=f"Sym{i}")
+        for i in range(2)
+    ]
+    with mock.patch(f"{MCP}.find_symbol", return_value=nodes):
+        tool = asyncio.run(server.get_tool(camel_case("find_symbol_tool")))
+        result = tool.fn(query="Sym", limit=2)
+    assert "count: 2" in result
+    assert "Results capped at limit=2" in result
+    assert "higher limit" in result
+    assert "--limit" not in result
+
+
+def test_find_symbol_tool_below_limit_omits_bounded_hint(
+    make_symbol_node: NodeFactory,
+) -> None:
+    """A count below the active `limit` is definitive - no
+    bounded-results hint (#69)."""
+    server = build_server()
+    nodes = [make_symbol_node(qualified_name="rich::Console", name="Console")]
+    with mock.patch(f"{MCP}.find_symbol", return_value=nodes):
+        tool = asyncio.run(server.get_tool(camel_case("find_symbol_tool")))
+        result = tool.fn(query="Console")
+    assert "Results capped" not in result
+    assert "getSymbolTool" in result
+
+
 def test_find_symbol_tool_empty_without_package_hints_indexing() -> None:
     """No match without a package hints at re-calling with one, and
     names no package list at all.
@@ -538,6 +584,35 @@ def test_tool_unexpected_error_returns_toon_error_block() -> None:
     # it carries no footer at all (previously: `venvaxi --help`).
     assert "help[" not in result
     assert "venvaxi --help" not in result
+
+
+def test_tool_base_exception_returns_toon_error_block() -> None:
+    """A `BaseException` that is not an `Exception` returns the
+    `Unexpected error:` block instead of escaping into the transport
+    and dropping the MCP connection (#64)."""
+
+    class Crash(BaseException):
+        """A `BaseException` subclass that is not an `Exception`."""
+
+    server = build_server()
+    with mock.patch(f"{MCP}.get_symbol", side_effect=Crash("kaboom")):
+        tool = asyncio.run(server.get_tool(camel_case("get_symbol_tool")))
+        result = tool.fn(qualified_name="rich::Nope")
+    assert "error: true" in result
+    assert "Unexpected error: kaboom" in result
+    assert "help[" not in result
+
+
+def test_tool_reraises_keyboard_interrupt() -> None:
+    """`KeyboardInterrupt` propagates through the tool boundary - a
+    long walk must stay abortable over MCP too (#64)."""
+    server = build_server()
+    with (
+        mock.patch(f"{MCP}.get_symbol", side_effect=KeyboardInterrupt),
+        pytest.raises(KeyboardInterrupt),
+    ):
+        tool = asyncio.run(server.get_tool(camel_case("get_symbol_tool")))
+        tool.fn(qualified_name="rich::Nope")
 
 
 def test_tool_unexpected_error_logs_traceback(
