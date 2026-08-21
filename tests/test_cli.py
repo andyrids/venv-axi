@@ -453,6 +453,25 @@ def test_command_tree_with_results(
     assert "1|rich.table|module" in out
 
 
+def test_command_tree_completes_over_broken_submodules(
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+    fake_package: str,
+) -> None:
+    """`tree` exits 0 with the remaining modules when submodules raise
+    at import time - including `BaseException` raisers, which
+    previously crashed the command (#64)."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(package=fake_package, max_depth=2)
+    )
+    exit_code = _cli.command_tree(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "base_error" not in out
+    assert "exit_error" not in out
+    assert "subpkg" in out
+
+
 @pytest.mark.parametrize("submodule", ["nosuchmodule", "_impl"])
 def test_command_tree_empty_hint_names_root_tree(
     capsys: pytest.CaptureFixture,
@@ -796,6 +815,48 @@ def test_main_maps_unexpected_error_to_exit_2() -> None:
     with mock.patch(f"{CLI}.command_home", side_effect=RuntimeError("oops")):
         exit_code = _run_main([])
     assert exit_code == ExitCode.EX_SYNTAX
+
+
+def test_main_base_exception_maps_to_exit_2(
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """A `BaseException` that is not an `Exception` renders the
+    `Unexpected error:` block and exits 2 - previously it escaped
+    `except Exception` as a raw traceback (#64)."""
+
+    class Crash(BaseException):
+        """A `BaseException` subclass that is not an `Exception`."""
+
+    with mock.patch(f"{CLI}.command_home", side_effect=Crash("boom")):
+        exit_code = _run_main([])
+    out = capsys.readouterr().out
+    assert exit_code == ExitCode.EX_SYNTAX
+    assert "error: true" in out
+    assert "Unexpected error: boom" in out
+
+
+def test_main_reraises_keyboard_interrupt() -> None:
+    """`KeyboardInterrupt` propagates through the entry point - the
+    caller's abort is not a report about the venv (#64)."""
+    with (
+        mock.patch("sys.argv", ["venvaxi"]),
+        mock.patch("venvaxi.__main__.configure_cli_logging"),
+        mock.patch(f"{CLI}.command_home", side_effect=KeyboardInterrupt),
+        pytest.raises(KeyboardInterrupt),
+    ):
+        __main__.main()
+
+
+def test_main_reraises_system_exit_unrendered(
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """A `SystemExit` reaching the entry point keeps its own code and
+    is never rendered as an unexpected error (#64)."""
+    with mock.patch(f"{CLI}.command_home", side_effect=SystemExit(5)):
+        exit_code = _run_main([])
+    out = capsys.readouterr().out
+    assert exit_code == 5
+    assert "Unexpected error" not in out
 
 
 def test_main_unexpected_error_emits_toon_on_stdout(

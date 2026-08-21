@@ -71,9 +71,14 @@ help[1]:
   Run `venvaxi --help` for available commands
 ```
 
-If an unexpected exception escapes, then the entry point shall render the same shape with an
-`Unexpected error:` prefix, log it to STDERR at `ERROR` level with the traceback attached
-(`logger.exception`), and exit `2`.
+If an unexpected exception escapes - any `BaseException` other than `KeyboardInterrupt` and
+`SystemExit`, not merely any `Exception` - then the entry point shall render the same shape with
+an `Unexpected error:` prefix, log it to STDERR at `ERROR` level with the traceback attached
+(`logger.exception`), and exit `2`. `KeyboardInterrupt` and `SystemExit` shall be re-raised
+unrendered: the first is the caller aborting, the second is venvaxi itself exiting, and neither
+is a report about the venv. A catch narrowed to `Exception` renders venvaxi's own promise
+conditional on what a dependency chooses to raise - see
+[Import boundaries](#import-boundaries) for why that choice is not venvaxi's to constrain.
 
 MCP tools shall mirror the error object and the catch discipline - `Error` is caught and
 returned as the same TOON block rather than escaping into FastMCP's generic error path - and
@@ -86,6 +91,30 @@ error-specific hint where a genuine next step exists, phrased per the
 footer shall be omitted entirely rather than emitted empty, per the same suppression rule. The
 `Unexpected error:` shape takes the identical per-surface footer - an unexpected error has no
 next step to name, so over MCP it carries no footer at all.
+
+### Import boundaries
+
+Importing a third-party module runs arbitrary module-level code, which can raise anything -
+including `BaseException` subclasses that are not `Exception`s (`_pytest.outcomes.Skipped`, a
+module-level `sys.exit(...)`). A guard that catches `Exception` lets exactly those escape, and
+what escapes a walk takes the whole command down - or, over MCP, the connection.
+
+- An import boundary shall guard against `BaseException`, not `Exception`. What a dependency
+  raises at import time is a fact about that dependency, never a venvaxi control-flow signal.
+- If a submodule raises anything other than `KeyboardInterrupt` at import time during a walk,
+  then the walk shall skip that submodule, log the warning to STDERR, and continue - one bad
+  submodule must not abort the walk.
+- If the requested package itself raises anything other than `KeyboardInterrupt` at import
+  time, then the command shall report it as broken - `PackageImportError`, per
+  [Package resolution](package-resolution.md) - and exit `EX_FAILURE`, never `EX_SYNTAX`.
+- If a third-party module raises `SystemExit` at import time, then the import boundary shall
+  contain it like any other import failure, never treat it as venvaxi exiting. The only
+  `SystemExit` that means venvaxi is exiting is one raised by venvaxi's own entry point.
+- If `KeyboardInterrupt` is raised at any level, then it shall propagate to the caller - a
+  long walk must stay abortable, and an import guard is not a place to swallow the abort.
+- If a graph build is aborted by an escaping exception, then the command shall release the
+  cache database before propagating it. A crash that leaves the database open converts one
+  broken import into a locked cache for every later command on platforms that lock open files.
 
 ### Definitive empty states
 

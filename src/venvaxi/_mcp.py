@@ -58,10 +58,18 @@ def _toon_errors(fn: Callable[..., str]) -> Callable[..., str]:
         # every domain error into the unexpected shape.
         except Error as err:
             return format_error(str(err))
-        except Exception as err:
-            # NOTE: Broad on purpose, mirroring `__main__.main` - the
-            # traceback is logged at ERROR so a genuine bug still fails
-            # loudly in the logs rather than vanishing into TOON.
+        except (KeyboardInterrupt, SystemExit):
+            # NOTE: Mirrors `__main__.main` - neither is a tool answer,
+            # and import boundaries keep third-party `SystemExit` from
+            # ever reaching this arm.
+            raise
+        except BaseException as err:
+            # NOTE: `BaseException`, broad on purpose, mirroring
+            # `__main__.main` - an escaping `BaseException` does not
+            # merely fail the call, it drops the whole MCP connection
+            # (#64). The traceback is logged at ERROR so a genuine bug
+            # still fails loudly in the logs rather than vanishing
+            # into TOON.
             logger.exception("Unexpected error")
             return format_error(f"Unexpected error: {err}")
 

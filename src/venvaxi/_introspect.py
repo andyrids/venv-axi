@@ -534,9 +534,18 @@ def _walk_submodules(
             continue
         try:
             submodule = importlib.import_module(subname)
-        except Exception as err:
-            # NOTE: Broad on purpose - importing third-party submodules
-            # runs arbitrary module-level code, which can raise anything
+        except KeyboardInterrupt:
+            # NOTE: A long walk must stay abortable - never swallow the
+            # caller's interrupt (`specs/behaviors/output-contract.md`,
+            # Import boundaries).
+            raise
+        except BaseException as err:
+            # NOTE: `BaseException`, and broad, on purpose - importing
+            # third-party submodules runs arbitrary module-level code,
+            # which can raise anything: `numpy.f2py` raises
+            # `_pytest.outcomes.Skipped`, a `BaseException` that sailed
+            # through the previous `except Exception` and took the whole
+            # command (and MCP connection) down (#64).
 
             logger.warning(
                 "Skipping submodule `%s` (import failed: %s)", subname, err
@@ -1007,7 +1016,14 @@ def get_public_api(
     _ensure_installed(resolved, name)
     try:
         importlib.import_module(resolved)
-    except ImportError as err:
+    except KeyboardInterrupt:
+        raise
+    except BaseException as err:
+        # NOTE: An import boundary guards `BaseException`, not merely
+        # `ImportError` - the requested package runs arbitrary code at
+        # import time, and whatever it raises means 'broken', which is
+        # `PackageImportError`'s class (#64;
+        # `specs/behaviors/output-contract.md`, Import boundaries).
         msg = f"Failed to import `{resolved}` (from `{name}`)"
         raise PackageImportError(msg) from err
 

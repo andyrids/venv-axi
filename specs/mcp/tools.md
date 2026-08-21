@@ -42,6 +42,14 @@ and log it to STDERR with its traceback. Catching only `Error` leaves the surfac
 exactly the case where the agent has least to go on - the CLI reports a fault it can read, the
 MCP caller gets a transport error carrying no TOON at all.
 
+'Exception' means `BaseException` here, exactly as the
+[error shape](../behaviors/output-contract.md#error-shape) defines it for the CLI entry point,
+and the stakes are higher on this surface: an escaping `BaseException` does not merely fail the
+call, it drops the whole MCP connection, taking every other tool down with it. A third-party
+import can raise one straight through a tool - see
+[Import boundaries](../behaviors/output-contract.md#import-boundaries) - so the tool boundary
+shall catch `BaseException`, re-raising only `KeyboardInterrupt` and `SystemExit`.
+
 ## Tools
 
 | Tool                  | Parameters                          | CLI equivalent            |

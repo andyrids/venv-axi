@@ -122,6 +122,34 @@ def test_get_or_build_store_builds_on_first_call(
         store.close()
 
 
+def test_get_or_build_store_releases_store_on_base_exception(
+    tmp_path: Path,
+    fake_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A build aborted by a `BaseException` discards and closes the
+    half-built store before the exception propagates - `except
+    Exception` leaked the open store, which locks the cache database
+    on Windows (#64)."""
+
+    class WalkCrash(BaseException):
+        """A `BaseException` subclass that is not an `Exception`."""
+
+    def _crash(*args: object, **kwargs: object) -> None:
+        raise WalkCrash
+
+    root = tmp_path / "project"
+    monkeypatch.setattr(f"{CACHE}._introspect._walk_module", _crash)
+    with (
+        mock.patch(f"{CACHE}._installed_version", return_value=""),
+        pytest.raises(WalkCrash),
+    ):
+        _cache.get_or_build_store(root, fake_module.__name__)
+    # The database is deletable, which an open connection blocks on
+    # Windows - the observable release the spec requires.
+    _cache.get_cache_db_path(root).unlink()
+
+
 def test_get_or_build_store_skips_rebuild_when_valid(
     tmp_path: Path, fake_module: types.ModuleType
 ) -> None:

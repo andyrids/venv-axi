@@ -540,6 +540,35 @@ def test_tool_unexpected_error_returns_toon_error_block() -> None:
     assert "venvaxi --help" not in result
 
 
+def test_tool_base_exception_returns_toon_error_block() -> None:
+    """A `BaseException` that is not an `Exception` returns the
+    `Unexpected error:` block instead of escaping into the transport
+    and dropping the MCP connection (#64)."""
+
+    class Crash(BaseException):
+        """A `BaseException` subclass that is not an `Exception`."""
+
+    server = build_server()
+    with mock.patch(f"{MCP}.get_symbol", side_effect=Crash("kaboom")):
+        tool = asyncio.run(server.get_tool(camel_case("get_symbol_tool")))
+        result = tool.fn(qualified_name="rich::Nope")
+    assert "error: true" in result
+    assert "Unexpected error: kaboom" in result
+    assert "help[" not in result
+
+
+def test_tool_reraises_keyboard_interrupt() -> None:
+    """`KeyboardInterrupt` propagates through the tool boundary - a
+    long walk must stay abortable over MCP too (#64)."""
+    server = build_server()
+    with (
+        mock.patch(f"{MCP}.get_symbol", side_effect=KeyboardInterrupt),
+        pytest.raises(KeyboardInterrupt),
+    ):
+        tool = asyncio.run(server.get_tool(camel_case("get_symbol_tool")))
+        tool.fn(qualified_name="rich::Nope")
+
+
 def test_tool_unexpected_error_logs_traceback(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
