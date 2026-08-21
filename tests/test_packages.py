@@ -12,7 +12,7 @@ from venvaxi._packages import (
     list_packages,
     resolve_package,
 )
-from venvaxi.exceptions import PackageNotFoundError
+from venvaxi.exceptions import InvalidArgumentError, PackageNotFoundError
 
 PACKAGES = "venvaxi._packages"
 
@@ -99,6 +99,36 @@ def test_resolve_package_not_found() -> None:
     """An uninstalled distribution raises `PackageNotFoundError`."""
     with pytest.raises(PackageNotFoundError):
         resolve_package("this-package-does-not-exist-xyz")
+
+
+@pytest.mark.parametrize("name", ["", ".foo", "foo!", "../etc/passwd"])
+def test_resolve_package_malformed_raises(name: str) -> None:
+    """A malformed name raises `InvalidArgumentError` before resolution -
+    never 'not installed', which would invite installing the
+    uninstallable (`specs/behaviors/package-resolution.md`)."""
+    with pytest.raises(InvalidArgumentError, match="Invalid package name"):
+        resolve_package(name)
+
+
+def test_resolve_package_dotted_name_keeps_api_hint() -> None:
+    """A dotted module path is a possible name, so metadata mode still
+    answers 'not installed' with the `--api` hint - the MUST-preserved
+    carve-out in `specs/behaviors/package-resolution.md`."""
+    with pytest.raises(
+        PackageNotFoundError, match="metadata mode takes a distribution name"
+    ):
+        resolve_package("rich.console")
+
+
+def test_list_packages_skips_malformed(tmp_path: Path) -> None:
+    """A malformed requirement string leaves `list` a skip, never a
+    failure."""
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        "[project]\nname = 'demo'\ndependencies = ['???', 'rich']\n"
+    )
+    packages = list_packages(tmp_path)
+    assert [package.name for package in packages] == ["rich"]
 
 
 def test_list_packages_skips_uninstalled(tmp_path: Path) -> None:

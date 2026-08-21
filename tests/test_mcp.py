@@ -257,6 +257,18 @@ def test_show_package_tool_returns_toon(
     assert "name: rich" in result
 
 
+def test_show_package_tool_malformed_name_returns_error_block() -> None:
+    """A malformed package name returns the domain-error TOON block -
+    `InvalidArgumentError` through `_toon_errors`, never the
+    `Unexpected error:` shape and never a transport error (#65)."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("show_package_tool")))
+    result = tool.fn(name="")
+    assert "error: true" in result
+    assert "Invalid package name" in result
+    assert "Unexpected error" not in result
+
+
 def test_show_package_api_tool_returns_toon() -> None:
     """The API tool returns TOON-encoded public symbols."""
     server = build_server()

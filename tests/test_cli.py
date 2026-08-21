@@ -810,6 +810,19 @@ def test_main_maps_error_to_toon_and_exit_1(
     assert "Run `venvaxi --help` for available commands" in out
 
 
+def test_main_show_malformed_name_maps_to_exit_1(
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """`show` with a malformed package name reports
+    `InvalidArgumentError` and exits 1 - never exit 2, which is
+    reserved for venvaxi being broken (#65)."""
+    exit_code = _run_main(["show", ""])
+    out = capsys.readouterr().out
+    assert exit_code == ExitCode.EX_FAILURE
+    assert "error: true" in out
+    assert "Invalid package name" in out
+
+
 def test_main_maps_unexpected_error_to_exit_2() -> None:
     """An unexpected exception maps to exit code 2."""
     with mock.patch(f"{CLI}.command_home", side_effect=RuntimeError("oops")):
