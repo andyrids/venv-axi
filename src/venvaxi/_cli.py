@@ -9,7 +9,12 @@ from pathlib import Path
 from typing import Any
 
 from venvaxi._ambient import mcp_available, setup_ambient_context
-from venvaxi._core import CLIContext, ExitCode, get_project_root
+from venvaxi._core import (
+    CLIContext,
+    ExitCode,
+    format_path,
+    get_project_root,
+)
 from venvaxi._introspect import (
     SYMBOL_INFO_FIELDS,
     find_symbol,
@@ -41,22 +46,6 @@ def _emit(text: str) -> None:
         text: The text to write, without a trailing newline.
     """
     sys.stdout.write(f"{text}\n")
-
-
-def _format_path(path: Path) -> str:
-    """Format a path relative to $HOME.
-
-    Args:
-        path: The absolute path to format.
-
-    Returns:
-        A `~/`-prefixed path when under the home directory, else the
-        unmodified absolute path.
-    """
-    try:
-        return f"~/{path.relative_to(Path.home())}"
-    except ValueError:
-        return str(path)
 
 
 def _parse_fields(raw: str) -> list[str]:
@@ -110,8 +99,8 @@ def command_home(_: CLIContext) -> int:
 
     fields = {
         "description": "Fetch dependency API info from a project's venv",
-        "bin": _format_path(bin_path),
-        "venv": _format_path(venv_path),
+        "bin": format_path(bin_path),
+        "venv": format_path(venv_path),
         "status": "active" if active else "inactive",
     }
     _emit(encode_object(fields))

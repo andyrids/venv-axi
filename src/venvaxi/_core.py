@@ -8,6 +8,7 @@ from itertools import chain
 from pathlib import Path
 
 from venvaxi import exceptions
+from venvaxi._constants import NO_PROJECT_ROOT
 
 logger = logging.getLogger(__package__)
 
@@ -49,3 +50,44 @@ def get_project_root() -> Path:
 
     msg = f"Cannot identify project root:- `{sys.prefix=}` | `{cwd=}`."
     raise exceptions.ProjectRootNotFoundError(msg)
+
+
+def format_path(path: Path) -> str:
+    """Format a path relative to $HOME.
+
+    Args:
+        path: The absolute path to format.
+
+    Returns:
+        A `~/`-prefixed path when under the home directory, else the
+        unmodified absolute path.
+    """
+    try:
+        return f"~/{path.relative_to(Path.home())}"
+    except ValueError:
+        return str(path)
+
+
+def resolve_binding() -> tuple[str, str, str]:
+    """Resolve the project root, venv and status this process serves.
+
+    Returns:
+        A `(root, venv, status)` triple - the resolved project root (or
+        the `NO_PROJECT_ROOT` marker), the serving venv and
+        `active`|`inactive`, with both paths `~/`-prefixed when under
+        the home directory.
+    """
+    try:
+        root = format_path(get_project_root())
+    # NOTE: `ProjectRootNotFoundError` exactly, never a broad arm - a
+    # failure to *find* a root is the fact the marker states, while any
+    # other exception (an unreadable or deleted working directory) must
+    # keep propagating to `_toon_errors` as the `Unexpected error:`
+    # block. Widening this catch would convert a genuine fault into a
+    # confident report that the project simply does not exist - see
+    # `specs/mcp/tools.md`.
+    except exceptions.ProjectRootNotFoundError:
+        root = NO_PROJECT_ROOT
+    venv = format_path(Path(sys.prefix).resolve())
+    status = "active" if sys.prefix != sys.base_prefix else "inactive"
+    return root, venv, status

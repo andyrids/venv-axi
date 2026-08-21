@@ -20,8 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `describeBindingTool`, a ninth MCP tool reporting the project root, venv and status the
+  server answers from - a wrongly bound server previously returned plausible wrong-project
+  answers with no signal. Degrades to a `(no project root)` marker instead of raising.
+- `venvaxi serve` advertises the bound project root and venv in the MCP initialization
+  instructions, computed once at startup; an unresolvable root carries the marker and the
+  server starts anyway.
 - An eval case for the `os error 32` sync failure, so the locked-shim misdiagnosis is a
   specimen rather than folklore.
+- A wrong-binding gotcha in the packaged skill, plus an eval specimen for the
+  plausible-wrong-answers misdiagnosis.
 
 ### Changed
 

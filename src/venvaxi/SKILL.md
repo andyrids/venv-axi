@@ -161,6 +161,7 @@ error block instead of an MCP transport error.
 
 | Tool | Parameters | CLI equivalent |
 | --- | --- | --- |
+| `describeBindingTool` | none | none |
 | `listPackagesTool` | `include_dev=False` | `venvaxi list [--all]` |
 | `showPackageTool` | `name` | `venvaxi show <pkg>` |
 | `showPackageApiTool` | `name`, `docstring=False` | `venvaxi show <pkg> --api` |
@@ -249,6 +250,16 @@ Notable CLI differences:
   fine. Nothing is corrupted - do not rebuild the venv, and retrying without stopping the
   server only defers it. Stop the server, re-run `venvaxi setup` to move the registration to
   `<python> -P -m venvaxi serve`, and start it again; the failure does not recur.
+- **A wrongly bound MCP server returns plausible answers, not errors.** The server answers
+  from whichever project and venv it was registered in, not the one the session is working
+  in - an `.mcp.json` inherited from another checkout returns well-formed, wrong-project
+  signatures and dependency lists with no warning. When an MCP answer contradicts the project
+  in front of you, call `describeBindingTool` first and compare its `root` against the project
+  you are editing; a mismatch is a registration problem, so fix the `VenvAXI` entry in the
+  repo's `.mcp.json` by re-running `venvaxi setup` from inside that project - `--refresh`
+  cannot help, because the server is bound elsewhere. Over MCP, `status: inactive` means the
+  registered command names a base interpreter, so answers are drawn from an environment the
+  project never installed into - re-register, do not activate anything.
 - **`setup` writes files - it is not a diagnostic command.** It rewrites
   `.mcp.json`/`.vscode/mcp.json` every time it runs, it overwrites
   `.claude/skills/venvaxi/SKILL.md` wholesale unless `--no-skill` is given, and it deletes a
