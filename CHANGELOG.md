@@ -18,6 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A marker-gated conformance test tier that walks real installed dependencies (`numpy`, `polars`,
+  `pydantic`, `fastmcp`) rather than only the hand-written `tests/resources/package/` fixture.
+  Every introspection test walked that fixture, so the six defects found by dogfooding `0.3.0`
+  failed no test before or after. Excluded from the default run and from CI; opt in with
+  `uv run pytest -m conformance` (issue 71).
+
 ### Fixed
 
 - `find` now searches docstring text on the `LIKE` fallback path, not just `name` and
