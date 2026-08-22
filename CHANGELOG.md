@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exit 0 - which over MCP arrived as a transport token-limit refusal rather than a readable
   error. The value is rejected, not clamped, so a caller that computed a bad limit learns that it
   did; `--limit 0` still returns `count: 0` (issue 73).
+- Two gotchas in the packaged skill asserted a fact false in the version they named: the dunder
+  entry claimed operator signatures reach the class symbol alongside the constructor, and the
+  decorator entry pointed to `jit()`'s docstring for `cache`, which in numba 0.67.0 documents
+  `inline` but not `cache`. Both entries now state only what reproduces (issue 74).
 
 ## [0.3.1] - 2026-08-22
 
