@@ -62,17 +62,21 @@ where the reason is not obvious from the diff alone.
 ## Validation
 
 - [x] The `CHANGELOG.md` file shall contain a `## [0.3.1] - 2026-08-22` section immediately above
-      `## [0.3.0rc2]`. — `grep -n '^## \[' CHANGELOG.md` lists `19:## [0.3.1] - 2026-08-22`
-      directly above `28:## [0.3.0rc2] - 2026-08-21`
+      `## [0.3.0rc2]`. — `grep -n '^## \[' CHANGELOG.md` lists `33:## [0.3.1] - 2026-08-22`
+      directly above `42:## [0.3.0rc2] - 2026-08-21` (shifted from `19`/`28` by the `## [0.3.2]`
+      section #76 and #77 later inserted above this one; re-verified during the 0.3.2 release
+      audit, `plans/release-0-3-2.md`)
 - [x] The `[0.3.1]` section shall state, via a `[!NOTE]` block, that `0.3.1` promotes `0.3.0rc2`
       to final with no changes of its own, and that it is the first installable stable release
-      since `0.2.0` because `0.3.0` was removed rather than yanked. — `CHANGELOG.md:19-25`, the
-      `[0.3.1]` `[!NOTE]` block
+      since `0.2.0` because `0.3.0` was removed rather than yanked. — `CHANGELOG.md:33-40`, the
+      `[0.3.1]` `[!NOTE]` block (line numbers re-verified per the note above)
 - [x] The `[0.3.1]` section shall carry no `### Added`/`### Changed`/`### Fixed`/`### Removed`
       bullets, matching the zero code delta between `v0.3.0rc2` and this branch. —
-      `CHANGELOG.md:19-27`, NOTE block only, no heading below it before `## [0.3.0rc2]`
+      `CHANGELOG.md:33-41`, NOTE block only, no heading below it before `## [0.3.0rc2]`
+      (line numbers re-verified per the note above)
 - [x] The `[0.3.0]` NOTE shall describe `0.3.1` in past/present tense rather than as "the eventual
-      final release". — `CHANGELOG.md:65-66` now reads "its final release is `0.3.1` above"
+      final release". — `CHANGELOG.md:79-80` now reads "its final release is `0.3.1` above"
+      (line numbers re-verified per the note above)
 - [x] `git diff v0.3.0rc2..HEAD -- src/ tests/ specs/` shall report no output, evidencing this
       release is code-identical to `v0.3.0rc2`. — command run, no output
 - [x] The full `pytest` suite shall pass with zero failures. — `uv run pytest -v`: `359 passed in
@@ -95,6 +99,13 @@ where the reason is not obvious from the diff alone.
 
 ## Notes
 
+- **Validation citations repaired during the 0.3.2 audit.** The four `CHANGELOG.md:<line>`
+  citations above pointed at `[0.3.1]`'s position when this plan closed (heading at line `19`).
+  `#76` and `#77` later inserted a `## [0.3.2]` section above it, shifting every line by `+14`;
+  the citations were re-pointed to the current lines by
+  [release-0-3-2](release-0-3-2.md), per `plans/README.md`'s "edit only to correct the record"
+  allowance for a frozen plan. No claim changed - only the line numbers a future reader would
+  re-run to check them.
 - **Why no code diff at all.** `develop` sat exactly two commits ahead of `v0.3.0rc2`
   (`e02eeff`, `818a19e`), both documentation-only, before this plan opened - confirmed by
   `git diff v0.3.0rc2..develop -- specs/ src/ tests/` reporting no output. `0.3.1` is therefore
