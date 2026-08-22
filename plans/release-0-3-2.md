@@ -7,7 +7,7 @@ depends: []
 specs: []
 authors: []
 issues: []
-pr:
+pr: 78
 ---
 
 # Plan: release-0-3-2
@@ -188,13 +188,13 @@ of work as [plan-record-repair](plan-record-repair.md) and [release-0-3-1](relea
 
 ## Follow-ups
 
-- **Issue** - not yet filed; recommended for the maintainer to open - `search_like.sql`'s `WHERE`
-  clause omits `doc`, so the FTS5-unavailable fallback path silently searches `name` and
-  `qualified_name` only, narrowing `specs/commands/find.md`'s "searched over name and docstring
-  text" data requirement whenever SQLite's FTS5 extension is not compiled in. Confirmed reachable,
-  not dead code (`_store.py` catches `sqlite3.OperationalError` on FTS5 schema creation and
-  degrades `_fts_enabled` to `False`); no existing test exercises docstring matching under the
-  `LIKE` fallback (`test_search_symbols_like_fallback_when_fts_disabled` asserts name matching
-  only). Unowned by this plan and by issues #67/#68/#49/#50/#71.
+- Issue [#79](https://github.com/andyrids/venv-axi/issues/79) - filed at closeout.
+  `search_like.sql`'s `WHERE` clause omits `doc`, so the FTS5-unavailable fallback silently
+  searches `name` and `qualified_name` only, narrowing `specs/commands/find.md`'s "searched over
+  name and docstring text" data requirement whenever SQLite's FTS5 extension is not compiled in.
+  Confirmed reachable, not dead code (`_store.py` catches `sqlite3.OperationalError` on FTS5
+  schema creation and degrades `_fts_enabled` to `False`); no existing test exercises docstring
+  matching under the `LIKE` fallback (`test_search_symbols_like_fallback_when_fts_disabled`
+  asserts name matching only). Unowned by this plan and by issues #67/#68/#49/#50/#71.
 - **None deferred** - no `Deferred to` entries, so no downstream plan required absorption in the
   closeout commit.
