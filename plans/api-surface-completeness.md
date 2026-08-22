@@ -2,14 +2,14 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs:
   - specs/commands/show.md
   - specs/behaviors/symbol-graph.md
 authors: []
 issues: [82]
-pr:
+pr: 85
 ---
 
 # Plan: api-surface-completeness
@@ -39,7 +39,8 @@ stay honest, and the spec now says so.
 ## Implements
 
 `specs/commands/show.md`, Outputs (API mode) - the command reports every public top-level symbol
-the package declares, of any node kind, with kinds reported honestly.
+the package declares, of any node kind except `module` and `package`, with kinds reported
+honestly. The submodule exclusion arrived by re-entry mid-run; see Notes.
 
 `specs/behaviors/symbol-graph.md`, Recorded docstrings - a new Details section declaring the
 own-docstring rule, the attribute/type rule, and the standard-library exclusion that separates a
@@ -53,8 +54,10 @@ on the same file, per `plans/README.md`.
 ## Approach
 
 1. Open this plan at `status: planned`; stage 02 flips it to `in-progress`.
-2. Drop the `NodeKind.CLASS`/`NodeKind.FUNCTION` guard in `get_public_api`
-   (`src/venvaxi/_introspect.py`) and correct the stale "functions & classes" docstring above it.
+2. Invert the kind guard in `get_public_api` (`src/venvaxi/_introspect.py`): exclude
+   `NodeKind.MODULE` and `NodeKind.PACKAGE`, emit every other kind, and correct the stale
+   "functions & classes" docstring above it. This step originally read "drop the guard"; see
+   Notes for why that was wrong and how it was caught.
 3. Add a standard-library predicate and apply it in `_doc_of`. An `attribute` whose docstring is
    its own keeps it unchanged; one whose docstring is its type's is blanked **only** when that
    type is defined in the standard library.
