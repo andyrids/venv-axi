@@ -2,13 +2,13 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs:
   - specs/commands/find.md
 authors: []
 issues: [79]
-pr:
+pr: 83
 ---
 
 # Plan: fallback-doc-search
@@ -130,12 +130,12 @@ independently re-run at the review gate by reverting only `search_like.sql` and 
 re-running the four tests: 3 failed, 1 passed, with the FTS5 test the one that passed. The working
 tree was restored from a copy taken beforehand, and `git diff --stat` confirmed the restoration.
 
-**Status is `in-progress` at the review gate, not `done`.** Closeout is "the last commit before
-merge" per `plans/README.md`, which is after the PR exists - so `status: done` and `pr:` are set
-together, in that commit. Flipping to `done` at the gate, before any commit, was caught by the
-closeout gate hook as an incomplete record: a plan claiming to be frozen while naming no PR. The
-Validation boxes below are ticked because their evidence is real and was captured in this run;
-only the freeze waits.
+**Closeout ordering, learned here.** `status: done` and `pr:` are set together in the last commit
+before merge, per `plans/README.md` - which is after the PR exists. This run first flipped to
+`done` at the review gate, before any commit, and the closeout gate hook rejected it: a plan
+claiming to be frozen while naming no PR is an incomplete record. The gate is what a plan looks
+like at acceptance (`in-progress`, boxes ticked, evidence captured); the freeze is a separate
+commit afterwards. Worth knowing for the six remaining 0.4.0 units, which take the same route.
 
 ## Follow-ups
 
