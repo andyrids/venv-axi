@@ -7,7 +7,7 @@ depends: []
 specs: []
 authors: []
 issues: []
-pr:
+pr: 75
 ---
 
 # Plan: release-0-3-1
@@ -105,8 +105,9 @@ where the reason is not obvious from the diff alone.
   to describe and authors no spec - same reasoning as
   [plan-record-repair](plan-record-repair.md)'s Notes on the same question. Populating either
   field would put a false owner into the Invariant 1 coverage check.
-- **`pr:` is left blank deliberately.** No PR exists yet; per `plans/README.md` and the precedent
-  in [withdraw-0-3-0](withdraw-0-3-0.md#notes), the user raises it and fills the field.
+- **`pr:` is [75](https://github.com/andyrids/venv-axi/pull/75)**, set in the last commit before
+  merge per `plans/README.md` Closeout, so this plan freezes with its PR recorded rather than
+  with the field blank.
 - **Out-of-repo release steps - none performed by this run**, listed so the record is explicit
   about what still requires the maintainer's authorisation:
   1. Merge this branch's commit to `develop`.
