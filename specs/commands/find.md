@@ -69,6 +69,19 @@ The rule lives here, not in [Output contract](../behaviors/output-contract.md), 
 ([#67](https://github.com/andyrids/venv-axi/issues/67)) - generalizing it while only one
 command conforms would manufacture a spec/code divergence.
 
+`--limit` is a floor as well as a cap. When the active limit is `0`, the `find` command shall
+emit `count: 0` and exit `EX_OK` - zero is a bound the command honours exactly, so it is a
+result and not a malformed argument. A negative limit is not a smaller cap but the absence of
+one: it names no bound the command can honour, it returns the whole result set under the very
+flag that exists to prevent that, and the capped-count hint above cannot fire, because a
+returned count never equals a negative limit. The caller is handed the largest answer the graph
+holds, with the one signal that would have questioned it suppressed.
+
+A negative limit is therefore rejected rather than clamped; the criterion sits in
+[Failure modes](#failure-modes) with the command's other argument rejections. Clamping to the
+default would substitute an argument the caller never supplied, and the answer to the
+substituted question is indistinguishable from the answer to theirs.
+
 ### Result ordering
 
 The `find` command shall order results by the following keys, in order, each applied only to break
@@ -104,6 +117,8 @@ silence a caller has to discover.
 
 - If `query` is empty, then the `find` command shall raise `InvalidArgumentError`, emit the TOON
   error block and exit `EX_FAILURE`.
+- If `--limit` is negative, then the `find` command shall raise `InvalidArgumentError`, emit the
+  TOON error block and exit `EX_FAILURE`.
 - If `--refresh` is given without `--package`, then the `find` command shall raise
   `InvalidArgumentError`, emit the TOON error block and exit `EX_FAILURE`.
 - If the `--package` value is not a possible package name, then the `find` command shall raise

@@ -919,8 +919,8 @@ def find_symbol(
         refresh: Rebuild the cached graph first for `package`.
 
     Raises:
-        InvalidArgumentError: On missing `query`, `refresh` without
-            `package`, or a malformed `package` name.
+        InvalidArgumentError: On missing `query`, a negative `limit`,
+            `refresh` without `package`, or a malformed `package` name.
         PackageNotFoundError: On `package` not being installed in the
             active venv.
         PackageImportError: On `package` import error.
@@ -933,6 +933,20 @@ def find_symbol(
 
     if not query.strip():
         msg = "Search query must be non-empty"
+        raise InvalidArgumentError(msg)
+
+    if limit < 0:
+        # NOTE: A negative limit is the absence of a bound, not a
+        # smaller one - it reaches SQLite's `LIMIT ?` unbounded and
+        # returns the whole graph under the flag that exists to prevent
+        # that, with the #69 cap hint unable to fire because a count
+        # never equals a negative limit. Rejected, not clamped, and
+        # rejected here so both surfaces and both search paths inherit
+        # it before any store is opened (#73;
+        # `specs/commands/find.md`, Bounded results). The message names
+        # neither `--limit` nor `limit=` - it is raised on the shared
+        # path (`specs/mcp/tools.md`, Error message wording).
+        msg = f"Search limit `{limit}` must not be negative"
         raise InvalidArgumentError(msg)
 
     if package is None:

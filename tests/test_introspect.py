@@ -743,6 +743,53 @@ def test_find_symbol_blank_query_raises(isolated_cache: Path) -> None:
         find_symbol("   ")
 
 
+def test_find_symbol_negative_limit_raises(isolated_cache: Path) -> None:
+    """A negative limit raises `InvalidArgumentError` (previously: it
+    reached SQLite's `LIMIT ?` as unbounded and returned the whole
+    graph, defeating the cap it was asked to set) (#73)."""
+    with pytest.raises(InvalidArgumentError):
+        find_symbol("a", -5)
+
+
+def test_find_symbol_negative_limit_message_suits_both_surfaces(
+    isolated_cache: Path,
+) -> None:
+    """The rejection names the input and echoes the offending value,
+    spelling neither the CLI flag nor the tool parameter - it is raised
+    on the path both surfaces share (#73)."""
+    with pytest.raises(InvalidArgumentError) as exc_info:
+        find_symbol("a", -5)
+    message = str(exc_info.value)
+    assert "-5" in message
+    assert "--limit" not in message
+    assert "limit=" not in message
+
+
+def test_find_symbol_negative_limit_raises_before_package_build(
+    isolated_cache: Path,
+) -> None:
+    """The negative-limit rejection precedes the graph build, so the
+    `package`-scoped path is bounded too and pays nothing to learn it
+    (#73)."""
+    with (
+        mock.patch("venvaxi._introspect._build_store_for") as build,
+        pytest.raises(InvalidArgumentError),
+    ):
+        find_symbol("a", -1, package="rich")
+    build.assert_not_called()
+
+
+def test_find_symbol_zero_limit_returns_no_results(
+    fake_package: str,
+) -> None:
+    """A limit of zero is a bound the search honours exactly - no rows
+    and no rejection. It is well behaved and stays outside the
+    negative-limit fix (#73)."""
+    show_module(fake_package)
+    assert find_symbol("Dog") != []
+    assert find_symbol("Dog", 0) == []
+
+
 def test_find_symbol_searches_cached_symbols(fake_package: str) -> None:
     """`find_symbol` searches symbols already cached for the project."""
     show_module(fake_package)
