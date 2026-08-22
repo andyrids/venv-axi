@@ -8,11 +8,18 @@ from pathlib import Path
 
 import tomllib
 
-from venvaxi.exceptions import PackageNotFoundError
+from venvaxi.exceptions import InvalidArgumentError, PackageNotFoundError
 
 logger = logging.getLogger(__package__)
 
+# NOTE: An extractor, not a validator - unanchored at the end, it peels
+# the name off the front of a PEP 508 requirement string. Validation of
+# caller-supplied names is `_VALID_NAME_RE`'s job below.
 _NAME_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?")
+
+# NOTE: The single-character alternative is load-bearing - `_`, `a` and
+# `2` are legal names, so the trailing group must be optional.
+_VALID_NAME_RE = re.compile(r"^[A-Za-z0-9_]([A-Za-z0-9._-]*[A-Za-z0-9_])?$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +88,28 @@ def discover_direct_dependencies(
     return names
 
 
+def _ensure_valid_name(root: str, name: str) -> None:
+    """Raise if `root` cannot possibly be a package name.
+
+    NOTE: Boundary validation of caller input, run before resolution -
+    the dash/case fallback can only disguise a malformed name, never
+    repair one. The message carries `name` because the root of a
+    degenerate spelling (`.foo`) is `""`, which names nothing the
+    caller can fix. See `specs/behaviors/package-resolution.md`.
+
+    Args:
+        root: The top-level component to validate, as supplied.
+        name: The caller's original spelling, used for the message.
+
+    Raises:
+        InvalidArgumentError: On `root` not being a possible package
+            name.
+    """
+    if not _VALID_NAME_RE.match(root):
+        msg = f"Invalid package name `{name}`"
+        raise InvalidArgumentError(msg)
+
+
 def resolve_package(name: str) -> PackageInfo:
     """Resolve metadata for an installed distribution.
 
@@ -88,12 +117,15 @@ def resolve_package(name: str) -> PackageInfo:
         name: The package (distribution) name.
 
     Raises:
+        InvalidArgumentError: On `name` not being a possible package
+            name.
         PackageNotFoundError: On `name` not being installed in the active
             venv.
 
     Returns:
         The resolved `PackageInfo`.
     """
+    _ensure_valid_name(name, name)
     try:
         dist = metadata.distribution(name)
     except metadata.PackageNotFoundError as err:
@@ -117,18 +149,21 @@ def resolve_package(name: str) -> PackageInfo:
 def _try_resolve_package(name: str) -> PackageInfo | None:
     """Resolve a package.
 
-    NOTE: Skips uninstalled dependencies rather than raising.
+    NOTE: Skips unresolvable dependencies rather than raising - a
+    malformed requirement string in `pyproject.toml` must leave `list`
+    a skip, never a failure, so `InvalidArgumentError` is skipped
+    alongside `PackageNotFoundError`.
 
     Args:
         name: The package (distribution) name.
 
     Returns:
-        The resolved `PackageInfo`, or None if not installed.
+        The resolved `PackageInfo`, or None if not resolvable.
     """
     try:
         return resolve_package(name)
-    except PackageNotFoundError:
-        logger.debug("Skipping uninstalled dependency `%s`", name)
+    except (InvalidArgumentError, PackageNotFoundError):
+        logger.debug("Skipping unresolvable dependency `%s`", name)
         return None
 
 

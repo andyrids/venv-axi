@@ -26,7 +26,7 @@ from typing import Self
 
 logger = logging.getLogger(__package__)
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 """The cache schema version, stored as SQLite's `PRAGMA user_version`.
 
 NOTE: Tracks *what a walk records*, not only the table shape - node
@@ -34,6 +34,10 @@ fields are computed at walk time and frozen into the store, so a change
 to how a docstring, signature or home name is derived leaves every
 existing cache serving the old value. Bump on either kind of change; see
 `specs/behaviors/cache-refresh.md`.
+
+NOTE: 6 - signatures are now recorded for every callable symbol
+whatever its kind (#66); a version-5 cache serves `""` for callable
+attributes indefinitely.
 """
 
 

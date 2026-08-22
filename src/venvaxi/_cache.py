@@ -139,6 +139,23 @@ def get_or_build_store(
 
     try:
         module = importlib.import_module(package_name)
+    except KeyboardInterrupt:
+        raise
+    except ImportError:
+        _discard_store(store)
+        raise
+    except BaseException as err:
+        # NOTE: An import boundary guards `BaseException` - the package
+        # runs arbitrary code at import time and can raise anything
+        # (`SystemExit`, `_pytest.outcomes.Skipped`). Chaining into
+        # `ImportError` keeps one conversion site: `_build_store_for`
+        # classes every import failure as `PackageImportError` (#64;
+        # `specs/behaviors/output-contract.md`, Import boundaries).
+        _discard_store(store)
+        msg = f"import of `{package_name}` raised {type(err).__name__}"
+        raise ImportError(msg) from err
+
+    try:
         # NOTE: `clear_package` ensures rebuild on failed introspection
         store.clear_package(package_name)
         store.upsert_node(
@@ -170,7 +187,12 @@ def get_or_build_store(
         _discard_store(store)
         msg = f"Failed to build symbol store for {package_name!r}"
         raise exceptions.StoreError(msg) from err
-    except Exception:
+    except BaseException:
+        # NOTE: `BaseException`, and a bare re-raise, so the widening
+        # swallows nothing - it only guarantees the half-built store is
+        # discarded and closed however the build died. `except
+        # Exception` let an escaping `BaseException` leak the open
+        # store, which locks the cache database on Windows (#64).
         _discard_store(store)
         raise
     return store

@@ -206,9 +206,10 @@ Notable CLI differences:
   reads as a dead end. To find a parent, guess the likely base and run `inherits` on *that*,
   checking your class appears among its children.
 - **Dunders are not indexed.** `find RichHandler.__init__ --package rich` returns `count: 0`
-  even though the constructor exists; constructor and operator signatures live on the class
-  symbol instead. Query the class - `inspect rich.logging::RichHandler` returns the full
-  `__init__` signature.
+  even though the constructor exists; the constructor signature lives on the class symbol
+  instead - `inspect rich.logging::RichHandler` returns the full `__init__` signature. That
+  route covers `__init__` only: no non-constructor dunder (`__getitem__`, `__eq__`, and the
+  like) has any AXI path today, so a `count: 0` there is not a gap to work around.
 - **Docstrings are truncated to a first line by default.** Add `--docstring` to `inspect` or
   to `show --api` when the parameter semantics matter, not just the signature.
 - **`doc: (no docstring)` is a definitive answer.** It means the symbol defines no docstring of
@@ -222,11 +223,10 @@ Notable CLI differences:
 - **Decorators introspect as passthroughs.** `inspect numba::njit --docstring` reports
   `(*args, **kws)`, and the fully qualified spelling reports the same. Follow the docstring's
   pointer to the real API instead - `njit`'s docstring names `jit()`, which does document
-  `inline` and `cache`. The hard boundary: compiler and runtime semantics (does `cache=True`
-  compose with `parallel=True`; is `break` legal in a `prange`) live in no `__doc__` and no
-  signature, so no `venvaxi` command reaches them - that is a question for the project's own
-  documentation. This is the concrete face of the Overview's 'MUST not use `venvaxi` to
-  explain usage'.
+  `inline`. The hard boundary: compiler and runtime semantics (does `cache=True` compose with
+  `parallel=True`; is `break` legal in a `prange`) live in no `__doc__` and no signature, so no
+  `venvaxi` command reaches them - that is a question for the project's own documentation. This
+  is the concrete face of the Overview's 'MUST not use `venvaxi` to explain usage'.
 - **When to `--refresh`.** The cache lives at `~/.venvaxi/<project-hash>.db` and already
   invalidates itself when a package's installed version changes, or when a query needs more
   depth than was built. Reach for `--refresh` when the version string cannot move but the

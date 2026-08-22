@@ -407,6 +407,44 @@ def test_command_find_with_results(
     assert "help[1]:" in out
 
 
+def test_command_find_at_limit_appends_bounded_hint(
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+    make_symbol_node: NodeFactory,
+) -> None:
+    """A count equal to the active `--limit` gains the bounded-results
+    hint - the answer may be truncated and must say so (#69)."""
+    nodes = [
+        make_symbol_node(qualified_name=f"rich::Sym{i}", name=f"Sym{i}")
+        for i in range(2)
+    ]
+    ctx = make_cli_context(args=argparse.Namespace(query="Sym", limit=2))
+    with mock.patch(f"{CLI}.find_symbol", return_value=nodes):
+        exit_code = _cli.command_find(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "count: 2" in out
+    assert "Results capped at --limit 2" in out
+    assert "higher --limit" in out
+
+
+def test_command_find_below_limit_omits_bounded_hint(
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+    make_symbol_node: NodeFactory,
+) -> None:
+    """A count below the active `--limit` is definitive - no
+    bounded-results hint (#69)."""
+    nodes = [make_symbol_node(qualified_name="rich::Console", name="Console")]
+    ctx = make_cli_context(args=argparse.Namespace(query="Console", limit=20))
+    with mock.patch(f"{CLI}.find_symbol", return_value=nodes):
+        exit_code = _cli.command_find(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Results capped" not in out
+    assert "venvaxi inspect <qualified_name>" in out
+
+
 def test_command_find_empty(
     capsys: pytest.CaptureFixture, make_cli_context: ContextFactory
 ) -> None:
@@ -451,6 +489,25 @@ def test_command_tree_with_results(
     assert exit_code == 0
     assert "count: 2" in out
     assert "1|rich.table|module" in out
+
+
+def test_command_tree_completes_over_broken_submodules(
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+    fake_package: str,
+) -> None:
+    """`tree` exits 0 with the remaining modules when submodules raise
+    at import time - including `BaseException` raisers, which
+    previously crashed the command (#64)."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(package=fake_package, max_depth=2)
+    )
+    exit_code = _cli.command_tree(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "base_error" not in out
+    assert "exit_error" not in out
+    assert "subpkg" in out
 
 
 @pytest.mark.parametrize("submodule", ["nosuchmodule", "_impl"])
@@ -791,11 +848,102 @@ def test_main_maps_error_to_toon_and_exit_1(
     assert "Run `venvaxi --help` for available commands" in out
 
 
+def test_main_show_malformed_name_maps_to_exit_1(
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """`show` with a malformed package name reports
+    `InvalidArgumentError` and exits 1 - never exit 2, which is
+    reserved for venvaxi being broken (#65)."""
+    exit_code = _run_main(["show", ""])
+    out = capsys.readouterr().out
+    assert exit_code == ExitCode.EX_FAILURE
+    assert "error: true" in out
+    assert "Invalid package name" in out
+
+
+def test_main_find_negative_limit_maps_to_exit_1(
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """`find` with a negative `--limit` reports `InvalidArgumentError`
+    and exits 1 (previously: exit 0 with the whole symbol graph, the
+    cap defeated by the value meant to set it) (#73)."""
+    exit_code = _run_main(["find", "a", "--limit", "-5"])
+    out = capsys.readouterr().out
+    assert exit_code == ExitCode.EX_FAILURE
+    assert "error: true" in out
+    assert "must not be negative" in out
+    assert "count:" not in out
+    # NOTE: The CLI keeps its generic footer - surface-addressed (#60).
+    assert "Run `venvaxi --help` for available commands" in out
+
+
+def test_command_find_zero_limit_prints_empty_state(
+    capsys: pytest.CaptureFixture, make_cli_context: ContextFactory
+) -> None:
+    """A `--limit 0` search is a result, not a rejection - `count: 0`
+    at exit 0, which the negative-limit fix leaves alone (#73)."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(
+            query="a", limit=0, package=None, refresh=False
+        )
+    )
+    with mock.patch(f"{CLI}.find_symbol", return_value=[]) as find:
+        exit_code = _cli.command_find(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == ExitCode.EX_OK
+    assert "count: 0" in out
+    assert "error: true" not in out
+    # The zero is forwarded as given - not clamped to the default (#73)
+    find.assert_called_once_with("a", 0, None, refresh=False)
+
+
 def test_main_maps_unexpected_error_to_exit_2() -> None:
     """An unexpected exception maps to exit code 2."""
     with mock.patch(f"{CLI}.command_home", side_effect=RuntimeError("oops")):
         exit_code = _run_main([])
     assert exit_code == ExitCode.EX_SYNTAX
+
+
+def test_main_base_exception_maps_to_exit_2(
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """A `BaseException` that is not an `Exception` renders the
+    `Unexpected error:` block and exits 2 - previously it escaped
+    `except Exception` as a raw traceback (#64)."""
+
+    class Crash(BaseException):
+        """A `BaseException` subclass that is not an `Exception`."""
+
+    with mock.patch(f"{CLI}.command_home", side_effect=Crash("boom")):
+        exit_code = _run_main([])
+    out = capsys.readouterr().out
+    assert exit_code == ExitCode.EX_SYNTAX
+    assert "error: true" in out
+    assert "Unexpected error: boom" in out
+
+
+def test_main_reraises_keyboard_interrupt() -> None:
+    """`KeyboardInterrupt` propagates through the entry point - the
+    caller's abort is not a report about the venv (#64)."""
+    with (
+        mock.patch("sys.argv", ["venvaxi"]),
+        mock.patch("venvaxi.__main__.configure_cli_logging"),
+        mock.patch(f"{CLI}.command_home", side_effect=KeyboardInterrupt),
+        pytest.raises(KeyboardInterrupt),
+    ):
+        __main__.main()
+
+
+def test_main_reraises_system_exit_unrendered(
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """A `SystemExit` reaching the entry point keeps its own code and
+    is never rendered as an unexpected error (#64)."""
+    with mock.patch(f"{CLI}.command_home", side_effect=SystemExit(5)):
+        exit_code = _run_main([])
+    out = capsys.readouterr().out
+    assert exit_code == 5
+    assert "Unexpected error" not in out
 
 
 def test_main_unexpected_error_emits_toon_on_stdout(

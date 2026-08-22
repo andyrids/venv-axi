@@ -42,6 +42,14 @@ and log it to STDERR with its traceback. Catching only `Error` leaves the surfac
 exactly the case where the agent has least to go on - the CLI reports a fault it can read, the
 MCP caller gets a transport error carrying no TOON at all.
 
+'Exception' means `BaseException` here, exactly as the
+[error shape](../behaviors/output-contract.md#error-shape) defines it for the CLI entry point,
+and the stakes are higher on this surface: an escaping `BaseException` does not merely fail the
+call, it drops the whole MCP connection, taking every other tool down with it. A third-party
+import can raise one straight through a tool - see
+[Import boundaries](../behaviors/output-contract.md#import-boundaries) - so the tool boundary
+shall catch `BaseException`, re-raising only `KeyboardInterrupt` and `SystemExit`.
+
 ## Tools
 
 | Tool                  | Parameters                          | CLI equivalent            |
@@ -208,6 +216,40 @@ have given.
 
 Truncation suffixes carry the same obligation as footers, and are specified with the truncation
 rule in [Output contract](../behaviors/output-contract.md#truncation).
+
+## Error message wording
+
+The [error shape](../behaviors/output-contract.md#error-shape) governs the block; this rule
+governs the sentence inside it.
+
+A message raised by logic shared with the CLI reaches both surfaces unaltered, so it shall name
+the input it rejects in a spelling that is true on both - the thing being rejected, not the flag
+or the parameter that carried it. `--limit` names nothing a tool caller can set and `limit=`
+names nothing a shell caller can type, so a message picking either one misdirects half its
+readers, and it misdirects them while they are already recovering from an error.
+
+Hints keep the opposite rule, always spelled for the surface, per
+[Hint wording](#hint-wording): a hint names a next action, and a next action exists on one
+surface at a time, whereas a message names a fact about the input and that fact is the same on
+both. Where a message genuinely can only be phrased for one surface, it belongs at that
+surface's boundary rather than in the shared path.
+
+- If `findSymbolTool` is called with a negative `limit`, then it shall return the TOON error
+  block, carrying neither the CLI footer nor a CLI flag spelling. The rejection is `find`'s, per
+  [Bounded results](../commands/find.md#bounded-results); this surface inherits it, which is
+  parity rather than a divergence.
+
+### Known exception
+
+One message on the shared path predates this rule and does not conform. `find_symbol` rejects
+`refresh` without `package` in the CLI's own flag spelling, naming `--refresh` and `--package`.
+No tool exposes `refresh` today - the absence is
+[#68](https://github.com/andyrids/venv-axi/issues/68) - so the message reaches no tool caller
+and the divergence is latent rather than live.
+
+It stops being latent the moment a refresh parameter reaches this surface. Whichever change adds
+one shall bring that message into conformance with this rule in the same move, rather than
+shipping a reachable message that contradicts it.
 
 ## Out of scope
 
