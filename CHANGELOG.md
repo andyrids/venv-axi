@@ -16,6 +16,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > - `Fixed` for any bug fixes.
 > - `Security` in case of vulnerabilities.
 
+## [Unreleased]
+
+### Fixed
+
+- `find` now searches docstring text on the `LIKE` fallback path, not just `name` and
+  `qualified_name`. On a SQLite build without FTS5 a query matching only a docstring returned
+  `count: 0` - which the issue-69 contract makes a definitive answer, so the narrowing read as
+  'no such symbol' rather than 'docstrings were not searched'. Both fallback sites log at debug
+  level, so nothing in the output distinguished the two. Measured against the 0.3.2 store, ten
+  docstring-only terms reached 8,538 distinct symbols through FTS5 and none through the fallback
+  (issue 79).
+
 ## [0.3.2] - 2026-08-22
 
 ### Fixed

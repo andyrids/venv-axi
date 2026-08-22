@@ -389,6 +389,7 @@ class SymbolStore:
             (
                 like_pattern,
                 like_pattern,
+                like_pattern,
                 package,
                 package,
                 query,

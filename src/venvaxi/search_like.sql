@@ -1,6 +1,6 @@
 -- search_like.sql
 SELECT * FROM nodes
-WHERE (name LIKE ? OR qualified_name LIKE ?)
+WHERE (name LIKE ? OR qualified_name LIKE ? OR doc LIKE ?)
 AND (? IS NULL OR package = ?)
 ORDER BY
     (lower(name) = lower(?)) DESC,
