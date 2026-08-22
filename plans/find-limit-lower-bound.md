@@ -9,7 +9,7 @@ specs:
   - specs/mcp/tools.md
 authors: []
 issues: [73]
-pr:
+pr: 76
 ---
 
 # Plan: find-limit-lower-bound
