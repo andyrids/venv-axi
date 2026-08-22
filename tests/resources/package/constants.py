@@ -29,3 +29,18 @@ class _Opaque:
 
 col = _Caller()
 opaque = _Opaque()
+
+
+class _Documented:
+    """A package-defined singleton class (the `pytest.fail` shape)."""
+
+
+# NOTE: `documented` defines no docstring of its own - `documented.__doc__`
+# resolves to `_Documented.__doc__` via the type, and `_Documented` is not
+# standard-library, so `_doc_of` keeps it (#82).
+documented = _Documented()
+
+# NOTE: The `version_tuple`/`NewType` shape - `tuple` is standard-library,
+# so `_doc_of` blanks the docstring rather than reporting *Built-in
+# immutable sequence* (#82).
+VERSION_TUPLE: tuple[int, int, int] = (1, 0, 0)

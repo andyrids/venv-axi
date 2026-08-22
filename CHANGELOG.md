@@ -28,6 +28,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `show <package> --api` now reports every public top-level symbol a package declares, not only
+  its classes and functions. Every export that is an attribute - a module-level instance, a
+  namespace object, a constant - was dropped after the walk had already recorded it, so
+  `show pytest --api` answered `count: 77` against an 88-entry `__all__` and stated, with the
+  definitiveness a count below the limit carries, that `pytest.skip` does not exist. Submodules
+  stay excluded; nested module structure is `tree`'s job (issue 82).
+- An attribute whose class its own package defines now reports that class's docstring instead of
+  `(no docstring)`. `inspect pytest::fail --docstring` returned the empty marker while the real
+  docstring sat on `_pytest.outcomes._Fail`. A type from the standard library is still not
+  treated as documentation for a value - `version_tuple` does not report *Built-in immutable
+  sequence* (issue 82).
+- The cache schema version moves to 7, so every cached graph is rebuilt on first query after
+  upgrade. The docstring change above is recorded at walk time and frozen into the store, and
+  neither the distribution version nor the build depth moves for a change like it (issue 82).
 - `find` now searches docstring text on the `LIKE` fallback path, not just `name` and
   `qualified_name`. On a SQLite build without FTS5 a query matching only a docstring returned
   `count: 0` - which the issue-69 contract makes a definitive answer, so the narrowing read as

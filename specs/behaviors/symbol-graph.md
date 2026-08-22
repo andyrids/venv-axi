@@ -26,6 +26,36 @@ Every command and MCP tool answering from the cached graph - `show --api`, `find
 
 `package`, `module`, `class`, `function`, `method`, `attribute`.
 
+A node's kind records what the symbol **is**. Callability decides the *signature*, never the kind:
+a module-level instance whose class defines `__call__` classifies as `attribute` and still records
+the signature the caller needs. Promoting it to `function` because it can be called would report
+the object as something it is not, which
+[Report what a symbol is](../principles.md#report-what-a-symbol-is-not-how-to-use-it) rules out.
+
+### Recorded docstrings
+
+The graph shall record a symbol's **own** docstring. A docstring reached only by walking the MRO
+belongs to a base class, so an undocumented subclass, or a method overriding a documented one,
+shall record `""` rather than inherit text that describes something else.
+
+An instance's `__doc__` **is** its type's, so for a symbol of kind `attribute` the recorded
+docstring shall be its own and not its type's - a module-level `dict` or `tuple` constant shall
+not be recorded carrying the builtin's docstring as though it described that constant.
+
+Where an `attribute`'s type is defined outside the standard library, that type's docstring
+documents the symbol and shall be recorded. A package that ships a class solely to instantiate it
+once as a public export - `pytest.fail`, an instance of `_pytest.outcomes._Fail` - documents the
+export on that class, and blanking it reports `(no docstring)` for a symbol whose documentation
+the graph already holds.
+
+The standard library is the exclusion, not the package. A type from `builtins`, `typing` or
+`types` describes a construct rather than the exported value: `version_tuple` is not documented by
+*Built-in immutable sequence*, and a `NewType` alias is not documented by `NewType`'s own
+docstring. Excluding by *type* rather than by package is what separates these cases - the
+defining module of a package's singleton is frequently private and outside the package's own
+import root (`_pytest.outcomes` for `pytest`), so a rule keyed to the package root would blank
+exactly the docstrings worth keeping.
+
 ### Edge kinds
 
 Five are declared; only two are read:

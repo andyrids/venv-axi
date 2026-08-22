@@ -20,6 +20,7 @@ from venvaxi._introspect import (
     _doc_of,
     _ensure_installed,
     _ensure_valid_name,
+    _is_stdlib_type,
     _own_doc,
     _resolve_import_name,
     _signature_of,
@@ -217,6 +218,59 @@ def test_doc_of_attribute_ignores_type_docstring() -> None:
     assert _doc_of({"key": "value"}, NodeKind.ATTRIBUTE) == ""
 
 
+def test_doc_of_attribute_keeps_docstring_for_non_stdlib_type() -> None:
+    """An `attribute` whose docstring equals its type's is kept when
+    the type is not standard-library - the `pytest.fail` shape: the
+    docstring documents the singleton export even though it is
+    reached only via `type(obj).__doc__` (#82)."""
+
+    class Documented:
+        """Documents its singleton export."""
+
+    instance = Documented()
+    assert _doc_of(instance, NodeKind.ATTRIBUTE) == (
+        "Documents its singleton export."
+    )
+
+
+def test_doc_of_attribute_blanks_docstring_for_stdlib_type() -> None:
+    """An `attribute` whose docstring equals its type's is blanked
+    when the type is standard-library - the `version_tuple` shape;
+    unchanged from before #82 (`tuple` lives in `builtins`)."""
+    assert _doc_of((1, 2, 3), NodeKind.ATTRIBUTE) == ""
+
+
+def test_is_stdlib_type_missing_module_treated_as_not_stdlib() -> None:
+    """A type-like object with no `__module__` is treated as not
+    standard-library - the safer direction, since a wrongly-kept
+    docstring is visible and a wrongly-blanked one is not."""
+    faux_type = types.SimpleNamespace()
+    assert _is_stdlib_type(faux_type) is False  # type: ignore[arg-type]
+
+
+def test_is_stdlib_type_empty_module_treated_as_not_stdlib() -> None:
+    """An empty `__module__` string is treated as not standard-library,
+    rather than a vacuous match on set membership."""
+    faux_type = types.SimpleNamespace(__module__="")
+    assert _is_stdlib_type(faux_type) is False  # type: ignore[arg-type]
+
+
+def test_is_stdlib_type_true_for_builtins() -> None:
+    """A `builtins`-defined type is standard-library."""
+    assert _is_stdlib_type(tuple) is True
+
+
+def test_is_stdlib_type_false_for_third_party_type() -> None:
+    """A type defined outside the standard library is not
+    standard-library, even when its module is nested (`_pytest.
+    outcomes` is the real `pytest.fail` shape)."""
+
+    class Documented:
+        """A type this test module defines."""
+
+    assert _is_stdlib_type(Documented) is False
+
+
 def test_summarize_doc_absent_returns_marker() -> None:
     """An absent docstring emits the marker, not a silent blank."""
     assert summarize_doc("") == DOCSTRING_ABSENT
@@ -246,10 +300,25 @@ def test_doc_of_does_not_record_the_absent_marker() -> None:
 def test_get_public_api_filters_private_and_non_callables(
     fake_module: types.ModuleType,
 ) -> None:
-    """Only public functions/classes are surfaced, sorted by name."""
+    """Public symbols of every kind are surfaced, sorted by name;
+    private (leading-underscore) names stay excluded (#82: previously
+    only `class`/`function` was surfaced, dropping `VERSION`)."""
     symbols = get_public_api(fake_module.__name__)
     names = [symbol.name for symbol in symbols]
-    assert names == ["Greeter", "greet"]
+    assert names == ["Greeter", "VERSION", "greet"]
+
+
+def test_get_public_api_reports_non_callable_export_as_attribute(
+    fake_module: types.ModuleType,
+) -> None:
+    """A public export that is neither a class nor a function is
+    included in the reported surface and reports `kind: attribute`,
+    never promoted to `function` (`specs/commands/show.md`, Outputs;
+    #82)."""
+    symbols = get_public_api(fake_module.__name__)
+    version = next(symbol for symbol in symbols if symbol.name == "VERSION")
+    assert version.kind == "attribute"
+    assert version.kind != "function"
 
 
 def test_show_module_captures_attribute_kind(
@@ -396,6 +465,29 @@ def test_get_public_api_top_level_keeps_default_depth(
         build = store.get_build(fake_package)
     assert build is not None
     assert build[1] == DEFAULT_MAX_DEPTH
+
+
+def test_get_public_api_excludes_module_and_package_kind(
+    fake_package: str,
+) -> None:
+    """`show --api` excludes submodules - the regression guard for the
+    defect stage 01 corrected: `_walk_submodules` records submodule
+    nodes under the same `CONTAINS` edge kind as `_record_symbol`
+    records symbols, so an unguarded listing answered 'every child of
+    this module' rather than 'this package's public API' (`fastmcp`
+    went to `count: 22`, sixteen of them `module` rows, against an
+    `__all__` of six). The fixture package has public submodules
+    (`api`, `constants`, `facade`, `importer`, `module`, `subpkg`) that
+    must not appear here (#82; `specs/commands/show.md`, Out of
+    scope)."""
+    symbols = get_public_api(fake_package)
+    kinds = {symbol.kind for symbol in symbols}
+    names = {symbol.name for symbol in symbols}
+    assert "module" not in kinds
+    assert "package" not in kinds
+    assert names.isdisjoint(
+        {"api", "constants", "facade", "importer", "module", "subpkg"}
+    )
 
 
 def test_show_module_returns_node_and_children(fake_package: str) -> None:
@@ -972,14 +1064,48 @@ def test_non_callable_attribute_records_empty_signature(
     assert node.signature == ""
 
 
-def test_get_public_api_keeps_class_function_filter(
+def test_get_public_api_widens_beyond_class_function(
     fake_package: str,
 ) -> None:
-    """`show --api` keeps its class/function filter - callable
-    instances gaining signatures must not silently widen the listing
-    (#66)."""
+    """`show --api` no longer filters to class/function - every
+    `ATTRIBUTE` in a no-`__all__` submodule is now reported, honestly
+    kinded (#82; supersedes the #66 guard-preserving test of this same
+    fixture, which asserted the opposite)."""
     symbols = get_public_api(f"{fake_package}.constants")
-    assert [symbol.name for symbol in symbols] == []
+    names = {symbol.name for symbol in symbols}
+    assert names == {
+        "PATTERN",
+        "MAX_RETRIES",
+        "col",
+        "opaque",
+        "documented",
+        "VERSION_TUPLE",
+    }
+    kinds = {symbol.kind for symbol in symbols}
+    assert kinds == {"attribute"}
+
+
+def test_doc_of_package_defined_singleton_keeps_type_docstring(
+    fake_package: str,
+) -> None:
+    """An `attribute` whose type is defined outside the standard
+    library keeps that type's docstring - the `pytest.fail` shape
+    (#82)."""
+    node = get_symbol(f"{fake_package}.constants::documented")
+    assert node.kind is NodeKind.ATTRIBUTE
+    assert node.doc == (
+        "A package-defined singleton class (the `pytest.fail` shape)."
+    )
+
+
+def test_doc_of_stdlib_typed_attribute_blanks_docstring(
+    fake_package: str,
+) -> None:
+    """An `attribute` whose type is standard-library still blanks the
+    inherited docstring - the `version_tuple` shape (#82)."""
+    node = get_symbol(f"{fake_package}.constants::VERSION_TUPLE")
+    assert node.kind is NodeKind.ATTRIBUTE
+    assert node.doc == ""
 
 
 def test_walk_module_keeps_private_home_facade_reexports(

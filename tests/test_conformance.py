@@ -29,7 +29,7 @@ import pytest
 
 from venvaxi._cli import command_find, command_show, command_tree
 from venvaxi._core import CLIContext
-from venvaxi._introspect import show_module
+from venvaxi._introspect import get_public_api, show_module
 from venvaxi._store import NodeKind
 
 pytestmark = pytest.mark.conformance
@@ -163,6 +163,37 @@ def test_find_count_at_limit_carries_bounded_hint(
     assert exit_code == 0
     assert "count: 1" in out
     assert "Results capped at --limit 1" in out
+
+
+@pytest.mark.parametrize("specimen", SPECIMENS)
+def test_public_api_surface_not_narrowed_by_kind(
+    isolated_cache: Path, specimen: str
+) -> None:
+    """`get_public_api` reports every symbol kind the walk recorded for
+    a real package, excluding only `module`/`package` children - the
+    `class`/`function`-only filter that dropped every exported instance
+    and namespace object is gone, while submodules stay excluded
+    (nested module structure is `tree`'s job, per
+    `specs/commands/show.md`, Out of scope) (#82).
+
+    NOTE: Surface-level only, per this tier's own rule - this compares
+    the API listing's size and name set to the walk's own non-module
+    child count, never pins a specimen's symbol count directly.
+    """
+    pytest.importorskip(specimen)
+    _, children = show_module(specimen)
+    symbol_children = [
+        child
+        for child in children
+        if child.kind not in (NodeKind.MODULE, NodeKind.PACKAGE)
+    ]
+    symbols = get_public_api(specimen)
+    assert len(symbols) == len(symbol_children)
+    assert {symbol.name for symbol in symbols} == {
+        child.name for child in symbol_children
+    }
+    assert "module" not in {symbol.kind for symbol in symbols}
+    assert "package" not in {symbol.kind for symbol in symbols}
 
 
 @pytest.mark.parametrize("specimen", [_payload_case(s) for s in SPECIMENS])
