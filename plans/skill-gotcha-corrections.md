@@ -8,7 +8,7 @@ specs:
   - specs/behaviors/skill-content.md
 authors: []
 issues: [74]
-pr:
+pr: 77
 ---
 
 # Plan: Skill gotcha corrections
