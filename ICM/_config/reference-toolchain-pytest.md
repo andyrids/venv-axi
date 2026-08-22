@@ -12,14 +12,27 @@ Pytest is used for unit testing, with tests colocated in `tests/`.
 
 ## Commands
 
-- `uv run pytest -v` - Run the full test suite
+- `uv run pytest -v` - Run the full test suite (excludes the `conformance` tier)
 - `uv run pytest tests/test_setup.py -v` - Run a single test module
+- `uv run pytest -m conformance -v` - Run only the `conformance` tier
 - `uv run coverage run -m pytest` then `uv run coverage report` - Run under coverage (see
-  `reference-toolchain-coverage.md`)
+  `reference-toolchain-coverage.md`); excludes the `conformance` tier, same as a bare `pytest` run
 
 ## Configuration
 
-- `pyproject.toml` `[tool.pytest.ini_options]` - `addopts = ["--import-mode=importlib"]`
+- `pyproject.toml` `[tool.pytest.ini_options]` - `addopts = ["--import-mode=importlib", "-m", "not
+  conformance"]`
+- `pyproject.toml` `[tool.pytest.ini_options]` `markers` - registers `conformance`
+
+## Markers
+
+- `conformance` (`tests/test_conformance.py`) - walks real installed dependencies (`numpy`,
+  `polars`, `pydantic`, `fastmcp`) instead of the hand-written `tests/resources/package/` fixture,
+  so a pathology only third-party code exhibits can fail the suite (#71). Excluded from the default
+  run and from CI (`.github/workflows/ci.yml`) via `addopts`; a command-line `-m` overrides it, so
+  `uv run pytest -m conformance` opts in. Run it after touching `_introspect.py` or `_cli.py` - the
+  unit tests alone passed on every specimen behind issues #64, #65, #66, #67, #68 and #69. A
+  specimen not installed is skipped, not failed.
 
 ## Conventions
 
