@@ -178,12 +178,50 @@ def _own_doc(obj: Any) -> str:
     return inspect.cleandoc(doc) if isinstance(doc, str) else ""
 
 
+def _is_stdlib_type(tp: type) -> bool:
+    """Test whether a type is defined in the standard library.
+
+    NOTE: The discriminator here is the standard library, not the
+    exporting *package* - issue #82 records two package-keyed
+    candidates and both fail. `type(obj).__module__ == "builtins"` is
+    too narrow: it leaks `NewType`'s own docstring onto a type alias
+    whose type actually lives in `typing`. A package-root allowlist
+    (does the type's module start with the package's own import root)
+    is too strict: it blanks `pytest.fail`, whose type `_Fail` lives
+    in `_pytest.outcomes`, never under `pytest.` itself. Keying on
+    `sys.stdlib_module_names` instead separates every documented case
+    (`pytest.fail`, `pytest.version_tuple`, `fastmcp.settings`, a
+    `NewType` alias) - do not "simplify" this back to either
+    alternative; both are counter-examples on file.
+
+    Args:
+        tp: The type to test.
+
+    Returns:
+        Whether `tp`'s defining module's top-level component names a
+        standard-library module. `False` for a missing or empty
+        `__module__` - the safer direction, since a wrongly-kept
+        docstring is visible and a wrongly-blanked one is not.
+    """
+    module = getattr(tp, "__module__", None)
+    if not module:
+        return False
+    return module.split(".", 1)[0] in sys.stdlib_module_names
+
+
 def _doc_of(obj: Any, kind: NodeKind) -> str:
     """Extract an object's own docstring.
 
     NOTE: An instance's `__doc__` *is* its type's, so a module-level
     `dict`/`str` constant would otherwise be recorded carrying the
     builtin's docstring as its own - hence the `ATTRIBUTE` comparison.
+    That comparison alone is too blunt though: a package that ships a
+    class solely to instantiate it once as a public export
+    (`pytest.fail`, an instance of `_pytest.outcomes._Fail`) documents
+    the export *on that class*, and blanking it would report `(no
+    docstring)` for a symbol whose documentation the graph already
+    holds. `_is_stdlib_type` decides which case applies - a type's
+    docstring is kept unless the type itself is standard-library.
 
     Args:
         obj: The object to document.
@@ -195,7 +233,10 @@ def _doc_of(obj: Any, kind: NodeKind) -> str:
     doc = _own_doc(obj)
     if kind is not NodeKind.ATTRIBUTE:
         return doc
-    return "" if doc == _own_doc(type(obj)) else doc
+    type_doc = _own_doc(type(obj))
+    if doc != type_doc:
+        return doc
+    return "" if _is_stdlib_type(type(obj)) else doc
 
 
 def _resolve_import_name(name: str) -> str:
@@ -971,7 +1012,7 @@ def get_public_api(
     escape_hatch: str = CLI_ESCAPE_HATCH,
     refresh: bool = False,
 ) -> list[SymbolInfo]:
-    """Extract top-level public functions & classes from a package.
+    """Extract top-level public symbols from a package.
 
     NOTE: Compatibility shim over the `SymbolStore` introspection engine.
 
@@ -979,6 +1020,14 @@ def get_public_api(
     mirroring `get_symbol` - a dotted module deeper than
     `DEFAULT_MAX_DEPTH` must not answer from whatever depth the cache
     happens to hold. See `specs/behaviors/cache-refresh.md` (Validity).
+
+    NOTE: `MODULE`/`PACKAGE` children are excluded, every other kind is
+    reported - `_walk_submodules` records a package's submodules under
+    the same `CONTAINS` edge kind as `_record_symbol` records its
+    symbols, so an unfiltered listing would answer 'every child of this
+    module' rather than 'this package's public API' (#82; nested module
+    structure is `tree`'s job, per `specs/commands/show.md`, Out of
+    scope).
 
     Args:
         name: The package (distribution) name, or a dotted module path.
@@ -1028,21 +1077,19 @@ def get_public_api(
     ) as store:
         children = store.get_children(resolved)
 
-    symbols: list[SymbolInfo] = []
-    for node in children:
-        if node.kind not in (NodeKind.CLASS, NodeKind.FUNCTION):
-            continue
-        symbols.append(
-            SymbolInfo(
-                name=node.name,
-                kind=str(node.kind),
-                signature=node.signature,
-                doc=summarize_doc(
-                    node.doc,
-                    docstring=docstring,
-                    limit=limit,
-                    escape_hatch=escape_hatch,
-                ),
-            )
+    symbols = [
+        SymbolInfo(
+            name=node.name,
+            kind=str(node.kind),
+            signature=node.signature,
+            doc=summarize_doc(
+                node.doc,
+                docstring=docstring,
+                limit=limit,
+                escape_hatch=escape_hatch,
+            ),
         )
+        for node in children
+        if node.kind not in (NodeKind.MODULE, NodeKind.PACKAGE)
+    ]
     return sorted(symbols, key=lambda symbol: symbol.name)

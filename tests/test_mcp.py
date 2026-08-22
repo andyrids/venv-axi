@@ -314,6 +314,26 @@ def test_show_package_api_tool_passes_mcp_escape_hatch() -> None:
     )
 
 
+def test_show_package_api_tool_matches_cli_widened_surface(
+    fake_package: str,
+) -> None:
+    """`showPackageApiTool` reports the same widened surface as
+    `show <package> --api` for a real package - no mock, so parity is
+    `get_public_api`'s, not the test's (`specs/mcp/tools.md`, parity
+    principle; #82)."""
+    from venvaxi._introspect import get_public_api
+
+    cli_symbols = get_public_api(f"{fake_package}.constants")
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("show_package_api_tool")))
+    result = tool.fn(name=f"{fake_package}.constants")
+
+    assert f"count: {len(cli_symbols)}" in result
+    assert {symbol.kind for symbol in cli_symbols} == {"attribute"}
+    for symbol in cli_symbols:
+        assert f"{symbol.name}|{symbol.kind}" in result
+
+
 def test_show_module_tool_returns_toon(
     make_symbol_node: NodeFactory,
 ) -> None:

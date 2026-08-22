@@ -44,6 +44,28 @@ footer shall suggest `--docstring` only when it is not already set. A symbol def
 docstring of its own reports `(no docstring)` - see
 [Definitive empty states](../behaviors/output-contract.md#definitive-empty-states).
 
+The `show` command shall report every public top-level **symbol** the package declares - any node
+kind in [Symbol graph](../behaviors/symbol-graph.md#node-kinds) except `module` and `package`.
+
+A package's `__all__` is its own declaration of its public API, and this command answers what that
+API is. Reporting only `class` and `function` would drop every exported instance, namespace object
+and constant - `pytest.skip`, `pytest.mark`, `requests.codes` - and, because a `count` below the
+limit is definitive under
+[Bounded results](find.md#bounded-results), would state as fact that the dropped names do not
+exist. 'Callable' is no better a proxy: it keeps `pytest.fail` and still drops `pytest.mark`.
+
+Submodules are the one exclusion, and it is a depth exclusion rather than a kind one. A package's
+children in the graph include its submodules, recorded by the same walk under the same edge kind
+as its symbols, so reporting 'every child' would answer a different question: `fastmcp` declares
+six names in `__all__` and carries sixteen public submodules, and listing all twenty-two states
+that its public API is twenty-two names. Nested module structure is `tree`'s job, per
+[Out of scope](#out-of-scope).
+
+Kinds stay honest. A reported symbol carries the kind it actually has - an exported instance
+reports `attribute`, never promoted to `function` because it happens to be callable. Callability
+decides the *signature*, not the kind; see
+[Symbol graph](../behaviors/symbol-graph.md#node-kinds).
+
 When the public API is empty, the `show` command shall emit `count: 0` plus a hint naming
 `venvaxi tree <package>`, because an empty public API usually means the symbols are one level
 down rather than absent.
