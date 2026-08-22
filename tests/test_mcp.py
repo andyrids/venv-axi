@@ -490,6 +490,26 @@ def test_find_symbol_tool_below_limit_omits_bounded_hint(
     assert "getSymbolTool" in result
 
 
+def test_find_symbol_tool_negative_limit_returns_error_block() -> None:
+    """A negative `limit` returns the domain-error TOON block through
+    `_toon_errors` - previously the whole graph came back and blew the
+    transport's token ceiling, the one failure shape this surface is
+    built to avoid. The message is surface-neutral and carries no CLI
+    footer (#73)."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("find_symbol_tool")))
+    result = tool.fn(query="a", limit=-5)
+    assert "error: true" in result
+    assert "must not be negative" in result
+    assert "count:" not in result
+    assert "Unexpected error" not in result
+    # The CLI footer names a shell command this caller cannot run (#60)
+    assert "help[" not in result
+    assert "venvaxi --help" not in result
+    # A shared-path message spells neither surface's parameter name
+    assert "--limit" not in result
+
+
 def test_find_symbol_tool_empty_without_package_hints_indexing() -> None:
     """No match without a package hints at re-calling with one, and
     names no package list at all.

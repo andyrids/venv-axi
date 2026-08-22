@@ -861,6 +861,42 @@ def test_main_show_malformed_name_maps_to_exit_1(
     assert "Invalid package name" in out
 
 
+def test_main_find_negative_limit_maps_to_exit_1(
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """`find` with a negative `--limit` reports `InvalidArgumentError`
+    and exits 1 (previously: exit 0 with the whole symbol graph, the
+    cap defeated by the value meant to set it) (#73)."""
+    exit_code = _run_main(["find", "a", "--limit", "-5"])
+    out = capsys.readouterr().out
+    assert exit_code == ExitCode.EX_FAILURE
+    assert "error: true" in out
+    assert "must not be negative" in out
+    assert "count:" not in out
+    # NOTE: The CLI keeps its generic footer - surface-addressed (#60).
+    assert "Run `venvaxi --help` for available commands" in out
+
+
+def test_command_find_zero_limit_prints_empty_state(
+    capsys: pytest.CaptureFixture, make_cli_context: ContextFactory
+) -> None:
+    """A `--limit 0` search is a result, not a rejection - `count: 0`
+    at exit 0, which the negative-limit fix leaves alone (#73)."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(
+            query="a", limit=0, package=None, refresh=False
+        )
+    )
+    with mock.patch(f"{CLI}.find_symbol", return_value=[]) as find:
+        exit_code = _cli.command_find(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == ExitCode.EX_OK
+    assert "count: 0" in out
+    assert "error: true" not in out
+    # The zero is forwarded as given - not clamped to the default (#73)
+    find.assert_called_once_with("a", 0, None, refresh=False)
+
+
 def test_main_maps_unexpected_error_to_exit_2() -> None:
     """An unexpected exception maps to exit code 2."""
     with mock.patch(f"{CLI}.command_home", side_effect=RuntimeError("oops")):
