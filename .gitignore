@@ -44,8 +44,21 @@ ICM/**/output/*
 ICM/**/shared/*
 !ICM/**/shared/.gitkeep
 
-# Machine-local Claude Code settings
+# Machine-local Claude Code settings and runtime state - previously only excluded via
+# .git/info/exclude, which is not shared with clones and is not honoured by hatchling's sdist
+# builder, so a worktree or scheduled-task artifact sitting on disk at build time was bundled
+# straight into the published sdist (found while auditing the 0.3.2 release build)
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
+.claude/scheduled_tasks.json
+.claude/routines/.state/
+.claude/worktrees/
+.claude/checkpoints/
+.claude/mailbox/
+.claude/agent-registry.json
+.claude/agent-memory-local
+.claude/first-run
+.claude/assistant-daemon-state.json
 
 # skill-creator — eval workspaces
 .claude/skills/*-workspace/
