@@ -16,6 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > - `Fixed` for any bug fixes.
 > - `Security` in case of vulnerabilities.
 
+## [0.3.1] - 2026-08-22
+
+> [!NOTE]
+> Promotes `0.3.0rc2` to final with no changes of its own. PyPI's `info.version` (latest stable)
+> stayed `0.2.0` while both `0.3.0rc*` were classified as prereleases, so a plain
+> `pip install venv-axi` still resolved to `0.2.0` - which crashes `tree numpy` (issue 64) -
+> until this release. `0.3.0` was removed from PyPI rather than yanked and can never be
+> re-published, so `0.3.1` is the first installable stable release since `0.2.0`.
+
 ## [0.3.0rc2] - 2026-08-21
 
 > [!NOTE]
@@ -53,8 +62,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > Removed from PyPI and superseded by `0.3.0rc2`: issue 64 crashes `tree numpy` at an ordinary
 > `max_depth` and drops the MCP connection, and issue 66 withholds the signature on the headline
 > use case. The section stands as the record of what the withdrawn wheel contains. `0.3.0` will
-> never be re-published - PyPI reserves an uploaded filename permanently - so the eventual final
-> release is `0.3.1`.
+> never be re-published - PyPI reserves an uploaded filename permanently - and its final release
+> is `0.3.1` above.
 
 ### Added
 
