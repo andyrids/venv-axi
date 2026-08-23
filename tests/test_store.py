@@ -668,3 +668,33 @@ def test_corrupt_database_raises_and_releases_file(tmp_path: Path) -> None:
     with pytest.raises(sqlite3.DatabaseError):
         SymbolStore(db_path)
     db_path.unlink()
+
+
+def test_count_nodes_counts_only_the_named_package(
+    tmp_path: Path, make_symbol_node: NodeFactory
+) -> None:
+    """`count_nodes` counts a package's own nodes, never a neighbour's -
+    the refresh receipt's `symbols` field describes one walk."""
+    with SymbolStore(tmp_path / "store.db") as store:
+        store.upsert_node(
+            make_symbol_node(
+                qualified_name="pkg", kind=NodeKind.PACKAGE, name="pkg"
+            )
+        )
+        store.upsert_node(
+            make_symbol_node(qualified_name="pkg::Foo", name="Foo")
+        )
+        store.upsert_node(
+            make_symbol_node(
+                qualified_name="other::Bar", name="Bar", package="other"
+            )
+        )
+        assert store.count_nodes("pkg") == 2
+        assert store.count_nodes("other") == 1
+
+
+def test_count_nodes_unbuilt_package_is_zero(tmp_path: Path) -> None:
+    """A package holding no graph counts zero rather than raising - a
+    failed rebuild leaves the package unindexed, not absent."""
+    with SymbolStore(tmp_path / "store.db") as store:
+        assert store.count_nodes("never_built") == 0

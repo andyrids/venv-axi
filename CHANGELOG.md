@@ -20,6 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `refreshPackageGraphTool`, a tenth MCP tool taking a package name and rebuilding that package's
+  cached symbol graph. A cached graph is invalidated by installed version plus build depth, and an
+  editable install edited in place moves neither - so for an ordinary edit-and-verify loop nothing
+  on the MCP surface could make an agent's own edits visible, and the CLI's `--refresh` was a shell
+  an MCP-driven agent cannot reach. Reproduced against an editable install: a public-named module
+  was indexed, then deleted from disk, and all three read tools kept serving it - `getSymbolTool` a
+  full signature and docstring, `showModuleTool` a `children` row, `findSymbolTool` `count: 1`. The
+  tool reports the resolved import name the graph is keyed by, the build depth recorded and the
+  number of symbol nodes recorded, and is a rebuild rather than a cheap precondition to put in
+  front of every lookup (issue 68).
 - `--limit` on `show <package> --api` (and `limit` on `showPackageApiTool`), defaulting to 20 -
   the same bound `find` carries, so one number covers both collection commands. A count equal to
   the limit carries a hint naming a higher one; below it the count is definitive. `--limit 0`
@@ -40,6 +50,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The rejection of a negative limit now reads `Result limit ... must not be negative` rather than
   `Search limit ...`. The guard is shared by `find` and `show --api`, and only one of those is a
   search (issue 67).
+- A rebuild requested with no package to scope it now reports `A rebuild must name the package to
+  rebuild`. The old wording named the `--refresh` and `--package` flag spellings, but the guard
+  sits on the shared path both surfaces reach, so it was the last message still spelled for the
+  CLI alone. It was also the message `specs/mcp/tools.md` held a documented Known exception for;
+  that exception is now discharged (issue 68).
+- The packaged skill describes the ten-tool surface. Its MCP tool table carries a
+  `refreshPackageGraphTool` row, the *Notable CLI differences* entry narrows to 'No *read* tool
+  takes a `refresh` parameter' with the new tool as the single named exception, the `find` gotcha
+  quotes the rejection message the code now raises, and the rebuild gotcha names the MCP route
+  beside `--refresh` - it previously told an MCP-driven agent that a stale graph can only be
+  rebuilt from a shell it cannot reach. That entry also now states the cost of a rebuild: it is
+  package-scoped and walks to the default depth, so a graph built deeper is reset with it, and
+  `inherits` is the one query that does not deepen it again on demand (issue 68).
 
 ### Fixed
 

@@ -17,6 +17,7 @@ from venvaxi._introspect import (
     get_module_tree,
     get_public_api,
     get_symbol,
+    refresh_package_graph,
     show_module,
     summarize_doc,
 )
@@ -398,6 +399,50 @@ def get_module_tree_tool(name: str, max_depth: int = 2) -> str:
     )
 
 
+def refresh_package_graph_tool(name: str) -> str:
+    """Rebuild one package's cached symbol graph (TOON format).
+
+    This is a rebuild, not a read: it re-imports and re-walks the
+    package's modules, so it is not a cheap precondition to put in
+    front of every lookup. Call it when a package's source changed
+    with no reinstall - an editable or local install edited in place -
+    because the installed version does not move, nothing else on this
+    surface detects it, and every read tool keeps answering from the
+    graph as last built. Reports the resolved package name, the build
+    depth recorded and the number of symbol nodes recorded.
+    """
+    # NOTE: The docstring above is the registered MCP description -
+    # FastMCP reads `__doc__` - and `specs/mcp/tools.md` makes it part
+    # of the contract: it must state what it rebuilds, name the
+    # source-changed-with-no-reinstall situation, and mark it a rebuild
+    # rather than a read. Functional text, not commentary.
+    receipt = refresh_package_graph(name)
+    # NOTE: `symbols` is a field of the object, never a leading
+    # `count:` line - `count:` fronts a collection and none follows
+    # (`specs/behaviors/output-contract.md`, Aggregates).
+    output = encode_object(
+        {
+            "package": receipt.package,
+            "depth": receipt.depth,
+            "symbols": receipt.symbols,
+        }
+    )
+    # NOTE: Scope equivalence (`specs/mcp/tools.md`, Hint wording) -
+    # the hint carries `package=` or it sends the caller to a search
+    # across every indexed package for a recovery that is about one.
+    cname = camel_case(find_symbol_tool.__name__)
+    return _with_help(
+        output,
+        [
+            (
+                f"Call `{cname}` with a query and"
+                f" package={receipt.package} to search the rebuilt"
+                " graph"
+            )
+        ],
+    )
+
+
 _TOOLS: tuple[Callable[..., str], ...] = (
     describe_binding_tool,
     list_packages_tool,
@@ -408,6 +453,7 @@ _TOOLS: tuple[Callable[..., str], ...] = (
     find_symbol_tool,
     get_inheritors_tool,
     get_module_tree_tool,
+    refresh_package_graph_tool,
 )
 
 
