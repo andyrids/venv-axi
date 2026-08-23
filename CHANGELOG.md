@@ -16,117 +16,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > - `Fixed` for any bug fixes.
 > - `Security` in case of vulnerabilities.
 
-## [Unreleased]
+## [0.4.0] - 2026-08-23
 
 ### Added
 
 - `installed: <m>` on `list` and `listPackagesTool`, a footer count of every distribution the
-  active venv holds, appended after `count:`/the `packages` table (or after `count: 0`) and before
-  the `help[]` footer, suppressed when it equals the declared count. `list` answers what a project
-  **declares**, which is correct and deliberate, but nothing said the venv held more - in this repo
-  the default `venvaxi list` reports a definitive-looking `count: 0` against 100 installed
-  distributions, all fully queryable via `show`. The issue measured 95 of 103 installed
-  distributions (92%) on `mpctraj` queryable via `show` yet invisible to `list --all`. `installed`
-  is a count, never a listing by name - the 'declared, not merely installed' contract is unchanged,
-  and resolving *why* a gap exists (declared-transitive versus genuinely unrelated) stays out of
-  scope, as does a diagnostic against a project's actual source imports (issue 50).
+  active venv holds.
 - `venvaxi cache`, reporting this project's cache schema version, database path and size, plus a
-  `builds` table of every package with a recorded build - its built version, built depth and
-  current symbol count. Nothing on either surface previously reported what the cache held, only
-  what a package's installed metadata said - the only way to detect a stale or dropped cache was
-  diffing printed symbol lists by eye, or a file mtime the tool surface never exposed. The read
-  never opens the cache through `SymbolStore`, whose `__init__` drops and rebuilds every table on
-  a schema-version mismatch as a side effect of merely connecting - proved empirically by hashing
-  a stale-schema cache file before and after a read (byte-identical) and, as a failing-first
-  demonstration, showing a `SymbolStore`-based read silently reports the freshly-rebuilt current
-  version and an emptied `builds` table instead of the stale recorded one. `--refresh` is
-  deliberately absent - this is the one command guaranteed never to touch the cache it reports on
-  - and the collection is unbounded, matching `list` (issue 49).
-- `describeBindingTool` extends its report with the same cache summary, field-for-field, whenever
-  `root` resolves - `schema_version`, `db_path`, `db_size_bytes`, `count:` and the `builds` table -
-  plus a third hint naming `refreshPackageGraphTool` when `count` is nonzero. An unreadable cache
-  degrades rather than raises: `root`/`venv`/`status` still report normally, `schema_version`
-  reads `(cache unreadable)`, `db_path`/`db_size_bytes` still report, `count`/`builds` are omitted
-  entirely (never `count: 0`), and a third hint names the database path as safe to delete. On
-  `venvaxi cache` the cache is the whole answer, so a read failure raises; here it is half of one,
-  and `root`/`venv`/`status` cost no file I/O, so withholding them to match a cache-read failure
-  would break the one promise this tool exists to keep (issue 49).
-
+  `builds` table of every package with a recorded build.
+- `describeBindingTool` extends its report with the same cache summary.
 - `refreshPackageGraphTool`, a tenth MCP tool taking a package name and rebuilding that package's
-  cached symbol graph. A cached graph is invalidated by installed version plus build depth, and an
-  editable install edited in place moves neither - so for an ordinary edit-and-verify loop nothing
-  on the MCP surface could make an agent's own edits visible, and the CLI's `--refresh` was a shell
-  an MCP-driven agent cannot reach. Reproduced against an editable install: a public-named module
-  was indexed, then deleted from disk, and all three read tools kept serving it - `getSymbolTool` a
-  full signature and docstring, `showModuleTool` a `children` row, `findSymbolTool` `count: 1`. The
-  tool reports the resolved import name the graph is keyed by, the build depth recorded and the
-  number of symbol nodes recorded, and is a rebuild rather than a cheap precondition to put in
-  front of every lookup (issue 68).
-- `--limit` on `show <package> --api` (and `limit` on `showPackageApiTool`), defaulting to 20 -
-  the same bound `find` carries, so one number covers both collection commands. A count equal to
-  the limit carries a hint naming a higher one; below it the count is definitive. `--limit 0`
-  returns `count: 0` at exit 0, and a negative value is rejected rather than clamped (issue 67).
-- A marker-gated conformance test tier that walks real installed dependencies (`numpy`, `polars`,
-  `pydantic`, `fastmcp`) rather than only the hand-written `tests/resources/package/` fixture.
-  Every introspection test walked that fixture, so the six defects found by dogfooding `0.3.0`
-  failed no test before or after. Excluded from the default run and from CI; opt in with
-  `uv run pytest -m conformance` (issue 71).
+  cached symbol graph.
+- `--limit` on `show <package> --api` (and `limit` on `showPackageApiTool`), defaulting to 20.
+- A marker-gated conformance test tier that walks real installed dependencies.
 
 ### Changed
 
-- The packaged skill's `venvaxi list` row names the `installed` aggregate instead of restating
-  'Declared, installed venv packages' - phrasing that predates the aggregate and undersold it - and
-  a new gotcha names `installed`, not `count:`, as the way to tell whether more is queryable than
-  `list` declares, before concluding a package "isn't available" (issue 50).
-- The packaged skill's CLI command table gains a `venvaxi cache` row, its MCP tool prose states
-  `describeBindingTool`'s cache-summary fields and the unreadable-cache degrade shape, and the
-  wrongly-bound-server gotcha gains a sentence naming `describeBindingTool` as the way to check a
-  suspected-stale graph without paying for a rebuild (issue 49).
-- `show <package> --api` is now bounded, returning at most 20 rows where it previously emitted a
-  package's entire public surface. `show numpy --api --docstring` went from 1,023,453 bytes to
-  34,245 - over MCP the unbounded call was refused outright by the token-limit guard, and the
-  truncated view's own footer suggested it as the next step. That footer now names a higher
-  `--limit` when the count is capped (issue 67).
-- The rejection of a negative limit now reads `Result limit ... must not be negative` rather than
-  `Search limit ...`. The guard is shared by `find` and `show --api`, and only one of those is a
-  search (issue 67).
-- A rebuild requested with no package to scope it now reports `A rebuild must name the package to
-  rebuild`. The old wording named the `--refresh` and `--package` flag spellings, but the guard
-  sits on the shared path both surfaces reach, so it was the last message still spelled for the
-  CLI alone. It was also the message `specs/mcp/tools.md` held a documented Known exception for;
-  that exception is now discharged (issue 68).
-- The packaged skill describes the ten-tool surface. Its MCP tool table carries a
-  `refreshPackageGraphTool` row, the *Notable CLI differences* entry narrows to 'No *read* tool
-  takes a `refresh` parameter' with the new tool as the single named exception, the `find` gotcha
-  quotes the rejection message the code now raises, and the rebuild gotcha names the MCP route
-  beside `--refresh` - it previously told an MCP-driven agent that a stale graph can only be
-  rebuilt from a shell it cannot reach. That entry also now states the cost of a rebuild: it is
-  package-scoped and walks to the default depth, so a graph built deeper is reset with it, and
-  `inherits` is the one query that does not deepen it again on demand (issue 68).
+- The packaged skill's `venvaxi list` row names the `installed` aggregate.
+- The packaged skill's CLI command table gains a `venvaxi cache` row.
+- `show <package> --api` is now bounded, returning at most 20 rows.
+- The rejection of a negative limit now reads `Result limit ... must not be negative`.
+- A rebuild requested with no package to scope reports a message.
 
 ### Fixed
 
-- `show <package> --api` now reports every public top-level symbol a package declares, not only
-  its classes and functions. Every export that is an attribute - a module-level instance, a
-  namespace object, a constant - was dropped after the walk had already recorded it, so
-  `show pytest --api` answered `count: 77` against an 88-entry `__all__` and stated, with the
-  definitiveness a count below the limit carries, that `pytest.skip` does not exist. Submodules
-  stay excluded; nested module structure is `tree`'s job (issue 82).
-- An attribute whose class its own package defines now reports that class's docstring instead of
-  `(no docstring)`. `inspect pytest::fail --docstring` returned the empty marker while the real
-  docstring sat on `_pytest.outcomes._Fail`. A type from the standard library is still not
-  treated as documentation for a value - `version_tuple` does not report *Built-in immutable
-  sequence* (issue 82).
-- The cache schema version moves to 7, so every cached graph is rebuilt on first query after
-  upgrade. The docstring change above is recorded at walk time and frozen into the store, and
-  neither the distribution version nor the build depth moves for a change like it (issue 82).
+- `show <package> --api` now reports every public top-level symbol a package declares.
+- An attribute whose class its own package defines now reports that class's docstring.
+- The cache schema version moves to 7, so every cached graph is rebuilt on first query.
 - `find` now searches docstring text on the `LIKE` fallback path, not just `name` and
-  `qualified_name`. On a SQLite build without FTS5 a query matching only a docstring returned
-  `count: 0` - which the issue-69 contract makes a definitive answer, so the narrowing read as
-  'no such symbol' rather than 'docstrings were not searched'. Both fallback sites log at debug
-  level, so nothing in the output distinguished the two. Measured against the 0.3.2 store, ten
-  docstring-only terms reached 8,538 distinct symbols through FTS5 and none through the fallback
-  (issue 79).
+  `qualified_name`.
 
 ## [0.3.2] - 2026-08-22
 
