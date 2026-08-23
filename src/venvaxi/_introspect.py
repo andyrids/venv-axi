@@ -138,6 +138,22 @@ class PublicAPI:
         return len(self.symbols) == self.max_rows
 
 
+@dataclass(frozen=True, slots=True)
+class RefreshReceipt:
+    """A record of one completed symbol-graph rebuild.
+
+    NOTE: Named fields rather than a bare tuple, following `PublicAPI` -
+    the three values are all short scalars about the same walk, and a
+    positional triple leaves each call site free to unpack `depth` and
+    `symbols` the wrong way round without the type checker noticing
+    (`specs/mcp/tools.md`, The rebuild receipt).
+    """
+
+    package: str
+    depth: int
+    symbols: int
+
+
 def truncate(
     text: str,
     limit: int = DEFAULT_TRUNCATE_LIMIT,
@@ -1051,9 +1067,14 @@ def find_symbol(
 
     if package is None:
         if refresh:
-            msg = (
-                "`--refresh` requires `--package` to name the graph to rebuild"
-            )
+            # NOTE: Names the missing package scope, not the flags that
+            # spell it on the CLI - the guard sits on the path both
+            # surfaces share, and `--refresh`/`--package` name nothing
+            # a tool caller can set (`specs/mcp/tools.md`, Error
+            # message wording). The guard stays here rather than at the
+            # CLI boundary, or an internal caller's unscoped refresh is
+            # silently ignored.
+            msg = "A rebuild must name the package to rebuild"
             raise InvalidArgumentError(msg)
         with SymbolStore(get_cache_db_path(get_project_root())) as store:
             return store.search_symbols(query, limit)
@@ -1169,3 +1190,48 @@ def get_public_api(
     # collections).
     ordered = sorted(symbols, key=lambda symbol: symbol.name)
     return PublicAPI(symbols=ordered[:max_rows], max_rows=max_rows)
+
+
+def refresh_package_graph(name: str) -> RefreshReceipt:
+    """Rebuild one package's cached symbol graph and report the walk.
+
+    NOTE: No `max_depth` parameter, deliberately. A rebuild request
+    carries no query to derive a depth from, so it walks to the default
+    build depth and resets the recorded depth with it
+    (`specs/behaviors/cache-refresh.md`, Rebuild scope and depth).
+    Deriving a depth from whatever the graph previously held would make
+    a refresh's cost depend on query history.
+
+    NOTE: Validation and resolution are `_build_store_for`'s, not
+    reimplemented here - every failure mode this raises is one that
+    path already raises, which is why there is no error handling of its
+    own.
+
+    NOTE: The receipt is read inside the store the rebuild returned, so
+    it describes that walk rather than whatever the cache file holds by
+    the time a second connection opens.
+
+    Args:
+        name: The package to rebuild. Accepts a distribution name or a
+            bare|dotted|qualified name; the top-level root is what is
+            rebuilt.
+
+    Raises:
+        InvalidArgumentError: On the top-level root of `name` not being
+            a possible package name.
+        PackageNotFoundError: On the resolved package not being
+            installed in the active venv.
+        PackageImportError: On resolved module import error.
+        ProjectRootNotFoundError: On no project root resolving.
+        StoreError: On a SQLite-level failure during the rebuild.
+
+    Returns:
+        The resolved import name the graph is keyed by, the build depth
+        recorded for it, and the number of symbol nodes recorded.
+    """
+    import_name = _resolve_import_name(_top_level_root(name))
+    with _build_store_for(name, refresh=True) as store:
+        build = store.get_build(import_name)
+        depth = DEFAULT_MAX_DEPTH if build is None else build[1]
+        symbols = store.count_nodes(import_name)
+    return RefreshReceipt(package=import_name, depth=depth, symbols=symbols)

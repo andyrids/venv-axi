@@ -2,9 +2,11 @@
 
 import importlib
 import logging
+import sqlite3
 import sys
 import types
 from collections.abc import Iterator
+from importlib import metadata
 from pathlib import Path
 from unittest import mock
 
@@ -31,6 +33,7 @@ from venvaxi._introspect import (
     get_module_tree,
     get_public_api,
     get_symbol,
+    refresh_package_graph,
     show_module,
     summarize_doc,
     truncate,
@@ -40,6 +43,7 @@ from venvaxi.exceptions import (
     InvalidArgumentError,
     PackageImportError,
     PackageNotFoundError,
+    StoreError,
     SymbolNotFoundError,
 )
 
@@ -1298,3 +1302,111 @@ def test_walk_module_visited_set_prevents_revisit(
         )
         children = store.get_children(fake_package)
     assert "module" not in [child.name for child in children]
+
+
+def test_refresh_package_graph_reports_the_rebuilt_walk(
+    fake_package: str,
+) -> None:
+    """The receipt names the package, the recorded depth and the node
+    count the rebuild actually wrote."""
+    receipt = refresh_package_graph(fake_package)
+    with SymbolStore(get_cache_db_path(get_project_root())) as store:
+        recorded = store.count_nodes(fake_package)
+    assert receipt.package == fake_package
+    assert receipt.depth == DEFAULT_MAX_DEPTH
+    assert receipt.symbols == recorded
+    assert receipt.symbols > 0
+
+
+def test_refresh_package_graph_reports_resolved_import_name(
+    fake_package: str,
+) -> None:
+    """A distribution name is reported as the import name the graph is
+    keyed by, not as the caller spelled it."""
+    with mock.patch.object(
+        metadata,
+        "packages_distributions",
+        return_value={fake_package: ["fake-dist"]},
+    ):
+        receipt = refresh_package_graph("fake-dist")
+    assert receipt.package == fake_package
+
+
+def test_refresh_package_graph_resets_depth_to_default(
+    fake_package: str,
+) -> None:
+    """A graph previously built deeper is rebuilt at the default depth,
+    and the receipt reports the reset rather than hiding it."""
+    get_public_api(f"{fake_package}.subpkg.inner.leaf", refresh=True)
+    with SymbolStore(get_cache_db_path(get_project_root())) as store:
+        deep = store.get_build(fake_package)
+    assert deep is not None
+    assert deep[1] > DEFAULT_MAX_DEPTH
+
+    receipt = refresh_package_graph(fake_package)
+    with SymbolStore(get_cache_db_path(get_project_root())) as store:
+        shallow = store.get_build(fake_package)
+    assert receipt.depth == DEFAULT_MAX_DEPTH
+    assert shallow is not None
+    assert shallow[1] == DEFAULT_MAX_DEPTH
+
+
+def test_refresh_package_graph_skips_unimportable_submodule(
+    fake_package: str,
+) -> None:
+    """One submodule raising at import time is skipped, and the rebuild
+    still completes with a receipt."""
+    receipt = refresh_package_graph(fake_package)
+    with SymbolStore(get_cache_db_path(get_project_root())) as store:
+        children = store.get_children(fake_package)
+    assert receipt.symbols > 0
+    assert "error" not in [child.name for child in children]
+
+
+def test_refresh_package_graph_failed_rebuild_leaves_it_unindexed(
+    fake_package: str,
+) -> None:
+    """A rebuild raising after the clear leaves the package unindexed,
+    so the next query rebuilds rather than answering half a graph."""
+    assert refresh_package_graph(fake_package).symbols > 0
+    with (
+        mock.patch(
+            "venvaxi._introspect._walk_module",
+            side_effect=RuntimeError("boom"),
+        ),
+        pytest.raises(RuntimeError),
+    ):
+        refresh_package_graph(fake_package)
+    with SymbolStore(get_cache_db_path(get_project_root())) as store:
+        assert store.count_nodes(fake_package) == 0
+        assert store.get_build(fake_package) is None
+
+
+def test_refresh_package_graph_sqlite_failure_raises_store_error(
+    fake_package: str,
+) -> None:
+    """A SQLite-level failure during the rebuild surfaces as
+    `StoreError`, the shape the error block is rendered from."""
+    with (
+        mock.patch(
+            "venvaxi._introspect._walk_module",
+            side_effect=sqlite3.DatabaseError("disk"),
+        ),
+        pytest.raises(StoreError),
+    ):
+        refresh_package_graph(fake_package)
+
+
+def test_find_symbol_unscoped_refresh_names_the_package_scope(
+    isolated_cache: Path,
+) -> None:
+    """An unscoped rebuild is rejected in a message naming the missing
+    package scope, in neither surface's spelling."""
+    with pytest.raises(InvalidArgumentError) as excinfo:
+        find_symbol("Nope", refresh=True)
+    message = str(excinfo.value)
+    assert message == "A rebuild must name the package to rebuild"
+    assert "--refresh" not in message
+    assert "--package" not in message
+    assert "package=" not in message
+    assert "refresh=" not in message

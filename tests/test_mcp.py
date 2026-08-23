@@ -12,12 +12,21 @@ pytest.importorskip("fastmcp")
 # ruff: disable[E402]
 from venvaxi._constants import NO_PROJECT_ROOT
 from venvaxi._core import resolve_binding
-from venvaxi._introspect import MCP_ESCAPE_HATCH, PublicAPI, SymbolInfo
+from venvaxi._introspect import (
+    MCP_ESCAPE_HATCH,
+    PublicAPI,
+    RefreshReceipt,
+    SymbolInfo,
+)
 from venvaxi._mcp import build_server
 from venvaxi._packages import PackageInfo
 from venvaxi._store import NodeKind, SymbolNode
 from venvaxi._toon import encode_object
-from venvaxi.exceptions import ProjectRootNotFoundError, SymbolNotFoundError
+from venvaxi.exceptions import (
+    ProjectRootNotFoundError,
+    StoreError,
+    SymbolNotFoundError,
+)
 
 # ruff: enable[E402]
 CORE = "venvaxi._core"
@@ -38,7 +47,7 @@ def camel_case(name: str) -> str:
 
 
 def test_build_server_registers_tools() -> None:
-    """`build_server` registers all nine expected MCP tools."""
+    """`build_server` registers all ten expected MCP tools."""
     from venvaxi import _mcp
 
     server = build_server()
@@ -54,6 +63,7 @@ def test_build_server_registers_tools() -> None:
         camel_case(_mcp.find_symbol_tool.__name__),
         camel_case(_mcp.get_inheritors_tool.__name__),
         camel_case(_mcp.get_module_tree_tool.__name__),
+        camel_case(_mcp.refresh_package_graph_tool.__name__),
     }
 
 
@@ -158,7 +168,7 @@ def test_build_server_no_root_still_builds_with_marker() -> None:
         server = build_server()
     assert NO_PROJECT_ROOT in server.instructions
     names = {tool.name for tool in asyncio.run(server.list_tools())}
-    assert len(names) == 9
+    assert len(names) == 10
     assert camel_case("describe_binding_tool") in names
 
 
@@ -843,3 +853,184 @@ def test_get_module_tree_tool_empty_hint_names_root_tree(
     assert f"name={fake_package}" in result
     assert "listPackagesTool" not in result
     assert "get_module_tree_tool" not in result
+
+
+REFRESH_TOOL = "refresh_package_graph_tool"
+
+
+def test_refresh_package_graph_tool_returns_receipt_object() -> None:
+    """The refresh tool emits the flat `package`/`depth`/`symbols`
+    object recording the rebuild it performed."""
+    server = build_server()
+    receipt = RefreshReceipt(package="mpctraj", depth=2, symbols=143)
+    with mock.patch(
+        f"{MCP}.refresh_package_graph", return_value=receipt
+    ) as refresh:
+        tool = asyncio.run(server.get_tool(camel_case(REFRESH_TOOL)))
+        result = tool.fn(name="mpctraj")
+    refresh.assert_called_once_with("mpctraj")
+    assert "package: mpctraj" in result
+    assert "depth: 2" in result
+    assert "symbols: 143" in result
+
+
+def test_refresh_package_graph_tool_reports_resolved_import_name() -> None:
+    """The object names the import name the graph is keyed by, not the
+    distribution name the caller supplied."""
+    server = build_server()
+    receipt = RefreshReceipt(package="yaml", depth=2, symbols=42)
+    with mock.patch(f"{MCP}.refresh_package_graph", return_value=receipt):
+        tool = asyncio.run(server.get_tool(camel_case(REFRESH_TOOL)))
+        result = tool.fn(name="PyYAML")
+    assert "package: yaml" in result
+    assert "package: PyYAML" not in result
+
+
+def test_refresh_package_graph_tool_footer_scopes_the_search() -> None:
+    """The footer names the search tool by its camelCase name and
+    carries the package scope, never a `venvaxi` shell spelling."""
+    server = build_server()
+    receipt = RefreshReceipt(package="mpctraj", depth=2, symbols=143)
+    with mock.patch(f"{MCP}.refresh_package_graph", return_value=receipt):
+        tool = asyncio.run(server.get_tool(camel_case(REFRESH_TOOL)))
+        result = tool.fn(name="mpctraj")
+    assert "help[1]:" in result
+    assert "findSymbolTool" in result
+    assert "package=mpctraj" in result
+    assert "find_symbol_tool" not in result
+    assert "venvaxi " not in result
+
+
+def test_refresh_package_graph_tool_omits_count_line() -> None:
+    """The symbol count is a field of the object, never a leading
+    `count:` line promising rows that never arrive."""
+    server = build_server()
+    receipt = RefreshReceipt(package="mpctraj", depth=2, symbols=143)
+    with mock.patch(f"{MCP}.refresh_package_graph", return_value=receipt):
+        tool = asyncio.run(server.get_tool(camel_case(REFRESH_TOOL)))
+        result = tool.fn(name="mpctraj")
+    assert "count:" not in result
+    assert result.startswith("package: mpctraj")
+
+
+def test_refresh_tool_registered_description_states_the_contract() -> None:
+    """The registered description says what it rebuilds, names source
+    changed with no reinstall, and marks it a rebuild not a read."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool("refreshPackageGraphTool"))
+    description = tool.description or ""
+    assert "symbol graph" in description
+    assert "reinstall" in description
+    assert "rebuild, not a read" in description
+
+
+def test_build_server_registers_refresh_tool_under_contract_name() -> None:
+    """The refresh tool appears in the registered listing under the
+    contracted name `refreshPackageGraphTool`."""
+    server = build_server()
+    names = {tool.name for tool in asyncio.run(server.list_tools())}
+    assert "refreshPackageGraphTool" in names
+
+
+def test_registered_read_tools_expose_no_refresh_parameter() -> None:
+    """The nine read tools each still take no `refresh` parameter - the
+    divergence is narrowed to one named tool, not removed."""
+    server = build_server()
+    tools = asyncio.run(server.list_tools())
+    reads = [tool for tool in tools if tool.name != "refreshPackageGraphTool"]
+    assert len(reads) == 9
+    for tool in reads:
+        assert "refresh" not in tool.parameters["properties"]
+
+
+def test_refresh_package_graph_tool_takes_only_a_name() -> None:
+    """The refresh tool's registered schema carries a required `name`
+    and no depth parameter."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool("refreshPackageGraphTool"))
+    assert set(tool.parameters["properties"]) == {"name"}
+    assert tool.parameters["required"] == ["name"]
+
+
+def test_refresh_package_graph_tool_malformed_name_returns_error_block(
+    isolated_cache: Path,
+) -> None:
+    """A name that cannot be a package returns the TOON error block."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case(REFRESH_TOOL)))
+    result = tool.fn(name="a b")
+    assert "error: true" in result
+    assert "Invalid package name" in result
+
+
+def test_refresh_package_graph_tool_not_installed_returns_error_block(
+    isolated_cache: Path,
+) -> None:
+    """A package absent from the venv returns the TOON error block."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case(REFRESH_TOOL)))
+    result = tool.fn(name="definitely_not_installed_pkg")
+    assert "error: true" in result
+    assert "not installed" in result
+
+
+def test_refresh_package_graph_tool_import_error_returns_error_block(
+    isolated_cache: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An installed package raising on import returns the TOON error
+    block rather than escaping into FastMCP."""
+
+    def _raise(name: str) -> object:
+        msg = f"boom: {name}"
+        raise ImportError(msg)
+
+    monkeypatch.setattr("importlib.import_module", _raise)
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case(REFRESH_TOOL)))
+    result = tool.fn(name="rich")
+    assert "error: true" in result
+    assert "Failed to import `rich`" in result
+
+
+def test_refresh_package_graph_tool_no_project_root_returns_error_block(
+    isolated_cache: Path,
+) -> None:
+    """No resolvable project root returns the TOON error block - this
+    tool raises where `describeBindingTool` degrades to the marker."""
+    server = build_server()
+    with mock.patch(
+        f"{CORE}.get_project_root",
+        side_effect=ProjectRootNotFoundError("no root"),
+    ):
+        tool = asyncio.run(server.get_tool(camel_case(REFRESH_TOOL)))
+        result = tool.fn(name="rich")
+    assert "error: true" in result
+    assert "no root" in result
+    assert NO_PROJECT_ROOT not in result
+
+
+def test_refresh_package_graph_tool_store_error_returns_error_block() -> None:
+    """A SQLite-level failure during the rebuild returns the TOON error
+    block."""
+    server = build_server()
+    with mock.patch(
+        f"{MCP}.refresh_package_graph",
+        side_effect=StoreError("Failed to build symbol store"),
+    ):
+        tool = asyncio.run(server.get_tool(camel_case(REFRESH_TOOL)))
+        result = tool.fn(name="rich")
+    assert "error: true" in result
+    assert "Failed to build symbol store" in result
+
+
+def test_refresh_package_graph_tool_error_omits_help_footer(
+    isolated_cache: Path,
+) -> None:
+    """An error block carries no `help[N]:` footer - no failure here
+    leaves a next step the message has not already given."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case(REFRESH_TOOL)))
+    result = tool.fn(name="a b")
+    assert "error: true" in result
+    assert "help[" not in result
+    assert "findSymbolTool" not in result

@@ -437,6 +437,22 @@ class SymbolStore:
         ).fetchone()
         return None if row is None else (row["version"], row["max_depth"])
 
+    def count_nodes(self, package: str) -> int:
+        """Count the symbol nodes recorded for a package graph.
+
+        Args:
+            package: The package (import) name.
+
+        Returns:
+            The number of `nodes` rows belonging to `package`, or `0`
+            if the package holds no graph.
+        """
+        row = self._connection.execute(
+            "SELECT COUNT(*) AS total FROM nodes WHERE package = ?",
+            (package,),
+        ).fetchone()
+        return int(row["total"])
+
     def clear_package(self, package: str) -> None:
         """Delete all nodes|edges belonging to a package.
 
