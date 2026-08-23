@@ -73,7 +73,9 @@ patch to the #69 hint gate, which the rejection removes the need for rather than
       block and exit `EX_FAILURE`. —
       `tests/test_cli.py::test_main_find_negative_limit_maps_to_exit_1`; live venv,
       `uv run venvaxi find "a" --limit -5` -> the TOON error block reporting
-      'Search limit -5 must not be negative', exit 1
+      'Search limit -5 must not be negative', exit 1 (the wording became
+      'Result limit ...' under [api-collection-bound](api-collection-bound.md), which shared this
+      rejection with `show --api`; the claim and the test are unchanged)
 - [x] If `findSymbolTool` is called with a negative `limit`, then it shall return the TOON error
       block without the CLI `venvaxi --help` footer. —
       `tests/test_mcp.py::test_find_symbol_tool_negative_limit_returns_error_block`

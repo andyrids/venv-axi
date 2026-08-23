@@ -9,7 +9,11 @@ import pytest
 
 from venvaxi import __main__, _cli, exceptions
 from venvaxi._core import CLIContext, ExitCode
-from venvaxi._introspect import SYMBOL_INFO_FIELDS, SymbolInfo
+from venvaxi._introspect import (
+    SYMBOL_INFO_FIELDS,
+    PublicAPI,
+    SymbolInfo,
+)
 from venvaxi._packages import PackageInfo
 from venvaxi._store import NodeKind, SymbolNode
 
@@ -50,6 +54,18 @@ def test_add_subparser_show_requires_package() -> None:
     parser = _make_axi_parser()
     with pytest.raises(SystemExit):
         parser.parse_args(["show"])
+
+
+def test_add_subparser_show_defaults() -> None:
+    """The `show` subcommand has the documented default flags - the
+    `--limit` default mirrors the `find` spelling, so one number covers
+    both collection commands (#67; `specs/commands/show.md`)."""
+    parser = _make_axi_parser()
+    args = parser.parse_args(["show", "rich"])
+    assert args.func is _cli.command_show
+    assert args.api is False
+    assert args.docstring is False
+    assert args.limit == 20
 
 
 def test_add_subparser_find_defaults() -> None:
@@ -266,7 +282,8 @@ def test_command_show_api(
     ctx = make_cli_context(
         args=argparse.Namespace(package="rich", api=True, docstring=False)
     )
-    with mock.patch(f"{CLI}.get_public_api", return_value=symbols):
+    api = PublicAPI(symbols=symbols, max_rows=20)
+    with mock.patch(f"{CLI}.get_public_api", return_value=api):
         exit_code = _cli.command_show(ctx)
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -284,7 +301,8 @@ def test_command_show_api_header_matches_symbol_info_fields(
     ctx = make_cli_context(
         args=argparse.Namespace(package="rich", api=True, docstring=False)
     )
-    with mock.patch(f"{CLI}.get_public_api", return_value=symbols):
+    api = PublicAPI(symbols=symbols, max_rows=20)
+    with mock.patch(f"{CLI}.get_public_api", return_value=api):
         _cli.command_show(ctx)
     out = capsys.readouterr().out
     assert f"{{{'|'.join(SYMBOL_INFO_FIELDS)}}}" in out
@@ -297,7 +315,8 @@ def test_command_show_api_empty(
     ctx = make_cli_context(
         args=argparse.Namespace(package="rich", api=True, docstring=False)
     )
-    with mock.patch(f"{CLI}.get_public_api", return_value=[]):
+    empty = PublicAPI(symbols=[], max_rows=20)
+    with mock.patch(f"{CLI}.get_public_api", return_value=empty):
         exit_code = _cli.command_show(ctx)
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -320,12 +339,166 @@ def test_command_show_api_docstring_suppresses_footer(
     ctx = make_cli_context(
         args=argparse.Namespace(package="rich", api=True, docstring=True)
     )
-    with mock.patch(f"{CLI}.get_public_api", return_value=symbols):
+    api = PublicAPI(symbols=symbols, max_rows=20)
+    with mock.patch(f"{CLI}.get_public_api", return_value=api):
         exit_code = _cli.command_show(ctx)
     out = capsys.readouterr().out
     assert exit_code == 0
     assert "count: 1" in out
     assert "help[" not in out
+
+
+def test_command_show_api_forwards_limit_as_row_bound(
+    make_cli_context: ContextFactory,
+) -> None:
+    """`--limit` reaches `get_public_api` as the *row* bound, never as
+    the character truncation `limit` the same function already carries
+    (#67; `specs/commands/show.md`)."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(
+            package="rich", api=True, docstring=False, limit=5
+        )
+    )
+    empty = PublicAPI(symbols=[], max_rows=5)
+    with mock.patch(f"{CLI}.get_public_api", return_value=empty) as api:
+        _cli.command_show(ctx)
+    api.assert_called_once_with(
+        "rich", docstring=False, max_rows=5, refresh=False
+    )
+
+
+def _api_symbols(count: int) -> list[SymbolInfo]:
+    """Build `count` distinct `--api` rows."""
+    return [
+        SymbolInfo(
+            name=f"sym_{index}", kind="function", signature="()", doc="Doc."
+        )
+        for index in range(count)
+    ]
+
+
+def test_command_show_api_at_limit_appends_capped_hint(
+    capsys: pytest.CaptureFixture, make_cli_context: ContextFactory
+) -> None:
+    """A count equal to the active `--limit` gains the capped-count
+    hint - the count means "at least", and without the hint a capped
+    listing reads as the package whole public API (#67)."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(
+            package="numpy", api=True, docstring=False, limit=2
+        )
+    )
+    api = PublicAPI(symbols=_api_symbols(2), max_rows=2)
+    with mock.patch(f"{CLI}.get_public_api", return_value=api):
+        exit_code = _cli.command_show(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "count: 2" in out
+    assert "Results capped at --limit 2" in out
+    assert "higher --limit" in out
+
+
+def test_command_show_api_below_limit_omits_capped_hint(
+    capsys: pytest.CaptureFixture, make_cli_context: ContextFactory
+) -> None:
+    """A count below the active `--limit` is definitive - no
+    capped-count hint (#67)."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(
+            package="rich", api=True, docstring=False, limit=20
+        )
+    )
+    api = PublicAPI(symbols=_api_symbols(1), max_rows=20)
+    with mock.patch(f"{CLI}.get_public_api", return_value=api):
+        exit_code = _cli.command_show(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Results capped" not in out
+
+
+def test_command_show_api_capped_omits_docstring_suggestion(
+    capsys: pytest.CaptureFixture, make_cli_context: ContextFactory
+) -> None:
+    """A capped listing must not offer `--docstring` as the way to see
+    more symbols - it widens each row without lifting the row bound,
+    and over MCP it is the exact call that fails. That footer pointing
+    at a megabyte payload is the defect #67 exists to remove
+    (`specs/commands/show.md`, Outputs)."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(
+            package="numpy", api=True, docstring=False, limit=2
+        )
+    )
+    api = PublicAPI(symbols=_api_symbols(2), max_rows=2)
+    with mock.patch(f"{CLI}.get_public_api", return_value=api):
+        _cli.command_show(ctx)
+    out = capsys.readouterr().out
+    assert "for complete docstrings" not in out
+    assert "Results capped at --limit 2" in out
+
+
+def test_command_show_api_below_limit_keeps_docstring_suggestion(
+    capsys: pytest.CaptureFixture, make_cli_context: ContextFactory
+) -> None:
+    """The `--docstring` suggestion stays correct where the count is
+    not capped and `--docstring` is unset - the correction is scoped to
+    the capped case, not a removal (`specs/commands/show.md`)."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(
+            package="rich", api=True, docstring=False, limit=20
+        )
+    )
+    api = PublicAPI(symbols=_api_symbols(1), max_rows=20)
+    with mock.patch(f"{CLI}.get_public_api", return_value=api):
+        _cli.command_show(ctx)
+    out = capsys.readouterr().out
+    assert "Run `venvaxi show rich --api --docstring`" in out
+
+
+def test_command_show_api_zero_limit_prints_empty_state(
+    capsys: pytest.CaptureFixture, make_cli_context: ContextFactory
+) -> None:
+    """`--limit 0` is a bound honoured exactly - `count: 0` at exit 0,
+    with the capped-count hint rather than the empty-API `tree` hint:
+    the surface is unknown here, not absent
+    (`specs/behaviors/output-contract.md`, Bounded collections)."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(
+            package="numpy", api=True, docstring=False, limit=0
+        )
+    )
+    api = PublicAPI(symbols=[], max_rows=0)
+    with mock.patch(f"{CLI}.get_public_api", return_value=api):
+        exit_code = _cli.command_show(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == ExitCode.EX_OK
+    assert "count: 0" in out
+    assert "error: true" not in out
+    assert "Results capped at --limit 0" in out
+    assert "venvaxi tree" not in out
+
+
+def test_command_show_metadata_ignores_limit(
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+    make_package_info: PackageFactory,
+) -> None:
+    """`--limit` is the argument of API mode; under metadata mode it is
+    silently ignored rather than rejected, the treatment `--fields`
+    already gets under `--api` (`specs/commands/show.md`)."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(
+            package="rich", fields="name,version", api=False, limit=-5
+        )
+    )
+    with mock.patch(
+        f"{CLI}.resolve_package", return_value=make_package_info()
+    ):
+        exit_code = _cli.command_show(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == ExitCode.EX_OK
+    assert "name: rich" in out
+    assert "error: true" not in out
 
 
 def test_command_inspect_docstring_suppresses_footer(
@@ -875,6 +1048,22 @@ def test_main_find_negative_limit_maps_to_exit_1(
     assert "count:" not in out
     # NOTE: The CLI keeps its generic footer - surface-addressed (#60).
     assert "Run `venvaxi --help` for available commands" in out
+
+
+def test_main_show_api_negative_limit_maps_to_exit_1(
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """`show --api` with a negative `--limit` reports
+    `InvalidArgumentError` and exits 1, and the message names neither
+    surface spelling because it is raised on the shared path (#67;
+    `specs/mcp/tools.md`, Error message wording)."""
+    exit_code = _run_main(["show", "rich", "--api", "--limit", "-5"])
+    out = capsys.readouterr().out
+    assert exit_code == ExitCode.EX_FAILURE
+    assert "error: true" in out
+    assert "must not be negative" in out
+    assert "count:" not in out
+    assert "limit=" not in out
 
 
 def test_command_find_zero_limit_prints_empty_state(

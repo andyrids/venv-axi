@@ -13,6 +13,7 @@ import pytest
 from venvaxi._cache import get_cache_db_path
 from venvaxi._core import get_project_root
 from venvaxi._introspect import (
+    DEFAULT_API_ROW_LIMIT,
     DEFAULT_MAX_DEPTH,
     DOCSTRING_ABSENT,
     MCP_ESCAPE_HATCH,
@@ -64,6 +65,37 @@ def fake_module(
     module.Greeter = Greeter  # type: ignore[attr-defined]
     module.VERSION = "1.2.3"  # type: ignore[attr-defined]
     module._hidden = object()  # type: ignore[attr-defined]
+    sys.modules[module.__name__] = module
+    try:
+        yield module
+    finally:
+        del sys.modules[module.__name__]
+
+
+@pytest.fixture
+def fake_wide_module(
+    isolated_cache: Path,
+) -> Iterator[types.ModuleType]:
+    """Register a module whose public surface exceeds the row bound.
+
+    NOTE: 25 public symbols, named `sym_00`..`sym_24` so sorted order
+    is also declaration order - a bound applied before the sort would
+    still return 20 rows, and only the *names* distinguish the two
+    (`specs/behaviors/output-contract.md`, Bounded collections).
+    """
+    module = types.ModuleType("axi_fixture_wide_mod")
+
+    for index in range(25):
+        name = f"sym_{index:02d}"
+
+        def symbol() -> str:
+            """Return a fixed string."""
+            return "ok"
+
+        symbol.__name__ = name
+        symbol.__qualname__ = name
+        setattr(module, name, symbol)
+
     sys.modules[module.__name__] = module
     try:
         yield module
@@ -303,7 +335,7 @@ def test_get_public_api_filters_private_and_non_callables(
     """Public symbols of every kind are surfaced, sorted by name;
     private (leading-underscore) names stay excluded (#82: previously
     only `class`/`function` was surfaced, dropping `VERSION`)."""
-    symbols = get_public_api(fake_module.__name__)
+    symbols = get_public_api(fake_module.__name__).symbols
     names = [symbol.name for symbol in symbols]
     assert names == ["Greeter", "VERSION", "greet"]
 
@@ -315,7 +347,7 @@ def test_get_public_api_reports_non_callable_export_as_attribute(
     included in the reported surface and reports `kind: attribute`,
     never promoted to `function` (`specs/commands/show.md`, Outputs;
     #82)."""
-    symbols = get_public_api(fake_module.__name__)
+    symbols = get_public_api(fake_module.__name__).symbols
     version = next(symbol for symbol in symbols if symbol.name == "VERSION")
     assert version.kind == "attribute"
     assert version.kind != "function"
@@ -335,7 +367,7 @@ def test_get_public_api_truncates_doc_by_default(
     fake_module: types.ModuleType,
 ) -> None:
     """The docstring's first line is used, truncated by default."""
-    symbols = get_public_api(fake_module.__name__)
+    symbols = get_public_api(fake_module.__name__).symbols
     greet = next(symbol for symbol in symbols if symbol.name == "greet")
     assert greet.doc == "Greets someone."
     assert greet.kind == "function"
@@ -350,7 +382,7 @@ def test_get_public_api_forwards_escape_hatch(
     `truncate`, so a dropped forward reverts #30 for that tool."""
     symbols = get_public_api(
         fake_module.__name__, limit=5, escape_hatch=MCP_ESCAPE_HATCH
-    )
+    ).symbols
     greet = next(symbol for symbol in symbols if symbol.name == "greet")
     assert "docstring=true" in greet.doc
     assert "--docstring" not in greet.doc
@@ -360,7 +392,7 @@ def test_get_public_api_full_returns_complete_docstring(
     fake_module: types.ModuleType,
 ) -> None:
     """`docstring=True` returns the complete, untruncated docstring."""
-    symbols = get_public_api(fake_module.__name__, docstring=True)
+    symbols = get_public_api(fake_module.__name__, docstring=True).symbols
     greet = next(symbol for symbol in symbols if symbol.name == "greet")
     assert "friendly greeting" in greet.doc
 
@@ -450,7 +482,9 @@ def test_get_public_api_derives_build_depth(fake_package: str) -> None:
     query deepened the shared graph, and fails if the depth derivation
     is dropped again (`specs/behaviors/cache-refresh.md`, Validity).
     """
-    symbols = get_public_api(f"{fake_package}.subpkg.inner.leaf", refresh=True)
+    symbols = get_public_api(
+        f"{fake_package}.subpkg.inner.leaf", refresh=True
+    ).symbols
     assert [symbol.name for symbol in symbols] == ["Widget", "ping"]
 
 
@@ -459,7 +493,7 @@ def test_get_public_api_top_level_keeps_default_depth(
 ) -> None:
     """A top-level package still builds at `DEFAULT_MAX_DEPTH` - the
     depth derivation must not trigger a deeper build it does not need."""
-    symbols = get_public_api(fake_package)
+    symbols = get_public_api(fake_package).symbols
     assert [symbol.name for symbol in symbols] == ["Animal", "Cat", "Dog"]
     with SymbolStore(get_cache_db_path(get_project_root())) as store:
         build = store.get_build(fake_package)
@@ -480,7 +514,7 @@ def test_get_public_api_excludes_module_and_package_kind(
     (`api`, `constants`, `facade`, `importer`, `module`, `subpkg`) that
     must not appear here (#82; `specs/commands/show.md`, Out of
     scope)."""
-    symbols = get_public_api(fake_package)
+    symbols = get_public_api(fake_package).symbols
     kinds = {symbol.kind for symbol in symbols}
     names = {symbol.name for symbol in symbols}
     assert "module" not in kinds
@@ -1071,7 +1105,7 @@ def test_get_public_api_widens_beyond_class_function(
     `ATTRIBUTE` in a no-`__all__` submodule is now reported, honestly
     kinded (#82; supersedes the #66 guard-preserving test of this same
     fixture, which asserted the opposite)."""
-    symbols = get_public_api(f"{fake_package}.constants")
+    symbols = get_public_api(f"{fake_package}.constants").symbols
     names = {symbol.name for symbol in symbols}
     assert names == {
         "PATTERN",
@@ -1083,6 +1117,106 @@ def test_get_public_api_widens_beyond_class_function(
     }
     kinds = {symbol.kind for symbol in symbols}
     assert kinds == {"attribute"}
+
+
+def test_get_public_api_default_bound_caps_rows_at_twenty(
+    fake_wide_module: types.ModuleType,
+) -> None:
+    """A listing with no caller-supplied bound returns at most 20 rows
+    and reports itself capped - previously the whole public surface
+    came back in one payload, 496 rows for `numpy`
+    (#67; `specs/commands/show.md`, Outputs)."""
+    result = get_public_api(fake_wide_module.__name__)
+    assert result.max_rows == DEFAULT_API_ROW_LIMIT == 20
+    assert len(result.symbols) == 20
+    assert result.capped is True
+
+
+def test_get_public_api_bound_applies_after_sorting(
+    fake_wide_module: types.ModuleType,
+) -> None:
+    """The rows returned are the first N of the declared order, not an
+    arbitrary N of it - a bound applied before the sort would answer
+    from walk order, which is not a caller-visible fact."""
+    result = get_public_api(fake_wide_module.__name__, max_rows=3)
+    assert [symbol.name for symbol in result.symbols] == [
+        "sym_00",
+        "sym_01",
+        "sym_02",
+    ]
+
+
+def test_get_public_api_below_bound_is_not_capped(
+    fake_module: types.ModuleType,
+) -> None:
+    """A count below the active bound is definitive - `capped` is the
+    single derivation the surfaces' hints read, so it must be `False`
+    here (`specs/behaviors/output-contract.md`, Bounded collections)."""
+    result = get_public_api(fake_module.__name__)
+    assert len(result.symbols) == 3
+    assert result.capped is False
+
+
+def test_get_public_api_zero_bound_returns_no_rows(
+    fake_wide_module: types.ModuleType,
+) -> None:
+    """A bound of `0` is honoured exactly - a result, not a malformed
+    argument, and capped by the same rule that governs any other
+    bound."""
+    result = get_public_api(fake_wide_module.__name__, max_rows=0)
+    assert result.symbols == []
+    assert result.capped is True
+
+
+def test_get_public_api_negative_bound_raises(
+    fake_module: types.ModuleType,
+) -> None:
+    """A negative bound is the absence of one, so it is rejected rather
+    than clamped (#67, reusing #73's rejection)."""
+    with pytest.raises(InvalidArgumentError, match="must not be negative"):
+        get_public_api(fake_module.__name__, max_rows=-5)
+
+
+def test_get_public_api_negative_bound_message_suits_both_surfaces(
+    fake_module: types.ModuleType,
+) -> None:
+    """The rejection is raised on the path both surfaces share, so its
+    message names the input rather than `--limit` or `limit=`, and
+    rather than a `search` the caller never ran - `show --api` reaches
+    the same guard (`specs/mcp/tools.md`, Error message wording)."""
+    with pytest.raises(InvalidArgumentError) as exc_info:
+        get_public_api(fake_module.__name__, max_rows=-1)
+    message = str(exc_info.value)
+    assert "must not be negative" in message
+    assert "--limit" not in message
+    assert "limit=" not in message
+    # NOTE: The absent form is asserted alongside the present one - a
+    # one-way check passes on a substring, so it would not have failed
+    # against the `Search limit` wording this replaced
+    # (`ICM/_config/reference-toolchain-pytest.md`, Conventions).
+    assert "Search" not in message
+    assert "Result limit" in message
+
+
+def test_get_public_api_negative_bound_raises_before_resolution() -> None:
+    """The rejection precedes resolution, import and the graph build,
+    so a bad argument costs nothing - an uninstalled name reports the
+    bound, not `PackageNotFoundError`."""
+    with pytest.raises(InvalidArgumentError, match="must not be negative"):
+        get_public_api("this-package-does-not-exist-xyz", max_rows=-1)
+
+
+def test_get_public_api_row_bound_is_independent_of_truncation_limit(
+    fake_wide_module: types.ModuleType,
+) -> None:
+    """`limit` bounds characters inside one docstring and `max_rows`
+    bounds rows in the listing. Wiring one to the other is the specific
+    failure the distinct names guard against, so both are pinned here
+    with different values (`specs/commands/show.md`)."""
+    result = get_public_api(fake_wide_module.__name__, limit=5, max_rows=2)
+    assert len(result.symbols) == 2
+    assert result.max_rows == 2
+    assert result.symbols[0].doc.startswith("Retur...")
 
 
 def test_doc_of_package_defined_singleton_keeps_type_docstring(

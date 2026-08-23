@@ -12,7 +12,7 @@ pytest.importorskip("fastmcp")
 # ruff: disable[E402]
 from venvaxi._constants import NO_PROJECT_ROOT
 from venvaxi._core import resolve_binding
-from venvaxi._introspect import MCP_ESCAPE_HATCH, SymbolInfo
+from venvaxi._introspect import MCP_ESCAPE_HATCH, PublicAPI, SymbolInfo
 from venvaxi._mcp import build_server
 from venvaxi._packages import PackageInfo
 from venvaxi._store import NodeKind, SymbolNode
@@ -275,7 +275,8 @@ def test_show_package_api_tool_returns_toon() -> None:
     symbols = [
         SymbolInfo(name="foo", kind="function", signature="()", doc="Foo."),
     ]
-    with mock.patch(f"{MCP}.get_public_api", return_value=symbols):
+    api = PublicAPI(symbols=symbols, max_rows=20)
+    with mock.patch(f"{MCP}.get_public_api", return_value=api):
         tool = asyncio.run(
             server.get_tool(camel_case("show_package_api_tool"))
         )
@@ -291,7 +292,8 @@ def test_show_package_api_tool_docstring_suppresses_footer() -> None:
     symbols = [
         SymbolInfo(name="foo", kind="function", signature="()", doc="Foo."),
     ]
-    with mock.patch(f"{MCP}.get_public_api", return_value=symbols):
+    api = PublicAPI(symbols=symbols, max_rows=20)
+    with mock.patch(f"{MCP}.get_public_api", return_value=api):
         tool = asyncio.run(
             server.get_tool(camel_case("show_package_api_tool"))
         )
@@ -304,13 +306,17 @@ def test_show_package_api_tool_passes_mcp_escape_hatch() -> None:
     """The API tool spells the truncation escape hatch for MCP - its
     payload reaches `truncate` only through `get_public_api` (#30)."""
     server = build_server()
-    with mock.patch(f"{MCP}.get_public_api", return_value=[]) as api:
+    empty = PublicAPI(symbols=[], max_rows=20)
+    with mock.patch(f"{MCP}.get_public_api", return_value=empty) as api:
         tool = asyncio.run(
             server.get_tool(camel_case("show_package_api_tool"))
         )
         tool.fn(name="rich")
     api.assert_called_once_with(
-        "rich", docstring=False, escape_hatch=MCP_ESCAPE_HATCH
+        "rich",
+        docstring=False,
+        max_rows=20,
+        escape_hatch=MCP_ESCAPE_HATCH,
     )
 
 
@@ -323,7 +329,7 @@ def test_show_package_api_tool_matches_cli_widened_surface(
     principle; #82)."""
     from venvaxi._introspect import get_public_api
 
-    cli_symbols = get_public_api(f"{fake_package}.constants")
+    cli_symbols = get_public_api(f"{fake_package}.constants").symbols
     server = build_server()
     tool = asyncio.run(server.get_tool(camel_case("show_package_api_tool")))
     result = tool.fn(name=f"{fake_package}.constants")
@@ -332,6 +338,103 @@ def test_show_package_api_tool_matches_cli_widened_surface(
     assert {symbol.kind for symbol in cli_symbols} == {"attribute"}
     for symbol in cli_symbols:
         assert f"{symbol.name}|{symbol.kind}" in result
+
+
+def _api_symbols(count: int) -> list[SymbolInfo]:
+    """Build `count` distinct API rows."""
+    return [
+        SymbolInfo(
+            name=f"sym_{index}", kind="function", signature="()", doc="Doc."
+        )
+        for index in range(count)
+    ]
+
+
+def test_show_package_api_tool_default_limit_bounds_rows() -> None:
+    """With no `limit` the tool bounds the listing at 20 rows and
+    carries the capped-count hint spelled as a tool parameter -
+    unbounded, the `numpy` call was refused outright by the transport
+    token guard (#67; `specs/mcp/tools.md`, Hint wording)."""
+    server = build_server()
+    api = PublicAPI(symbols=_api_symbols(20), max_rows=20)
+    with mock.patch(f"{MCP}.get_public_api", return_value=api) as patched:
+        tool = asyncio.run(
+            server.get_tool(camel_case("show_package_api_tool"))
+        )
+        result = tool.fn(name="numpy")
+    assert patched.call_args.kwargs["max_rows"] == 20
+    assert "count: 20" in result
+    assert "Results capped at limit=20" in result
+    assert "higher limit" in result
+    assert "--limit" not in result
+
+
+def test_show_package_api_tool_below_limit_omits_capped_hint() -> None:
+    """A count below the active `limit` is definitive - no capped-count
+    hint, and the `docstring=true` next step is still correct (#67)."""
+    server = build_server()
+    api = PublicAPI(symbols=_api_symbols(1), max_rows=20)
+    with mock.patch(f"{MCP}.get_public_api", return_value=api):
+        tool = asyncio.run(
+            server.get_tool(camel_case("show_package_api_tool"))
+        )
+        result = tool.fn(name="rich")
+    assert "Results capped" not in result
+    assert "Re-call with docstring=true" in result
+
+
+def test_show_package_api_tool_capped_omits_docstring_hint() -> None:
+    """A capped listing must not offer `docstring=true` as the way to
+    see more symbols - it widens each row without lifting the row
+    bound, and it is the exact call the transport token guard refuses
+    over a wide package (#67; `specs/commands/show.md`, Outputs)."""
+    server = build_server()
+    api = PublicAPI(symbols=_api_symbols(2), max_rows=2)
+    with mock.patch(f"{MCP}.get_public_api", return_value=api):
+        tool = asyncio.run(
+            server.get_tool(camel_case("show_package_api_tool"))
+        )
+        result = tool.fn(name="numpy", limit=2)
+    assert "docstring=true" not in result
+    assert "Results capped at limit=2" in result
+
+
+def test_show_package_api_tool_zero_limit_returns_count_zero() -> None:
+    """`limit=0` is a bound honoured exactly - `count: 0` with the
+    capped-count hint rather than the empty-API module-tree hint
+    (`specs/behaviors/output-contract.md`, Bounded collections)."""
+    server = build_server()
+    api = PublicAPI(symbols=[], max_rows=0)
+    with mock.patch(f"{MCP}.get_public_api", return_value=api):
+        tool = asyncio.run(
+            server.get_tool(camel_case("show_package_api_tool"))
+        )
+        result = tool.fn(name="numpy", limit=0)
+    assert "count: 0" in result
+    assert "error: true" not in result
+    assert "Results capped at limit=0" in result
+    assert "getModuleTreeTool" not in result
+
+
+def test_show_package_api_tool_negative_limit_returns_error_block() -> None:
+    """A negative `limit` returns the domain-error TOON block through
+    the shared rejection - one rejection site, so this surface inherits
+    it rather than re-implementing it. The message is surface-neutral
+    and carries no CLI footer (#67; `specs/mcp/tools.md`, Error message
+    wording)."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("show_package_api_tool")))
+    result = tool.fn(name="numpy", limit=-5)
+    assert "error: true" in result
+    assert "must not be negative" in result
+    assert "count:" not in result
+    assert "Unexpected error" not in result
+    # The CLI footer names a shell command this caller cannot run (#60)
+    assert "help[" not in result
+    assert "venvaxi --help" not in result
+    # A shared-path message spells neither surface parameter name
+    assert "--limit" not in result
+    assert "limit=" not in result
 
 
 def test_show_module_tool_returns_toon(

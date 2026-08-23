@@ -20,11 +20,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `--limit` on `show <package> --api` (and `limit` on `showPackageApiTool`), defaulting to 20 -
+  the same bound `find` carries, so one number covers both collection commands. A count equal to
+  the limit carries a hint naming a higher one; below it the count is definitive. `--limit 0`
+  returns `count: 0` at exit 0, and a negative value is rejected rather than clamped (issue 67).
 - A marker-gated conformance test tier that walks real installed dependencies (`numpy`, `polars`,
   `pydantic`, `fastmcp`) rather than only the hand-written `tests/resources/package/` fixture.
   Every introspection test walked that fixture, so the six defects found by dogfooding `0.3.0`
   failed no test before or after. Excluded from the default run and from CI; opt in with
   `uv run pytest -m conformance` (issue 71).
+
+### Changed
+
+- `show <package> --api` is now bounded, returning at most 20 rows where it previously emitted a
+  package's entire public surface. `show numpy --api --docstring` went from 1,023,453 bytes to
+  34,245 - over MCP the unbounded call was refused outright by the token-limit guard, and the
+  truncated view's own footer suggested it as the next step. That footer now names a higher
+  `--limit` when the count is capped (issue 67).
+- The rejection of a negative limit now reads `Result limit ... must not be negative` rather than
+  `Search limit ...`. The guard is shared by `find` and `show --api`, and only one of those is a
+  search (issue 67).
 
 ### Fixed
 

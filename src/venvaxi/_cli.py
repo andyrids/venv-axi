@@ -16,6 +16,7 @@ from venvaxi._core import (
     get_project_root,
 )
 from venvaxi._introspect import (
+    DEFAULT_API_ROW_LIMIT,
     SYMBOL_INFO_FIELDS,
     find_symbol,
     get_inheritors,
@@ -169,17 +170,33 @@ def _command_show_api(ctx: CLIContext) -> int:
     Returns:
         The process exit code.
     """
-    symbols = get_public_api(
+    result = get_public_api(
         ctx.args.package,
         docstring=ctx.args.docstring,
+        max_rows=ctx.args.limit,
         refresh=ctx.args.refresh,
     )
+    symbols = result.symbols
+    # NOTE: Spelled here rather than in `get_public_api` - a hint names
+    # a next action, and a next action exists on one surface at a time,
+    # so a single spelling reaching both would teach one of them an
+    # invocation it cannot make (`specs/mcp/tools.md`, Hint wording).
+    capped_hint = (
+        f"Results capped at --limit {ctx.args.limit}"
+        " - re-run with a higher --limit to see more"
+    )
     if not symbols:
+        # NOTE: An empty listing under a bound of `0` is capped, not
+        # empty - the package's surface is unknown rather than absent,
+        # so `tree` is not the next step
+        # (`specs/behaviors/output-contract.md`, Bounded collections).
         _emit("count: 0")
         _emit(
             format_help(
                 [
-                    (
+                    capped_hint
+                    if result.capped
+                    else (
                         f"Run `venvaxi tree {ctx.args.package}`"
                         " for the nested module tree"
                     )
@@ -192,17 +209,21 @@ def _command_show_api(ctx: CLIContext) -> int:
     _emit(f"count: {len(symbols)}")
     _emit(encode_table("symbols", rows, SYMBOL_INFO_FIELDS))
 
-    if not ctx.args.docstring:
-        _emit(
-            format_help(
-                [
-                    (
-                        f"Run `venvaxi show {ctx.args.package} "
-                        "--api --docstring` for complete docstrings"
-                    )
-                ]
-            )
+    hints: list[str] = []
+    if result.capped:
+        # NOTE: A count equal to the bound means 'at least', not
+        # 'exactly'. `--docstring` is deliberately not offered here: it
+        # widens each row rather than lifting the row bound, and over
+        # MCP it is the exact call the token-limit guard refuses (#67;
+        # `specs/commands/show.md`, Outputs).
+        hints.append(capped_hint)
+    elif not ctx.args.docstring:
+        hints.append(
+            f"Run `venvaxi show {ctx.args.package} "
+            "--api --docstring` for complete docstrings"
         )
+    if hints:
+        _emit(format_help(hints))
     return ExitCode.EX_OK
 
 
@@ -571,6 +592,12 @@ def add_subparser(subparsers: "argparse._SubParsersAction[Any]") -> None:
         "--docstring",
         action="store_true",
         help="Show complete docstrings (with --api)",
+    )
+    parser_show.add_argument(
+        "--limit",
+        type=int,
+        default=DEFAULT_API_ROW_LIMIT,
+        help="Maximum number of symbol rows (with --api)",
     )
     _add_refresh_argument(parser_show)
     parser_show.set_defaults(func=command_show)

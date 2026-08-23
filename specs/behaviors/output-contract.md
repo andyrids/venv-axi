@@ -153,6 +153,51 @@ rationale above is untouched.
 Collection output shall be preceded by a `count:` line, so the caller never has to count rows to
 decide whether to page or refine.
 
+### Bounded collections
+
+Where a collection command carries a row bound, the bound shall be caller-settable - the CLI flag
+on the CLI, the tool parameter over MCP. An unbounded collection has no ceiling but the graph's,
+and a payload the caller cannot read is not an answer.
+
+This rule governs what a bound **means**, not which commands have one. `find` and `show --api`
+carry one; `list`, `tree` and `inherits` do not, and whether they should is a question with its
+own evidence rather than something this section settles in passing. A rule that obliged every
+collection command to bound its rows would declare three commands divergent the moment it landed,
+which is the manufactured divergence the rule was held back from
+[Bounded results](../commands/find.md#bounded-results) to avoid.
+
+A `count:` equal to the active bound does not carry the definitive weight the aggregates rule
+gives it elsewhere. It means *at least* that many, and the caller cannot tell a complete answer
+from a capped one without being told:
+
+- When the returned count equals the active bound, the command shall append a hint stating that
+  further rows may exist and naming a higher bound as the escape hatch, spelled for the caller's
+  surface per [Hint wording](../mcp/tools.md#hint-wording).
+- When the returned count is below the active bound, the count is definitive and the command
+  shall not emit the bounded-results hint.
+
+The bound is a floor as well as a cap. When the active bound is `0`, the command shall emit
+`count: 0` and exit `EX_OK` - zero is a bound honoured exactly, so it is a result and not a
+malformed argument.
+
+A negative bound is not a smaller cap but the absence of one. It names no bound the command can
+honour, it returns the whole result set under the very argument that exists to prevent that, and
+the capped-count hint cannot fire, because a returned count never equals a negative bound. The
+caller is handed the largest answer the graph holds with the one signal that would have
+questioned it suppressed.
+
+- If a collection command is invoked with a negative bound, then it shall reject the value, emit
+  the TOON error block and exit `EX_FAILURE`.
+
+Rejected rather than clamped: clamping to the default substitutes an argument the caller never
+supplied, and the answer to the substituted question is indistinguishable from the answer to
+theirs. The rejection belongs on the path both surfaces share, so its message names the input
+rather than the flag or the parameter that carried it, per
+[Error message wording](../mcp/tools.md#error-message-wording).
+
+Each command declares its own default bound and the spelling of its argument; this rule governs
+what a bound means, not what it is set to.
+
 ### Truncation
 
 Docstrings shall be reduced to a truncated first line by default. The limit is 200 characters,
