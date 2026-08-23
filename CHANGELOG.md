@@ -20,6 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `installed: <m>` on `list` and `listPackagesTool`, a footer count of every distribution the
+  active venv holds, appended after `count:`/the `packages` table (or after `count: 0`) and before
+  the `help[]` footer, suppressed when it equals the declared count. `list` answers what a project
+  **declares**, which is correct and deliberate, but nothing said the venv held more - in this repo
+  the default `venvaxi list` reports a definitive-looking `count: 0` against 100 installed
+  distributions, all fully queryable via `show`. The issue measured 95 of 103 installed
+  distributions (92%) on `mpctraj` queryable via `show` yet invisible to `list --all`. `installed`
+  is a count, never a listing by name - the 'declared, not merely installed' contract is unchanged,
+  and resolving *why* a gap exists (declared-transitive versus genuinely unrelated) stays out of
+  scope, as does a diagnostic against a project's actual source imports (issue 50).
 - `venvaxi cache`, reporting this project's cache schema version, database path and size, plus a
   `builds` table of every package with a recorded build - its built version, built depth and
   current symbol count. Nothing on either surface previously reported what the cache held, only
@@ -64,6 +74,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The packaged skill's `venvaxi list` row names the `installed` aggregate instead of restating
+  'Declared, installed venv packages' - phrasing that predates the aggregate and undersold it - and
+  a new gotcha names `installed`, not `count:`, as the way to tell whether more is queryable than
+  `list` declares, before concluding a package "isn't available" (issue 50).
 - The packaged skill's CLI command table gains a `venvaxi cache` row, its MCP tool prose states
   `describeBindingTool`'s cache-summary fields and the unreadable-cache degrade shape, and the
   wrongly-bound-server gotcha gains a sentence naming `describeBindingTool` as the way to check a

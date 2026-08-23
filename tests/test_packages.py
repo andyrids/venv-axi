@@ -9,6 +9,7 @@ from venvaxi._packages import (
     PackageInfo,
     _requirement_name,
     discover_direct_dependencies,
+    installed_count,
     list_packages,
     resolve_package,
 )
@@ -148,3 +149,32 @@ def test_list_packages_resolves_installed(tmp_path: Path) -> None:
     pyproject.write_text("[project]\nname = 'demo'\ndependencies = ['rich']\n")
     packages = list_packages(tmp_path)
     assert [package.name for package in packages] == ["rich"]
+
+
+def _make_dist(name: str) -> mock.MagicMock:
+    """Build a fake `importlib.metadata.Distribution` naming `name`."""
+    dist = mock.MagicMock()
+    dist.metadata = {"Name": name}
+    return dist
+
+
+def test_installed_count_counts_distinct_names() -> None:
+    """Every distinct distribution name reported counts once."""
+    dists = [_make_dist("rich"), _make_dist("fastmcp"), _make_dist("numpy")]
+    with mock.patch(f"{PACKAGES}.metadata.distributions", return_value=dists):
+        assert installed_count() == 3
+
+
+def test_installed_count_dedups_by_name() -> None:
+    """Two entries for the same name (case-insensitive) count once -
+    `importlib.metadata.distributions()` can yield more entries than
+    distinct names."""
+    dists = [_make_dist("Rich"), _make_dist("rich"), _make_dist("numpy")]
+    with mock.patch(f"{PACKAGES}.metadata.distributions", return_value=dists):
+        assert installed_count() == 2
+
+
+def test_installed_count_empty_venv() -> None:
+    """No installed distributions reports a count of zero."""
+    with mock.patch(f"{PACKAGES}.metadata.distributions", return_value=[]):
+        assert installed_count() == 0

@@ -108,7 +108,7 @@ Verified against `venvaxi --help` output; defaults shown in parentheses.
 | Command | Flags | Purpose |
 | --- | --- | --- |
 | `venvaxi` | - | Home view: bin/venv paths, active status, next-step hints |
-| `venvaxi list` | `--all`, `--fields` (`name,version`) | Declared, installed venv packages |
+| `venvaxi list` | `--all`, `--fields` (`name,version`) | Declared; `installed:` names the gap |
 | `venvaxi show <pkg>` | `--fields` (`name,version,location`) | Installed package metadata |
 | `venvaxi show <pkg> --api` | `--docstring`, `--limit` (`20`), `--refresh` | Public API symbols |
 | `venvaxi find <query>` | `--package`, `--limit` (`20`), `--refresh` | Search cached symbols |
@@ -216,6 +216,12 @@ Notable CLI differences:
   living in an unindexed package, or below the built depth, are simply invisible until you
   index that package (`find <name> --package <pkg>`) or rebuild deeper (`tree <pkg>
   --max-depth N`).
+- **`list`'s `installed:` footer, not `count:`, says whether more is queryable.** `count:`
+  reports only what the project declares, so an installed-but-undeclared distribution never
+  shows up in it - `count: 0` can still sit on a venv holding dozens of packages. Check
+  `installed: <m>` (present whenever it differs from the declared count, including on
+  `count: 0`) before concluding a package 'isn't available' - it almost certainly still
+  resolves through `show <package>`.
 - **`inherits` answers 'what subclasses X', never 'what does X subclass'.** There is no
   bases-of query, so running `inherits` on the class you just resolved returns `count: 0` and
   reads as a dead end. To find a parent, guess the likely base and run `inherits` on *that*,
