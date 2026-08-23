@@ -16,6 +16,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > - `Fixed` for any bug fixes.
 > - `Security` in case of vulnerabilities.
 
+## [0.4.0] - 2026-08-23
+
+### Added
+
+- `installed: <m>` on `list` and `listPackagesTool`, a footer count of every distribution the
+  active venv holds.
+- `venvaxi cache`, reporting this project's cache schema version, database path and size, plus a
+  `builds` table of every package with a recorded build.
+- `describeBindingTool` extends its report with the same cache summary.
+- `refreshPackageGraphTool`, a tenth MCP tool taking a package name and rebuilding that package's
+  cached symbol graph.
+- `--limit` on `show <package> --api` (and `limit` on `showPackageApiTool`), defaulting to 20.
+- A marker-gated conformance test tier that walks real installed dependencies.
+
+### Changed
+
+- The packaged skill's `venvaxi list` row names the `installed` aggregate.
+- The packaged skill's CLI command table gains a `venvaxi cache` row.
+- `show <package> --api` is now bounded, returning at most 20 rows.
+- The rejection of a negative limit now reads `Result limit ... must not be negative`.
+- A rebuild requested with no package to scope reports a message.
+
+### Fixed
+
+- `show <package> --api` now reports every public top-level symbol a package declares.
+- An attribute whose class its own package defines now reports that class's docstring.
+- The cache schema version moves to 7, so every cached graph is rebuilt on first query.
+- `find` now searches docstring text on the `LIKE` fallback path, not just `name` and
+  `qualified_name`.
+
 ## [0.3.2] - 2026-08-22
 
 ### Fixed

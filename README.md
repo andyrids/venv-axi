@@ -77,8 +77,8 @@ uv add venv-axi --dev --extra mcp
 ```
 
 The MCP server exposes; `describeBindingTool`, `listPackagesTool`, `showPackageTool`,
-`showPackageApiTool`, `showModuleTool`, `getSymbolTool`, `findSymbolTool`, `getInheritorsTool`
-and `getModuleTreeTool`
+`showPackageApiTool`, `showModuleTool`, `getSymbolTool`, `findSymbolTool`, `getInheritorsTool`,
+`getModuleTreeTool` and `refreshPackageGraphTool`
 
 > [!NOTE]
 > Tool names are in camelCase format, generated from the snake_case function names (`_mcp.py`).

@@ -108,13 +108,14 @@ Verified against `venvaxi --help` output; defaults shown in parentheses.
 | Command | Flags | Purpose |
 | --- | --- | --- |
 | `venvaxi` | - | Home view: bin/venv paths, active status, next-step hints |
-| `venvaxi list` | `--all`, `--fields` (`name,version`) | Declared, installed venv packages |
+| `venvaxi list` | `--all`, `--fields` (`name,version`) | Declared; `installed:` names the gap |
 | `venvaxi show <pkg>` | `--fields` (`name,version,location`) | Installed package metadata |
-| `venvaxi show <pkg> --api` | `--docstring`, `--refresh` | Public top-level API symbols |
+| `venvaxi show <pkg> --api` | `--docstring`, `--limit` (`20`), `--refresh` | Public API symbols |
 | `venvaxi find <query>` | `--package`, `--limit` (`20`), `--refresh` | Search cached symbols |
 | `venvaxi tree <pkg>` | `--max-depth` (`2`), `--refresh` | Nested module tree |
 | `venvaxi inspect <name>` | `--docstring`, `--refresh` | Symbol detail, or module children |
 | `venvaxi inherits <qname>` | `--refresh` | Classes directly subclassing a base |
+| `venvaxi cache` | - | This project's cache/build state - schema, path/size, per-package build |
 | `venvaxi serve` | - | Run the MCP server over stdio |
 | `venvaxi setup` | `--skill`, `--no-skill` | Install ambient context (MCP config & skill) |
 
@@ -126,6 +127,11 @@ Notes on the positional arguments and shared flags:
   before `--fields` is parsed.
 - `-v` / `--verbose` is a global flag enabling DEBUG logging on STDERR - reach for it when a
   `setup` or `serve` failure produced no useful message.
+- `--limit` bounds the rows a collection command returns, and is `20` on both `find` and
+  `show --api`. A `count:` equal to the active limit means *at least* that many, and says so
+  in a `help[]` hint; below it the count is definitive. `--limit 0` is a bound honoured
+  exactly (`count: 0`, exit `0`); a negative `--limit` is a hard error. It applies to
+  `show` *with* `--api` only; passed without it, it is **silently ignored**, not an error.
 - `show <pkg> --api` takes a distribution name or any importable dotted module path, and
   emits the columns `name|kind|signature|doc`.
 - `inspect` takes either a qualified symbol name (`module::Symbol`, `module::Class.method`)
@@ -164,15 +170,23 @@ error block instead of an MCP transport error.
 | `describeBindingTool` | none | none |
 | `listPackagesTool` | `include_dev=False` | `venvaxi list [--all]` |
 | `showPackageTool` | `name` | `venvaxi show <pkg>` |
-| `showPackageApiTool` | `name`, `docstring=False` | `venvaxi show <pkg> --api` |
+| `showPackageApiTool` | `name`, `docstring=False`, `limit=20` | `venvaxi show <pkg> --api` |
 | `showModuleTool` | `name`, `docstring=False` | `venvaxi inspect <module>` |
 | `getSymbolTool` | `qualified_name`, `docstring=False` | `venvaxi inspect <qname>` |
 | `findSymbolTool` | `query`, `limit=20`, `package=None` | `venvaxi find <query>` |
 | `getInheritorsTool` | `qualified_name` | `venvaxi inherits <qname>` |
 | `getModuleTreeTool` | `name`, `max_depth=2` | `venvaxi tree <pkg>` |
+| `refreshPackageGraphTool` | `name` | `venvaxi <cmd> ... --refresh` |
 
 Types are `str` for names|queries, `bool` for `include_dev`|`docstring`, `int` for
 `limit`|`max_depth`, and `str | None` for `package`.
+
+`describeBindingTool` additionally reports this project's cache state whenever `root` resolves -
+`schema_version`, `db_path`, `db_size_bytes`, then `count:` and a `builds` table of
+`package`/`version`/`depth`/`symbols`, field for field the same as `venvaxi cache`. If the cache
+database cannot be read, those fields degrade to `schema_version: (cache unreadable)` with
+`count`/`builds` omitted (never `count: 0`) and a third hint naming the `db_path` as safe to
+delete, rather than raising - `root`/`venv`/`status` still report normally either way.
 
 Notable CLI differences:
 
@@ -182,9 +196,10 @@ Notable CLI differences:
   one naming a real module - is rejected before lookup with a diagnosis pointing at
   `showModuleTool`. Send module names straight to `showModuleTool` rather than spending the
   round trip.
-- **No tool takes a `refresh` parameter.** A stale graph can only be rebuilt from the CLI, so
-  after a dependency version bump run `venvaxi <cmd> ... --refresh` once, then carry on over
-  MCP.
+- **No *read* tool takes a `refresh` parameter.** The nine read tools answer from the cache
+  and cannot force a rebuild; `refreshPackageGraphTool` is the single exception and the way a
+  rebuild is started over MCP. Call it with the package name, then carry on over MCP - it is a
+  rebuild, not a cheap precondition, so do not prefix every lookup with it.
 
 ## Gotchas
 
@@ -194,13 +209,19 @@ Notable CLI differences:
 - **`find` without `--package` only searches what is already cached.** On a cold cache that
   is nothing, and you get `count: 0`. Always pass `--package` on the first lookup for a
   package - it indexes and scopes in one step. `--refresh` without `--package` is a hard
-  error ('`--refresh` requires `--package` to name the graph to rebuild').
+  error ('A rebuild must name the package to rebuild').
 - **`count: 0` is a definitive empty state, not a failure.** Unresolvable names raise, so a
   zero count means the query resolved and genuinely matched nothing. For `inherits`
   specifically it means the base class resolved with zero *indexed* subclasses - subclasses
   living in an unindexed package, or below the built depth, are simply invisible until you
   index that package (`find <name> --package <pkg>`) or rebuild deeper (`tree <pkg>
   --max-depth N`).
+- **`list`'s `installed:` footer, not `count:`, says whether more is queryable.** `count:`
+  reports only what the project declares, so an installed-but-undeclared distribution never
+  shows up in it - `count: 0` can still sit on a venv holding dozens of packages. Check
+  `installed: <m>` (present whenever it differs from the declared count, including on
+  `count: 0`) before concluding a package 'isn't available' - it almost certainly still
+  resolves through `show <package>`.
 - **`inherits` answers 'what subclasses X', never 'what does X subclass'.** There is no
   bases-of query, so running `inherits` on the class you just resolved returns `count: 0` and
   reads as a dead end. To find a parent, guess the likely base and run `inherits` on *that*,
@@ -227,13 +248,17 @@ Notable CLI differences:
   `parallel=True`; is `break` legal in a `prange`) live in no `__doc__` and no signature, so no
   `venvaxi` command reaches them - that is a question for the project's own documentation. This
   is the concrete face of the Overview's 'MUST not use `venvaxi` to explain usage'.
-- **When to `--refresh`.** The cache lives at `~/.venvaxi/<project-hash>.db` and already
+- **When to rebuild.** The cache lives at `~/.venvaxi/<project-hash>.db` and already
   invalidates itself when a package's installed version changes, or when a query needs more
-  depth than was built. Reach for `--refresh` when the version string cannot move but the
+  depth than was built. Reach for a rebuild when the version string cannot move but the
   code did - editable/local installs, a package patched in place - or when a build was
-  interrupted. The hash is a SHA-256 digest of the **resolved project-root path**, so two
-  checkouts of the same project at different paths hold independent caches - a rebuild in one
-  is invisible to the other.
+  interrupted. Over the CLI that is `--refresh`; over MCP it is `refreshPackageGraphTool`
+  with the package name, which is the only route an MCP-driven agent has. A rebuild is
+  package-scoped and walks to the default depth, so a graph previously built deeper is reset
+  with it - most queries deepen it again on demand, but `inherits` does not, and subclasses
+  below the default depth go invisible until some query builds that deep. The hash is a
+  SHA-256 digest of the **resolved project-root path**, so two checkouts of the same project
+  at different paths hold independent caches - a rebuild in one is invisible to the other.
 - **`tree` defaults to `--max-depth 2`.** Deep packages are silently shallow at the default;
   raise it when you are hunting for a submodule rather than surveying.
 - **MCP needs the extra.** `serve` requires `fastmcp` (`uv add venv-axi[mcp]`) and exits `1`
@@ -260,7 +285,11 @@ Notable CLI differences:
   repo's `.mcp.json` by re-running `venvaxi setup` from inside that project - `--refresh`
   cannot help, because the server is bound elsewhere. Over MCP, `status: inactive` means the
   registered command names a base interpreter, so answers are drawn from an environment the
-  project never installed into - re-register, do not activate anything.
+  project never installed into - re-register, do not activate anything. `describeBindingTool`
+  is also the way to check a *suspected-stale* graph without spending a rebuild to find out -
+  its cache summary reports each indexed package's built version and depth, so a rebuild via
+  `refreshPackageGraphTool` is spent only when the recorded build actually looks behind, not on
+  a hunch.
 - **`setup` writes files - it is not a diagnostic command.** It rewrites
   `.mcp.json`/`.vscode/mcp.json` every time it runs, it overwrites
   `.claude/skills/venvaxi/SKILL.md` wholesale unless `--no-skill` is given, and it deletes a

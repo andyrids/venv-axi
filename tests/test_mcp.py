@@ -10,14 +10,24 @@ import pytest
 
 pytest.importorskip("fastmcp")
 # ruff: disable[E402]
+from venvaxi._cache import CacheState, PackageBuild, get_cache_db_path
 from venvaxi._constants import NO_PROJECT_ROOT
 from venvaxi._core import resolve_binding
-from venvaxi._introspect import MCP_ESCAPE_HATCH, SymbolInfo
+from venvaxi._introspect import (
+    MCP_ESCAPE_HATCH,
+    PublicAPI,
+    RefreshReceipt,
+    SymbolInfo,
+)
 from venvaxi._mcp import build_server
 from venvaxi._packages import PackageInfo
 from venvaxi._store import NodeKind, SymbolNode
 from venvaxi._toon import encode_object
-from venvaxi.exceptions import ProjectRootNotFoundError, SymbolNotFoundError
+from venvaxi.exceptions import (
+    ProjectRootNotFoundError,
+    StoreError,
+    SymbolNotFoundError,
+)
 
 # ruff: enable[E402]
 CORE = "venvaxi._core"
@@ -38,7 +48,7 @@ def camel_case(name: str) -> str:
 
 
 def test_build_server_registers_tools() -> None:
-    """`build_server` registers all nine expected MCP tools."""
+    """`build_server` registers all ten expected MCP tools."""
     from venvaxi import _mcp
 
     server = build_server()
@@ -54,10 +64,13 @@ def test_build_server_registers_tools() -> None:
         camel_case(_mcp.find_symbol_tool.__name__),
         camel_case(_mcp.get_inheritors_tool.__name__),
         camel_case(_mcp.get_module_tree_tool.__name__),
+        camel_case(_mcp.refresh_package_graph_tool.__name__),
     }
 
 
-def test_describe_binding_tool_reports_binding(tmp_path: Path) -> None:
+def test_describe_binding_tool_reports_binding(
+    tmp_path: Path, isolated_cache: Path
+) -> None:
     """The tool emits the flat `root`/`venv`/`status` object."""
     server = build_server()
     with mock.patch(f"{CORE}.get_project_root", return_value=tmp_path):
@@ -71,7 +84,7 @@ def test_describe_binding_tool_reports_binding(tmp_path: Path) -> None:
 
 
 def test_describe_binding_tool_footer_names_camel_case(
-    tmp_path: Path,
+    tmp_path: Path, isolated_cache: Path
 ) -> None:
     """The success footer names next-step tools by camelCase name and
     carries no `venvaxi` shell spelling."""
@@ -134,6 +147,258 @@ def test_describe_binding_tool_description_is_call_first() -> None:
     assert "Call this first" in description
 
 
+def test_describe_binding_tool_registered_schema_takes_no_parameters() -> None:
+    """The registered `describeBindingTool` schema still declares no
+    parameters - the cache summary is unconditional on `root`, never a
+    new argument (Validation criterion 18)."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("describe_binding_tool")))
+    assert tool.parameters.get("properties", {}) == {}
+
+
+def test_describe_binding_tool_description_states_cache_summary() -> None:
+    """The registered description also states that the report includes
+    a cache summary - schema version, on-disk size, and which packages
+    are indexed at which built version and depth (#49;
+    `specs/mcp/tools.md`, The description is part of the contract)."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("describe_binding_tool")))
+    description = tool.description or ""
+    assert "schema version" in description
+    assert "on-disk size" in description
+    assert "built version and depth" in description
+
+
+def test_describe_binding_tool_reports_cache_summary_when_root_resolves(
+    tmp_path: Path,
+) -> None:
+    """When `root` resolves, the object gains `schema_version`,
+    `db_path`, `db_size_bytes`, then `count:` and a `builds` table,
+    field for field matching `venvaxi cache` (#49)."""
+    server = build_server()
+    state = CacheState(
+        schema_version=7,
+        db_path=tmp_path / "cache.db",
+        db_size_bytes=1234,
+        builds=[
+            PackageBuild(package="rich", version="1.0.0", depth=2, symbols=42)
+        ],
+    )
+    with (
+        mock.patch(f"{CORE}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.read_cache_state", return_value=state),
+    ):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "schema_version: 7" in result
+    assert "db_size_bytes: 1234" in result
+    assert "count: 1" in result
+    assert "rich|1.0.0|2|42" in result
+
+
+def test_describe_binding_tool_cache_summary_empty_omits_table(
+    tmp_path: Path,
+) -> None:
+    """A real, empty cache reports `count: 0` and no `builds` table -
+    distinct from the `(cache unreadable)` degrade below."""
+    server = build_server()
+    state = CacheState(
+        schema_version=7,
+        db_path=tmp_path / "cache.db",
+        db_size_bytes=0,
+        builds=[],
+    )
+    with (
+        mock.patch(f"{CORE}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.read_cache_state", return_value=state),
+    ):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "schema_version: 7" in result
+    assert "count: 0" in result
+    assert "builds" not in result
+
+
+def test_describe_binding_tool_cache_summary_not_built_reports_marker(
+    tmp_path: Path,
+) -> None:
+    """A never-built cache reports `schema_version: (not built)`, never
+    the literal string stored - it is applied at emission only."""
+    server = build_server()
+    state = CacheState(
+        schema_version=None,
+        db_path=tmp_path / "cache.db",
+        db_size_bytes=0,
+        builds=[],
+    )
+    with (
+        mock.patch(f"{CORE}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.read_cache_state", return_value=state),
+    ):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "schema_version: (not built)" in result
+    assert "count: 0" in result
+
+
+def test_describe_binding_tool_cache_nonzero_count_appends_third_hint(
+    tmp_path: Path,
+) -> None:
+    """A nonzero `count` appends a third hint naming
+    `refreshPackageGraphTool`, additional to the two onboarding hints."""
+    server = build_server()
+    state = CacheState(
+        schema_version=7,
+        db_path=tmp_path / "cache.db",
+        db_size_bytes=1234,
+        builds=[
+            PackageBuild(package="rich", version="1.0.0", depth=2, symbols=42)
+        ],
+    )
+    with (
+        mock.patch(f"{CORE}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.read_cache_state", return_value=state),
+    ):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "help[3]:" in result
+    assert "refreshPackageGraphTool" in result
+
+
+def test_describe_binding_tool_cache_zero_count_omits_third_hint(
+    tmp_path: Path,
+) -> None:
+    """A `count: 0` cache summary appends no third hint - both
+    onboarding hints already name the way to populate a first entry."""
+    server = build_server()
+    state = CacheState(
+        schema_version=7,
+        db_path=tmp_path / "cache.db",
+        db_size_bytes=0,
+        builds=[],
+    )
+    with (
+        mock.patch(f"{CORE}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.read_cache_state", return_value=state),
+    ):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "help[2]:" in result
+    assert "refreshPackageGraphTool" not in result
+
+
+def test_describe_binding_tool_no_root_omits_cache_fields() -> None:
+    """No resolvable root omits the cache summary entirely - there is
+    nothing truthful to say about a cache belonging to no project."""
+    server = build_server()
+    with mock.patch(
+        f"{CORE}.get_project_root",
+        side_effect=ProjectRootNotFoundError("nope"),
+    ):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "schema_version" not in result
+    assert "db_path" not in result
+    assert "count:" not in result
+
+
+def test_describe_binding_tool_unreadable_cache_degrades(
+    tmp_path: Path, isolated_cache: Path
+) -> None:
+    """A SQLite-level failure reading the cache degrades that half of
+    the object rather than raising - `root`/`venv`/`status` still
+    report exactly as on a healthy read, and no error block is
+    returned (#49; `specs/mcp/tools.md`, Failure modes)."""
+    server = build_server()
+    root = tmp_path / "proj"
+    root.mkdir()
+    db_path = get_cache_db_path(root)
+    db_path.write_bytes(b"not a real sqlite file" * 10)
+    with (
+        mock.patch(f"{CORE}.get_project_root", return_value=root),
+        mock.patch(
+            f"{MCP}.read_cache_state", side_effect=StoreError("bad schema")
+        ),
+    ):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "root:" in result
+    assert "venv:" in result
+    assert "status:" in result
+    assert "error: true" not in result
+    assert "schema_version: (cache unreadable)" in result
+    assert f"db_size_bytes: {db_path.stat().st_size}" in result
+    # NOTE: A wording-correction/shape assertion checks the wrong form
+    # is absent, not merely that the right form is present
+    # (`reference-toolchain-pytest.md`) - `count: 0` here would
+    # misstate an unreadable database as a real, empty one.
+    assert "count:" not in result
+    assert "builds" not in result
+
+
+def test_describe_binding_tool_unreadable_cache_never_emits_count_zero(
+    tmp_path: Path, isolated_cache: Path
+) -> None:
+    """The unreadable-cache degrade never emits `count: 0` - that is
+    the positive claim the database opened cleanly and held nothing, a
+    different state from 'could not be read at all'."""
+    server = build_server()
+    root = tmp_path / "proj"
+    root.mkdir()
+    db_path = get_cache_db_path(root)
+    db_path.write_bytes(b"garbage")
+    with (
+        mock.patch(f"{CORE}.get_project_root", return_value=root),
+        mock.patch(
+            f"{MCP}.read_cache_state", side_effect=StoreError("bad schema")
+        ),
+    ):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "count: 0" not in result
+
+
+def test_describe_binding_tool_unreadable_cache_hints_delete(
+    tmp_path: Path, isolated_cache: Path
+) -> None:
+    """The unreadable-cache degrade appends a third hint naming the
+    reported `db_path` as safe to delete."""
+    server = build_server()
+    root = tmp_path / "proj"
+    root.mkdir()
+    db_path = get_cache_db_path(root)
+    db_path.write_bytes(b"garbage")
+    with (
+        mock.patch(f"{CORE}.get_project_root", return_value=root),
+        mock.patch(
+            f"{MCP}.read_cache_state", side_effect=StoreError("bad schema")
+        ),
+    ):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "help[3]:" in result
+    assert "disposable derived data" in result
+    assert str(db_path.name) in result
+
+
 def test_build_server_instructions_carry_binding() -> None:
     """The initialization instructions carry the bound root and venv."""
     with mock.patch(
@@ -158,7 +423,7 @@ def test_build_server_no_root_still_builds_with_marker() -> None:
         server = build_server()
     assert NO_PROJECT_ROOT in server.instructions
     names = {tool.name for tool in asyncio.run(server.list_tools())}
-    assert len(names) == 9
+    assert len(names) == 10
     assert camel_case("describe_binding_tool") in names
 
 
@@ -244,6 +509,98 @@ def test_list_packages_tool_empty_all_hint_names_pyproject(
     assert "include_dev=true" not in result
 
 
+def test_list_packages_tool_installed_appears_when_declared_differs(
+    tmp_path: Path, make_package_info: PackageFactory
+) -> None:
+    """`installed: <m>` is appended after the `packages` table when the
+    declared count differs from the installed count, matching
+    `command_list` field for field."""
+    server = build_server()
+    with (
+        mock.patch(f"{MCP}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.list_packages", return_value=[make_package_info()]),
+        mock.patch(f"{MCP}.installed_count", return_value=100),
+    ):
+        tool = asyncio.run(server.get_tool(camel_case("list_packages_tool")))
+        result = tool.fn()
+    assert "installed: 100" in result
+    assert result.index("installed: 100") < result.index("help[")
+
+
+def test_list_packages_tool_installed_suppressed_when_equal(
+    tmp_path: Path, make_package_info: PackageFactory
+) -> None:
+    """The `installed:` line is omitted, not emitted as zero or with a
+    marker, when the declared count equals the installed count - a
+    one-way `in`-assertion would pass on unrelated output text."""
+    server = build_server()
+    with (
+        mock.patch(f"{MCP}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.list_packages", return_value=[make_package_info()]),
+        mock.patch(f"{MCP}.installed_count", return_value=1),
+    ):
+        tool = asyncio.run(server.get_tool(camel_case("list_packages_tool")))
+        result = tool.fn()
+    assert "count: 1" in result
+    assert "installed:" not in result
+
+
+def test_list_packages_tool_empty_installed_between_count_and_help(
+    tmp_path: Path,
+) -> None:
+    """On `count: 0`, `installed: <m>` lands between `count: 0` and the
+    `help[]` footer when the venv holds at least one distribution."""
+    server = build_server()
+    with (
+        mock.patch(f"{MCP}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.list_packages", return_value=[]),
+        mock.patch(f"{MCP}.installed_count", return_value=100),
+    ):
+        tool = asyncio.run(server.get_tool(camel_case("list_packages_tool")))
+        result = tool.fn()
+    assert (
+        result.index("count: 0")
+        < result.index("installed: 100")
+        < result.index("help[")
+    )
+
+
+def test_list_packages_tool_empty_installed_suppressed_when_zero(
+    tmp_path: Path,
+) -> None:
+    """`installed:` is omitted on `count: 0` when the venv itself holds
+    no distributions - declared (0) equals installed (0)."""
+    server = build_server()
+    with (
+        mock.patch(f"{MCP}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.list_packages", return_value=[]),
+        mock.patch(f"{MCP}.installed_count", return_value=0),
+    ):
+        tool = asyncio.run(server.get_tool(camel_case("list_packages_tool")))
+        result = tool.fn()
+    assert result.startswith("count: 0")
+    assert "installed:" not in result
+
+
+def test_list_packages_tool_empty_all_hint_unaffected_by_installed(
+    tmp_path: Path,
+) -> None:
+    """The `include_dev`-conditional empty-state hint selection is
+    unchanged by the new `installed:` line - the two mechanisms are
+    independent, mirroring the CLI's `list --all` branch."""
+    server = build_server()
+    with (
+        mock.patch(f"{MCP}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.list_packages", return_value=[]),
+        mock.patch(f"{MCP}.installed_count", return_value=100),
+    ):
+        tool = asyncio.run(server.get_tool(camel_case("list_packages_tool")))
+        result = tool.fn(include_dev=True)
+    assert "pyproject.toml" in result
+    assert "include_dev=true" not in result
+    assert "installed: 100" in result
+
+
 def test_show_package_tool_returns_toon(
     make_package_info: PackageFactory,
 ) -> None:
@@ -275,7 +632,8 @@ def test_show_package_api_tool_returns_toon() -> None:
     symbols = [
         SymbolInfo(name="foo", kind="function", signature="()", doc="Foo."),
     ]
-    with mock.patch(f"{MCP}.get_public_api", return_value=symbols):
+    api = PublicAPI(symbols=symbols, max_rows=20)
+    with mock.patch(f"{MCP}.get_public_api", return_value=api):
         tool = asyncio.run(
             server.get_tool(camel_case("show_package_api_tool"))
         )
@@ -291,7 +649,8 @@ def test_show_package_api_tool_docstring_suppresses_footer() -> None:
     symbols = [
         SymbolInfo(name="foo", kind="function", signature="()", doc="Foo."),
     ]
-    with mock.patch(f"{MCP}.get_public_api", return_value=symbols):
+    api = PublicAPI(symbols=symbols, max_rows=20)
+    with mock.patch(f"{MCP}.get_public_api", return_value=api):
         tool = asyncio.run(
             server.get_tool(camel_case("show_package_api_tool"))
         )
@@ -304,14 +663,135 @@ def test_show_package_api_tool_passes_mcp_escape_hatch() -> None:
     """The API tool spells the truncation escape hatch for MCP - its
     payload reaches `truncate` only through `get_public_api` (#30)."""
     server = build_server()
-    with mock.patch(f"{MCP}.get_public_api", return_value=[]) as api:
+    empty = PublicAPI(symbols=[], max_rows=20)
+    with mock.patch(f"{MCP}.get_public_api", return_value=empty) as api:
         tool = asyncio.run(
             server.get_tool(camel_case("show_package_api_tool"))
         )
         tool.fn(name="rich")
     api.assert_called_once_with(
-        "rich", docstring=False, escape_hatch=MCP_ESCAPE_HATCH
+        "rich",
+        docstring=False,
+        max_rows=20,
+        escape_hatch=MCP_ESCAPE_HATCH,
     )
+
+
+def test_show_package_api_tool_matches_cli_widened_surface(
+    fake_package: str,
+) -> None:
+    """`showPackageApiTool` reports the same widened surface as
+    `show <package> --api` for a real package - no mock, so parity is
+    `get_public_api`'s, not the test's (`specs/mcp/tools.md`, parity
+    principle; #82)."""
+    from venvaxi._introspect import get_public_api
+
+    cli_symbols = get_public_api(f"{fake_package}.constants").symbols
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("show_package_api_tool")))
+    result = tool.fn(name=f"{fake_package}.constants")
+
+    assert f"count: {len(cli_symbols)}" in result
+    assert {symbol.kind for symbol in cli_symbols} == {"attribute"}
+    for symbol in cli_symbols:
+        assert f"{symbol.name}|{symbol.kind}" in result
+
+
+def _api_symbols(count: int) -> list[SymbolInfo]:
+    """Build `count` distinct API rows."""
+    return [
+        SymbolInfo(
+            name=f"sym_{index}", kind="function", signature="()", doc="Doc."
+        )
+        for index in range(count)
+    ]
+
+
+def test_show_package_api_tool_default_limit_bounds_rows() -> None:
+    """With no `limit` the tool bounds the listing at 20 rows and
+    carries the capped-count hint spelled as a tool parameter -
+    unbounded, the `numpy` call was refused outright by the transport
+    token guard (#67; `specs/mcp/tools.md`, Hint wording)."""
+    server = build_server()
+    api = PublicAPI(symbols=_api_symbols(20), max_rows=20)
+    with mock.patch(f"{MCP}.get_public_api", return_value=api) as patched:
+        tool = asyncio.run(
+            server.get_tool(camel_case("show_package_api_tool"))
+        )
+        result = tool.fn(name="numpy")
+    assert patched.call_args.kwargs["max_rows"] == 20
+    assert "count: 20" in result
+    assert "Results capped at limit=20" in result
+    assert "higher limit" in result
+    assert "--limit" not in result
+
+
+def test_show_package_api_tool_below_limit_omits_capped_hint() -> None:
+    """A count below the active `limit` is definitive - no capped-count
+    hint, and the `docstring=true` next step is still correct (#67)."""
+    server = build_server()
+    api = PublicAPI(symbols=_api_symbols(1), max_rows=20)
+    with mock.patch(f"{MCP}.get_public_api", return_value=api):
+        tool = asyncio.run(
+            server.get_tool(camel_case("show_package_api_tool"))
+        )
+        result = tool.fn(name="rich")
+    assert "Results capped" not in result
+    assert "Re-call with docstring=true" in result
+
+
+def test_show_package_api_tool_capped_omits_docstring_hint() -> None:
+    """A capped listing must not offer `docstring=true` as the way to
+    see more symbols - it widens each row without lifting the row
+    bound, and it is the exact call the transport token guard refuses
+    over a wide package (#67; `specs/commands/show.md`, Outputs)."""
+    server = build_server()
+    api = PublicAPI(symbols=_api_symbols(2), max_rows=2)
+    with mock.patch(f"{MCP}.get_public_api", return_value=api):
+        tool = asyncio.run(
+            server.get_tool(camel_case("show_package_api_tool"))
+        )
+        result = tool.fn(name="numpy", limit=2)
+    assert "docstring=true" not in result
+    assert "Results capped at limit=2" in result
+
+
+def test_show_package_api_tool_zero_limit_returns_count_zero() -> None:
+    """`limit=0` is a bound honoured exactly - `count: 0` with the
+    capped-count hint rather than the empty-API module-tree hint
+    (`specs/behaviors/output-contract.md`, Bounded collections)."""
+    server = build_server()
+    api = PublicAPI(symbols=[], max_rows=0)
+    with mock.patch(f"{MCP}.get_public_api", return_value=api):
+        tool = asyncio.run(
+            server.get_tool(camel_case("show_package_api_tool"))
+        )
+        result = tool.fn(name="numpy", limit=0)
+    assert "count: 0" in result
+    assert "error: true" not in result
+    assert "Results capped at limit=0" in result
+    assert "getModuleTreeTool" not in result
+
+
+def test_show_package_api_tool_negative_limit_returns_error_block() -> None:
+    """A negative `limit` returns the domain-error TOON block through
+    the shared rejection - one rejection site, so this surface inherits
+    it rather than re-implementing it. The message is surface-neutral
+    and carries no CLI footer (#67; `specs/mcp/tools.md`, Error message
+    wording)."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("show_package_api_tool")))
+    result = tool.fn(name="numpy", limit=-5)
+    assert "error: true" in result
+    assert "must not be negative" in result
+    assert "count:" not in result
+    assert "Unexpected error" not in result
+    # The CLI footer names a shell command this caller cannot run (#60)
+    assert "help[" not in result
+    assert "venvaxi --help" not in result
+    # A shared-path message spells neither surface parameter name
+    assert "--limit" not in result
+    assert "limit=" not in result
 
 
 def test_show_module_tool_returns_toon(
@@ -720,3 +1200,184 @@ def test_get_module_tree_tool_empty_hint_names_root_tree(
     assert f"name={fake_package}" in result
     assert "listPackagesTool" not in result
     assert "get_module_tree_tool" not in result
+
+
+REFRESH_TOOL = "refresh_package_graph_tool"
+
+
+def test_refresh_package_graph_tool_returns_receipt_object() -> None:
+    """The refresh tool emits the flat `package`/`depth`/`symbols`
+    object recording the rebuild it performed."""
+    server = build_server()
+    receipt = RefreshReceipt(package="mpctraj", depth=2, symbols=143)
+    with mock.patch(
+        f"{MCP}.refresh_package_graph", return_value=receipt
+    ) as refresh:
+        tool = asyncio.run(server.get_tool(camel_case(REFRESH_TOOL)))
+        result = tool.fn(name="mpctraj")
+    refresh.assert_called_once_with("mpctraj")
+    assert "package: mpctraj" in result
+    assert "depth: 2" in result
+    assert "symbols: 143" in result
+
+
+def test_refresh_package_graph_tool_reports_resolved_import_name() -> None:
+    """The object names the import name the graph is keyed by, not the
+    distribution name the caller supplied."""
+    server = build_server()
+    receipt = RefreshReceipt(package="yaml", depth=2, symbols=42)
+    with mock.patch(f"{MCP}.refresh_package_graph", return_value=receipt):
+        tool = asyncio.run(server.get_tool(camel_case(REFRESH_TOOL)))
+        result = tool.fn(name="PyYAML")
+    assert "package: yaml" in result
+    assert "package: PyYAML" not in result
+
+
+def test_refresh_package_graph_tool_footer_scopes_the_search() -> None:
+    """The footer names the search tool by its camelCase name and
+    carries the package scope, never a `venvaxi` shell spelling."""
+    server = build_server()
+    receipt = RefreshReceipt(package="mpctraj", depth=2, symbols=143)
+    with mock.patch(f"{MCP}.refresh_package_graph", return_value=receipt):
+        tool = asyncio.run(server.get_tool(camel_case(REFRESH_TOOL)))
+        result = tool.fn(name="mpctraj")
+    assert "help[1]:" in result
+    assert "findSymbolTool" in result
+    assert "package=mpctraj" in result
+    assert "find_symbol_tool" not in result
+    assert "venvaxi " not in result
+
+
+def test_refresh_package_graph_tool_omits_count_line() -> None:
+    """The symbol count is a field of the object, never a leading
+    `count:` line promising rows that never arrive."""
+    server = build_server()
+    receipt = RefreshReceipt(package="mpctraj", depth=2, symbols=143)
+    with mock.patch(f"{MCP}.refresh_package_graph", return_value=receipt):
+        tool = asyncio.run(server.get_tool(camel_case(REFRESH_TOOL)))
+        result = tool.fn(name="mpctraj")
+    assert "count:" not in result
+    assert result.startswith("package: mpctraj")
+
+
+def test_refresh_tool_registered_description_states_the_contract() -> None:
+    """The registered description says what it rebuilds, names source
+    changed with no reinstall, and marks it a rebuild not a read."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool("refreshPackageGraphTool"))
+    description = tool.description or ""
+    assert "symbol graph" in description
+    assert "reinstall" in description
+    assert "rebuild, not a read" in description
+
+
+def test_build_server_registers_refresh_tool_under_contract_name() -> None:
+    """The refresh tool appears in the registered listing under the
+    contracted name `refreshPackageGraphTool`."""
+    server = build_server()
+    names = {tool.name for tool in asyncio.run(server.list_tools())}
+    assert "refreshPackageGraphTool" in names
+
+
+def test_registered_read_tools_expose_no_refresh_parameter() -> None:
+    """The nine read tools each still take no `refresh` parameter - the
+    divergence is narrowed to one named tool, not removed."""
+    server = build_server()
+    tools = asyncio.run(server.list_tools())
+    reads = [tool for tool in tools if tool.name != "refreshPackageGraphTool"]
+    assert len(reads) == 9
+    for tool in reads:
+        assert "refresh" not in tool.parameters["properties"]
+
+
+def test_refresh_package_graph_tool_takes_only_a_name() -> None:
+    """The refresh tool's registered schema carries a required `name`
+    and no depth parameter."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool("refreshPackageGraphTool"))
+    assert set(tool.parameters["properties"]) == {"name"}
+    assert tool.parameters["required"] == ["name"]
+
+
+def test_refresh_package_graph_tool_malformed_name_returns_error_block(
+    isolated_cache: Path,
+) -> None:
+    """A name that cannot be a package returns the TOON error block."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case(REFRESH_TOOL)))
+    result = tool.fn(name="a b")
+    assert "error: true" in result
+    assert "Invalid package name" in result
+
+
+def test_refresh_package_graph_tool_not_installed_returns_error_block(
+    isolated_cache: Path,
+) -> None:
+    """A package absent from the venv returns the TOON error block."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case(REFRESH_TOOL)))
+    result = tool.fn(name="definitely_not_installed_pkg")
+    assert "error: true" in result
+    assert "not installed" in result
+
+
+def test_refresh_package_graph_tool_import_error_returns_error_block(
+    isolated_cache: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An installed package raising on import returns the TOON error
+    block rather than escaping into FastMCP."""
+
+    def _raise(name: str) -> object:
+        msg = f"boom: {name}"
+        raise ImportError(msg)
+
+    monkeypatch.setattr("importlib.import_module", _raise)
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case(REFRESH_TOOL)))
+    result = tool.fn(name="rich")
+    assert "error: true" in result
+    assert "Failed to import `rich`" in result
+
+
+def test_refresh_package_graph_tool_no_project_root_returns_error_block(
+    isolated_cache: Path,
+) -> None:
+    """No resolvable project root returns the TOON error block - this
+    tool raises where `describeBindingTool` degrades to the marker."""
+    server = build_server()
+    with mock.patch(
+        f"{CORE}.get_project_root",
+        side_effect=ProjectRootNotFoundError("no root"),
+    ):
+        tool = asyncio.run(server.get_tool(camel_case(REFRESH_TOOL)))
+        result = tool.fn(name="rich")
+    assert "error: true" in result
+    assert "no root" in result
+    assert NO_PROJECT_ROOT not in result
+
+
+def test_refresh_package_graph_tool_store_error_returns_error_block() -> None:
+    """A SQLite-level failure during the rebuild returns the TOON error
+    block."""
+    server = build_server()
+    with mock.patch(
+        f"{MCP}.refresh_package_graph",
+        side_effect=StoreError("Failed to build symbol store"),
+    ):
+        tool = asyncio.run(server.get_tool(camel_case(REFRESH_TOOL)))
+        result = tool.fn(name="rich")
+    assert "error: true" in result
+    assert "Failed to build symbol store" in result
+
+
+def test_refresh_package_graph_tool_error_omits_help_footer(
+    isolated_cache: Path,
+) -> None:
+    """An error block carries no `help[N]:` footer - no failure here
+    leaves a next step the message has not already given."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case(REFRESH_TOOL)))
+    result = tool.fn(name="a b")
+    assert "error: true" in result
+    assert "help[" not in result
+    assert "findSymbolTool" not in result

@@ -302,6 +302,97 @@ def test_search_symbols_like_fallback_when_fts_disabled(
     assert [node.name for node in results] == ["Dog"]
 
 
+def test_search_symbols_docstring_only_match_like_fallback(
+    tmp_path: Path, make_symbol_node: NodeFactory
+) -> None:
+    """The `LIKE` fallback finds a symbol via a docstring-only query -
+    the query string appears in neither `name` nor `qualified_name`."""
+    with SymbolStore(tmp_path / "store.db") as store:
+        store._fts_enabled = False
+        store.upsert_node(
+            make_symbol_node(
+                qualified_name="pkg::Widget",
+                name="Widget",
+                doc="A flibbertigibbet transport.",
+            )
+        )
+        store.upsert_node(
+            make_symbol_node(qualified_name="pkg::Gadget", name="Gadget")
+        )
+        results = store.search_symbols("flibbertigibbet")
+    assert [node.name for node in results] == ["Widget"]
+
+
+def test_search_symbols_docstring_only_match_filters_by_package_like_fallback(
+    tmp_path: Path, make_symbol_node: NodeFactory
+) -> None:
+    """A docstring-only match still honors the `package` scope on the
+    `LIKE` fallback path - catches a binding off-by-one that would
+    drop or misalign the package filter."""
+    with SymbolStore(tmp_path / "store.db") as store:
+        store._fts_enabled = False
+        store.upsert_node(
+            make_symbol_node(
+                qualified_name="a::Widget",
+                name="Widget",
+                package="a",
+                doc="A flibbertigibbet transport.",
+            )
+        )
+        store.upsert_node(
+            make_symbol_node(
+                qualified_name="b::Gizmo",
+                name="Gizmo",
+                package="b",
+                doc="A flibbertigibbet transport.",
+            )
+        )
+        scoped = store.search_symbols("flibbertigibbet", package="a")
+        unscoped = store.search_symbols("flibbertigibbet")
+    assert [node.package for node in scoped] == ["a"]
+    assert len(unscoped) == 2
+
+
+def test_search_symbols_docstring_only_match_respects_limit_like_fallback(
+    tmp_path: Path, make_symbol_node: NodeFactory
+) -> None:
+    """A docstring-only match still honors `limit` on the `LIKE`
+    fallback path - catches a binding off-by-one that would misalign
+    the trailing `LIMIT ?` placeholder."""
+    with SymbolStore(tmp_path / "store.db") as store:
+        store._fts_enabled = False
+        for index in range(5):
+            store.upsert_node(
+                make_symbol_node(
+                    qualified_name=f"pkg::Sym{index}",
+                    name=f"Sym{index}",
+                    doc="A flibbertigibbet transport.",
+                )
+            )
+        results = store.search_symbols("flibbertigibbet", limit=2)
+    assert len(results) == 2
+
+
+def test_search_symbols_docstring_only_match_fts(
+    tmp_path: Path, make_symbol_node: NodeFactory
+) -> None:
+    """The FTS5 path (default, unchanged by this fix) already finds a
+    symbol via a docstring-only query."""
+    with SymbolStore(tmp_path / "store.db") as store:
+        store.upsert_node(
+            make_symbol_node(
+                qualified_name="pkg::Widget",
+                name="Widget",
+                doc="A flibbertigibbet transport.",
+            )
+        )
+        store.upsert_node(
+            make_symbol_node(qualified_name="pkg::Gadget", name="Gadget")
+        )
+        results = store.search_symbols("flibbertigibbet")
+    assert [node.name for node in results] == ["Widget"]
+
+
 def test_search_symbols_exact_match_ranks_first_fts(
     tmp_path: Path, make_symbol_node: NodeFactory
 ) -> None:
@@ -577,3 +668,33 @@ def test_corrupt_database_raises_and_releases_file(tmp_path: Path) -> None:
     with pytest.raises(sqlite3.DatabaseError):
         SymbolStore(db_path)
     db_path.unlink()
+
+
+def test_count_nodes_counts_only_the_named_package(
+    tmp_path: Path, make_symbol_node: NodeFactory
+) -> None:
+    """`count_nodes` counts a package's own nodes, never a neighbour's -
+    the refresh receipt's `symbols` field describes one walk."""
+    with SymbolStore(tmp_path / "store.db") as store:
+        store.upsert_node(
+            make_symbol_node(
+                qualified_name="pkg", kind=NodeKind.PACKAGE, name="pkg"
+            )
+        )
+        store.upsert_node(
+            make_symbol_node(qualified_name="pkg::Foo", name="Foo")
+        )
+        store.upsert_node(
+            make_symbol_node(
+                qualified_name="other::Bar", name="Bar", package="other"
+            )
+        )
+        assert store.count_nodes("pkg") == 2
+        assert store.count_nodes("other") == 1
+
+
+def test_count_nodes_unbuilt_package_is_zero(tmp_path: Path) -> None:
+    """A package holding no graph counts zero rather than raising - a
+    failed rebuild leaves the package unindexed, not absent."""
+    with SymbolStore(tmp_path / "store.db") as store:
+        assert store.count_nodes("never_built") == 0

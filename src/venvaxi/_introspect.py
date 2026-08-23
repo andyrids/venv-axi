@@ -46,6 +46,16 @@ logger = logging.getLogger(__package__)
 DEFAULT_TRUNCATE_LIMIT = 200
 DEFAULT_MAX_DEPTH = 2
 
+DEFAULT_API_ROW_LIMIT = 20
+"""The default row bound on a public API listing.
+
+NOTE: Distinct from `DEFAULT_TRUNCATE_LIMIT`, which bounds *characters*
+within one docstring. This one bounds *rows*, and is the same 20 `find`
+carries, so one number covers both collection commands
+(`specs/commands/show.md`; `specs/behaviors/output-contract.md`,
+Bounded collections).
+"""
+
 CLI_ESCAPE_HATCH = "use --docstring to see complete body"
 """Truncation escape-hatch clause, spelled for the CLI surface.
 
@@ -97,6 +107,51 @@ class SymbolInfo:
 
 SYMBOL_INFO_FIELDS = tuple(field.name for field in fields(SymbolInfo))
 """The ordered `SymbolInfo` field names, forming TOON tabular headers."""
+
+
+@dataclass(frozen=True, slots=True)
+class PublicAPI:
+    """A bounded public API listing, with the bound it was cut to.
+
+    NOTE: The bound travels back with the rows so that capped-ness is
+    derived in exactly one place. Returning the row list alone loses
+    the fact entirely, and recomputing `len(symbols) == max_rows` at
+    each call site duplicates the rule the capped-count hint depends
+    on, which is how two surfaces over one graph start disagreeing
+    about whether an answer was complete
+    (`specs/behaviors/output-contract.md`, Bounded collections).
+    """
+
+    symbols: list[SymbolInfo]
+    max_rows: int
+
+    @property
+    def capped(self) -> bool:
+        """Whether the row bound cut the listing short.
+
+        NOTE: A count equal to the active bound means *at least* that
+        many, never exactly - which is what the capped-count hint
+        exists to say. A bound of `0` is capped by the same rule: the
+        listing is empty because the bound said so, not because the
+        package declares no public API.
+        """
+        return len(self.symbols) == self.max_rows
+
+
+@dataclass(frozen=True, slots=True)
+class RefreshReceipt:
+    """A record of one completed symbol-graph rebuild.
+
+    NOTE: Named fields rather than a bare tuple, following `PublicAPI` -
+    the three values are all short scalars about the same walk, and a
+    positional triple leaves each call site free to unpack `depth` and
+    `symbols` the wrong way round without the type checker noticing
+    (`specs/mcp/tools.md`, The rebuild receipt).
+    """
+
+    package: str
+    depth: int
+    symbols: int
 
 
 def truncate(
@@ -178,12 +233,50 @@ def _own_doc(obj: Any) -> str:
     return inspect.cleandoc(doc) if isinstance(doc, str) else ""
 
 
+def _is_stdlib_type(tp: type) -> bool:
+    """Test whether a type is defined in the standard library.
+
+    NOTE: The discriminator here is the standard library, not the
+    exporting *package* - issue #82 records two package-keyed
+    candidates and both fail. `type(obj).__module__ == "builtins"` is
+    too narrow: it leaks `NewType`'s own docstring onto a type alias
+    whose type actually lives in `typing`. A package-root allowlist
+    (does the type's module start with the package's own import root)
+    is too strict: it blanks `pytest.fail`, whose type `_Fail` lives
+    in `_pytest.outcomes`, never under `pytest.` itself. Keying on
+    `sys.stdlib_module_names` instead separates every documented case
+    (`pytest.fail`, `pytest.version_tuple`, `fastmcp.settings`, a
+    `NewType` alias) - do not "simplify" this back to either
+    alternative; both are counter-examples on file.
+
+    Args:
+        tp: The type to test.
+
+    Returns:
+        Whether `tp`'s defining module's top-level component names a
+        standard-library module. `False` for a missing or empty
+        `__module__` - the safer direction, since a wrongly-kept
+        docstring is visible and a wrongly-blanked one is not.
+    """
+    module = getattr(tp, "__module__", None)
+    if not module:
+        return False
+    return module.split(".", 1)[0] in sys.stdlib_module_names
+
+
 def _doc_of(obj: Any, kind: NodeKind) -> str:
     """Extract an object's own docstring.
 
     NOTE: An instance's `__doc__` *is* its type's, so a module-level
     `dict`/`str` constant would otherwise be recorded carrying the
     builtin's docstring as its own - hence the `ATTRIBUTE` comparison.
+    That comparison alone is too blunt though: a package that ships a
+    class solely to instantiate it once as a public export
+    (`pytest.fail`, an instance of `_pytest.outcomes._Fail`) documents
+    the export *on that class*, and blanking it would report `(no
+    docstring)` for a symbol whose documentation the graph already
+    holds. `_is_stdlib_type` decides which case applies - a type's
+    docstring is kept unless the type itself is standard-library.
 
     Args:
         obj: The object to document.
@@ -195,7 +288,10 @@ def _doc_of(obj: Any, kind: NodeKind) -> str:
     doc = _own_doc(obj)
     if kind is not NodeKind.ATTRIBUTE:
         return doc
-    return "" if doc == _own_doc(type(obj)) else doc
+    type_doc = _own_doc(type(obj))
+    if doc != type_doc:
+        return doc
+    return "" if _is_stdlib_type(type(obj)) else doc
 
 
 def _resolve_import_name(name: str) -> str:
@@ -898,6 +994,38 @@ def get_module_tree(
         return store.get_module_tree(resolved, max_depth)
 
 
+def _ensure_non_negative_limit(limit: int) -> None:
+    """Reject a negative row bound before any work is done.
+
+    NOTE: A negative limit is the absence of a bound, not a smaller one
+    - it reaches SQLite's `LIMIT ?` unbounded, and slices a sorted
+    listing from the wrong end, so the caller is handed the whole graph
+    under the very argument that exists to prevent that, with the cap
+    hint unable to fire because a count never equals a negative limit.
+    Rejected, not clamped: clamping to the default answers a question
+    the caller never asked, indistinguishably from theirs (#73, #67;
+    `specs/behaviors/output-contract.md`, Bounded collections).
+
+    NOTE: One rejection site, shared by every bounded collection, so
+    both surfaces inherit it before any store is opened or graph built
+    and a bad argument costs nothing. The message names neither
+    `--limit` nor `limit=`, and calls the value a *result* limit rather
+    than a *search* one - the path is shared by `find` and
+    `show --api`, and only one of those is a search, so the wording has
+    to be true of every command that reaches it as well as of both
+    surfaces (`specs/mcp/tools.md`, Error message wording).
+
+    Args:
+        limit: The caller-supplied bound on returned rows.
+
+    Raises:
+        InvalidArgumentError: On `limit` being negative.
+    """
+    if limit < 0:
+        msg = f"Result limit `{limit}` must not be negative"
+        raise InvalidArgumentError(msg)
+
+
 def find_symbol(
     query: str,
     limit: int = 20,
@@ -935,25 +1063,18 @@ def find_symbol(
         msg = "Search query must be non-empty"
         raise InvalidArgumentError(msg)
 
-    if limit < 0:
-        # NOTE: A negative limit is the absence of a bound, not a
-        # smaller one - it reaches SQLite's `LIMIT ?` unbounded and
-        # returns the whole graph under the flag that exists to prevent
-        # that, with the #69 cap hint unable to fire because a count
-        # never equals a negative limit. Rejected, not clamped, and
-        # rejected here so both surfaces and both search paths inherit
-        # it before any store is opened (#73;
-        # `specs/commands/find.md`, Bounded results). The message names
-        # neither `--limit` nor `limit=` - it is raised on the shared
-        # path (`specs/mcp/tools.md`, Error message wording).
-        msg = f"Search limit `{limit}` must not be negative"
-        raise InvalidArgumentError(msg)
+    _ensure_non_negative_limit(limit)
 
     if package is None:
         if refresh:
-            msg = (
-                "`--refresh` requires `--package` to name the graph to rebuild"
-            )
+            # NOTE: Names the missing package scope, not the flags that
+            # spell it on the CLI - the guard sits on the path both
+            # surfaces share, and `--refresh`/`--package` name nothing
+            # a tool caller can set (`specs/mcp/tools.md`, Error
+            # message wording). The guard stays here rather than at the
+            # CLI boundary, or an internal caller's unscoped refresh is
+            # silently ignored.
+            msg = "A rebuild must name the package to rebuild"
             raise InvalidArgumentError(msg)
         with SymbolStore(get_cache_db_path(get_project_root())) as store:
             return store.search_symbols(query, limit)
@@ -968,10 +1089,11 @@ def get_public_api(
     *,
     docstring: bool = False,
     limit: int = DEFAULT_TRUNCATE_LIMIT,
+    max_rows: int = DEFAULT_API_ROW_LIMIT,
     escape_hatch: str = CLI_ESCAPE_HATCH,
     refresh: bool = False,
-) -> list[SymbolInfo]:
-    """Extract top-level public functions & classes from a package.
+) -> PublicAPI:
+    """Extract top-level public symbols from a package.
 
     NOTE: Compatibility shim over the `SymbolStore` introspection engine.
 
@@ -980,27 +1102,45 @@ def get_public_api(
     `DEFAULT_MAX_DEPTH` must not answer from whatever depth the cache
     happens to hold. See `specs/behaviors/cache-refresh.md` (Validity).
 
+    NOTE: Two bounds, deliberately named apart. `limit` is a
+    *character* count applied inside one docstring; `max_rows` is a
+    *row* count applied to the listing. Wiring one to the other would
+    silently trade a package's public surface for its prose width
+    (`specs/commands/show.md`; `specs/behaviors/output-contract.md`,
+    Truncation and Bounded collections).
+
+    NOTE: `MODULE`/`PACKAGE` children are excluded, every other kind is
+    reported - `_walk_submodules` records a package's submodules under
+    the same `CONTAINS` edge kind as `_record_symbol` records its
+    symbols, so an unfiltered listing would answer 'every child of this
+    module' rather than 'this package's public API' (#82; nested module
+    structure is `tree`'s job, per `specs/commands/show.md`, Out of
+    scope).
+
     Args:
         name: The package (distribution) name, or a dotted module path.
         docstring: Return complete docstrings instead of the truncated
             first line.
-        limit: The docstring truncation limit.
+        limit: The per-docstring character truncation limit.
+        max_rows: The maximum number of symbol rows returned. Defaults
+            to 20.
         escape_hatch: The size hint's escape-hatch clause, spelled for
             the caller's surface. Defaults to the CLI spelling.
         refresh: Rebuild the cached graph first.
 
     Raises:
         InvalidArgumentError: On `name` not being a possible package
-            name.
+            name, or a negative `max_rows`.
         PackageNotFoundError: On `name` not being installed in the active
             venv.
         PackageImportError: On resolved module import error.
 
     Returns:
-        Public top-level symbols, with their kind, signature and
-        docstring.
+        The bounded public top-level symbols, with their kind,
+        signature and docstring, alongside the bound applied.
     """
     _ensure_valid_name(name, name)
+    _ensure_non_negative_limit(max_rows)
 
     # NOTE: `_resolve_qualified_name`, not `_resolve_import_name` - the
     # store is keyed by root-resolved import names, and whole-argument
@@ -1028,21 +1168,70 @@ def get_public_api(
     ) as store:
         children = store.get_children(resolved)
 
-    symbols: list[SymbolInfo] = []
-    for node in children:
-        if node.kind not in (NodeKind.CLASS, NodeKind.FUNCTION):
-            continue
-        symbols.append(
-            SymbolInfo(
-                name=node.name,
-                kind=str(node.kind),
-                signature=node.signature,
-                doc=summarize_doc(
-                    node.doc,
-                    docstring=docstring,
-                    limit=limit,
-                    escape_hatch=escape_hatch,
-                ),
-            )
+    symbols = [
+        SymbolInfo(
+            name=node.name,
+            kind=str(node.kind),
+            signature=node.signature,
+            doc=summarize_doc(
+                node.doc,
+                docstring=docstring,
+                limit=limit,
+                escape_hatch=escape_hatch,
+            ),
         )
-    return sorted(symbols, key=lambda symbol: symbol.name)
+        for node in children
+        if node.kind not in (NodeKind.MODULE, NodeKind.PACKAGE)
+    ]
+    # NOTE: Bounded *after* the sort, so the rows returned are the
+    # first N of the declared order rather than an arbitrary N of it -
+    # a bound over an unsorted listing makes the answer depend on walk
+    # order (`specs/behaviors/output-contract.md`, Bounded
+    # collections).
+    ordered = sorted(symbols, key=lambda symbol: symbol.name)
+    return PublicAPI(symbols=ordered[:max_rows], max_rows=max_rows)
+
+
+def refresh_package_graph(name: str) -> RefreshReceipt:
+    """Rebuild one package's cached symbol graph and report the walk.
+
+    NOTE: No `max_depth` parameter, deliberately. A rebuild request
+    carries no query to derive a depth from, so it walks to the default
+    build depth and resets the recorded depth with it
+    (`specs/behaviors/cache-refresh.md`, Rebuild scope and depth).
+    Deriving a depth from whatever the graph previously held would make
+    a refresh's cost depend on query history.
+
+    NOTE: Validation and resolution are `_build_store_for`'s, not
+    reimplemented here - every failure mode this raises is one that
+    path already raises, which is why there is no error handling of its
+    own.
+
+    NOTE: The receipt is read inside the store the rebuild returned, so
+    it describes that walk rather than whatever the cache file holds by
+    the time a second connection opens.
+
+    Args:
+        name: The package to rebuild. Accepts a distribution name or a
+            bare|dotted|qualified name; the top-level root is what is
+            rebuilt.
+
+    Raises:
+        InvalidArgumentError: On the top-level root of `name` not being
+            a possible package name.
+        PackageNotFoundError: On the resolved package not being
+            installed in the active venv.
+        PackageImportError: On resolved module import error.
+        ProjectRootNotFoundError: On no project root resolving.
+        StoreError: On a SQLite-level failure during the rebuild.
+
+    Returns:
+        The resolved import name the graph is keyed by, the build depth
+        recorded for it, and the number of symbol nodes recorded.
+    """
+    import_name = _resolve_import_name(_top_level_root(name))
+    with _build_store_for(name, refresh=True) as store:
+        build = store.get_build(import_name)
+        depth = DEFAULT_MAX_DEPTH if build is None else build[1]
+        symbols = store.count_nodes(import_name)
+    return RefreshReceipt(package=import_name, depth=depth, symbols=symbols)

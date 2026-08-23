@@ -9,14 +9,16 @@ tags: [mcp, tools, parity]
 
 The MCP surface exposed by `venvaxi serve`, under server name `VenvAXI`.
 
-This file consolidates all nine tools as a deliberate exception to the one-file-per-unit rule in
+This file consolidates all ten tools as a deliberate exception to the one-file-per-unit rule in
 `ICM/_config/reference-standard-spec.md`. Eight of them mirror a CLI command whose behaviour is
 already specified in `specs/commands/`; splitting this file that many ways would duplicate those
 specs as many times over, which the same standard warns against.
 
-`describeBindingTool` is the exception to the exception: it mirrors no CLI command, so its full
-contract lives here rather than in `specs/commands/`. That is itself a divergence, and it is
-enumerated below with the others.
+Two are exceptions to the exception, and both declare their behaviour here in full rather than in
+`specs/commands/`. `describeBindingTool` mirrors no CLI command at all.
+`refreshPackageGraphTool` mirrors a CLI **flag** rather than a command - `--refresh` is a modifier
+five commands accept, and there is no `venvaxi refresh` for it to mirror. Both are divergences,
+and both are enumerated below with the others.
 
 ## Contract
 
@@ -57,12 +59,13 @@ shall catch `BaseException`, re-raising only `KeyboardInterrupt` and `SystemExit
 | `describeBindingTool` | none                                | none - see below          |
 | `listPackagesTool`    | `include_dev=False`                 | `list [--all]`            |
 | `showPackageTool`     | `name`                              | `show <package>`          |
-| `showPackageApiTool`  | `name`, `docstring=False`           | `show <package> --api`    |
+| `showPackageApiTool`  | `name`, `docstring=False`, `limit=20` | `show <package> --api`  |
 | `showModuleTool`      | `name`, `docstring=False`           | `inspect <module>`        |
 | `getSymbolTool`       | `qualified_name`, `docstring=False` | `inspect <symbol>`        |
 | `findSymbolTool`      | `query`, `limit=20`, `package=None` | `find <query>`            |
 | `getInheritorsTool`   | `qualified_name`                    | `inherits <name>`         |
 | `getModuleTreeTool`   | `name`, `max_depth=2`               | `tree <package>`          |
+| `refreshPackageGraphTool` | `name`                          | `--refresh` - see below   |
 
 ## The binding report
 
@@ -105,6 +108,35 @@ the home view makes, but not the same signal. A server registered by `setup` run
 interpreter, so `inactive` over MCP means the registered command names a base interpreter and the
 symbol answers are being drawn from an environment the project never installed into.
 
+### Cache summary
+
+When `root` resolves, `describeBindingTool` shall also report the state of this project's cached
+symbol graph, extending the object above with `schema_version`, `db_path` and `db_size_bytes`, then
+`count: <n>` and a `builds` table of `package`, `version`, `depth`, `symbols` - field for field the
+same shape [`venvaxi cache`](../commands/cache.md) reports, read the same way: directly, without
+opening the graph-build path that would rebuild a schema-mismatched cache as a side effect of
+inspecting it. See [`venvaxi cache`](../commands/cache.md#data-requirements) for what each field
+means and how the two empty states it shares with this tool - no cache built yet, and a cache
+built but empty - stay distinguishable. This tool alone carries a third state - the cache database
+could not be read at all - specified under [Failure modes](#failure-modes) below, since
+`venvaxi cache` answers that same trigger by raising rather than by reporting a state.
+
+This closes the gap [#49](https://github.com/andyrids/venv-axi/issues/49) raised: an MCP-only
+caller had no remedy and no diagnosis for a suspected-stale graph, because refresh reaches this
+surface only through [`refreshPackageGraphTool`](#the-refresh-tool), and nothing reported what the
+graph held before a rebuild was spent finding out. [Out of scope](#out-of-scope) below draws the
+line between the two.
+
+The `builds` table carries no row bound, for the same reason
+[`venvaxi cache`](../commands/cache.md#out-of-scope) does not: a project's cache holds one row per
+package a query has actually touched, which stays small in practice without needing a ceiling.
+
+When `count` is nonzero, the tool shall append a third hint naming
+[`refreshPackageGraphTool`](#the-refresh-tool) as the way to rebuild a package whose recorded build
+looks stale. This is additional to, not a replacement for, the two onboarding hints under
+[Outputs](#outputs) above. When `count` is zero, no third hint is added - both onboarding hints
+already name the way to populate a first entry.
+
 ### Failure modes
 
 This tool shall answer in a broken or uninitialized project, because a caller reaching for it has
@@ -121,15 +153,51 @@ That state is not exotic. It is close to diagnostic of an ephemeral or tool-venv
 the project root as its parent and resolves. The hint shall therefore name the registration as the
 thing to check, phrased for the MCP caller per [Hint wording](#hint-wording).
 
-The degrade is scoped to that trigger alone. If resolving the root raises anything other than a
-failure to find one, then the tool shall return the `Unexpected error:` block like any other tool.
-Widening the catch would convert a genuine fault - an unreadable or deleted working directory -
-into a confident report that the project simply does not exist.
+Without a resolved `root` there is no project to key a cache to, so the degrade shall omit the
+[cache summary](#cache-summary) entirely rather than reporting a marker for it - there is nothing
+truthful to say about a cache belonging to no project.
 
-**This tool degrades where the other eight raise**, for the identical unresolvable-root state. That
-is deliberate and MUST be preserved: for the other eight an unresolvable root means the answer
+If the cache database exists but cannot be read due to a SQLite-level failure, then the tool shall
+degrade the cache half of the object rather than raise. `root`, `venv` and `status` are emitted
+exactly as on a healthy read - they cost no file I/O into the cache and a cache fault is no reason
+to withhold them. `schema_version` shall be reported as `(cache unreadable)`. `db_path` and
+`db_size_bytes` shall still be reported: both are filesystem facts about the database file, not its
+contents, so they stay knowable when the contents cannot be read, and a caller wanting to delete
+the offending file needs the path regardless of why it could not be opened. `count` and the
+`builds` table shall be omitted entirely.
+
+The tool shall **not** report `count: 0` here. `count: 0` is the positive claim that the database
+opened cleanly and recorded no builds - the state [Cache summary](#cache-summary) already reserves
+for a real, empty database. Reusing it for 'could not be read at all' would collapse two different
+facts into one marker, which is the same
+[Principle 5](../principles.md#principle-5-definitive-empty-states) trap 'never built' and 'built
+but empty' are already kept apart from - a third state, 'could not ask', needs its own marker
+rather than borrowing either existing one.
+
+The tool shall append a third hint naming the reported `db_path` as safe to delete - it is
+disposable derived data, per [Cache and refresh](../behaviors/cache-refresh.md#cache-identity) -
+after which the next command that touches the cache creates a fresh one, the same bootstrap every
+project's first query already performs.
+
+[`venvaxi cache`](../commands/cache.md#failure-modes) makes the opposite choice on the identical
+trigger, deliberately: there the cache **is** the whole answer, so a read that cannot produce it
+fails honestly. Here the cache summary is only half the object - `root`, `venv` and `status` are
+the other half, and they are exactly what a caller already distrusting its binding needs most.
+Withholding them to match `venvaxi cache`'s raise would break the one promise this tool exists to
+keep: answering in a broken or uninitialized project.
+
+Each degrade is scoped to its own trigger, and neither absorbs a failure outside it. If resolving
+the root raises anything other than a failure to find one, then the tool shall return the
+`Unexpected error:` block like any other tool - widening that catch would convert a genuine fault,
+an unreadable or deleted working directory, into a confident report that the project simply does
+not exist. Likewise, once `root` resolves, only a SQLite-level failure reading the cache degrades
+the cache summary; any other exception raised while reading it still returns the
+`Unexpected error:` block.
+
+**This tool degrades where the other nine raise**, for the identical unresolvable-root state. That
+is deliberate and MUST be preserved: for the other nine an unresolvable root means the answer
 cannot be computed, and for this one it *is* the answer. Harmonizing the two would either silence
-the eight or break the one that has to work when nothing else does.
+the nine or break the one that has to work when nothing else does.
 
 ### The description is part of the contract
 
@@ -138,16 +206,130 @@ The registered tool description is the only channel that reaches an agent withou
 tool descriptions in context. The `describeBindingTool` description shall state that it identifies
 the project and venv the server answers from, and that it is the tool to call first.
 
+It shall also state that the report includes a summary of the cached symbol graph - schema
+version, on-disk size, and which packages are indexed at which built version and depth - so an
+agent holding a suspected-stale answer knows this is the tool that can confirm or rule it out
+without paying for a rebuild.
+
 A description that merely names the return shape wastes the one ambient slot this surface has, and
 leaves the tool discoverable only by an agent that already suspects the problem it exists to
 reveal.
+
+## The refresh tool
+
+`refreshPackageGraphTool` rebuilds one package's cached symbol graph, exactly as
+[Rebuild](../behaviors/cache-refresh.md#rebuild) specifies a rebuild. The package to rebuild is a
+required input, per
+[Rebuild scope and depth](../behaviors/cache-refresh.md#rebuild-scope-and-depth); there is no
+unscoped 'refresh everything' form on either surface.
+
+### Why the surface needs a rebuild
+
+The cache is invalidated by installed version plus build depth
+([Validity](../behaviors/cache-refresh.md#validity)), and an editable install edited in place
+moves neither. Every read tool then answers from the graph as last built, with no signal that it
+is stale.
+
+The failure is not confined to an outdated docstring. A symbol whose source file has been deleted
+outright is still served with a complete, plausible signature and docstring, and the search tools
+still count it - a fully-formed answer about something that no longer exists anywhere in the
+project. That is the drift
+[Report what a symbol is](../principles.md#report-what-a-symbol-is-not-how-to-use-it) exists to
+prevent, arriving through the cache instead of through recall, and an agent has nothing on this
+surface to distinguish it from a correct answer.
+
+Nothing in the server holds the cache open - each call opens and closes its own connection - so a
+rebuild started anywhere is visible to the next tool call, with no restart. The gap this tool
+closes is only that no tool could start one, while `venvaxi setup` registers this surface as the
+primary ambient integration and the agent is told to work through it.
+
+### The rebuild receipt
+
+The `refreshPackageGraphTool` shall emit a flat TOON object recording the rebuild it performed,
+followed by a `help[]` footer:
+
+- `package` - the resolved import name whose graph was rebuilt. It is not always the name the
+  caller supplied - a distribution name resolves to an import name - and the caller needs the
+  spelling the graph is keyed by to phrase its next query.
+- `depth` - the build depth this rebuild recorded, which is the depth the walk was permitted to
+  reach rather than the nesting it happened to find, so the depth reset in
+  [Rebuild scope and depth](../behaviors/cache-refresh.md#rebuild-scope-and-depth) is visible
+  rather than silent. It is the value later queries are tested against under
+  [Validity](../behaviors/cache-refresh.md#validity).
+- `symbols` - the number of symbol nodes this rebuild recorded, which is what distinguishes a
+  rebuild that produced a graph from one that walked almost nothing.
+
+The symbol count shall **not** be emitted as a leading `count:` line.
+[Aggregates](../behaviors/output-contract.md#aggregates) puts `count:` in front of a collection so
+a caller can decide whether to page or refine; this tool returns no collection, and a leading
+`count:` would promise rows that never arrive.
+
+Three clauses of the [output contract](../behaviors/output-contract.md) reach nothing here, which
+is a fact about this tool rather than an exemption from the contract:
+
+- **Definitive empty states.** There is no empty result to mark. A rebuild either completes and is
+  reported, or raises; the object is emitted on every completing call, so nothing is left silent.
+- **Truncation.** No docstring or free text is returned, so the 200-character limit reaches
+  nothing.
+- **Bounded collections.** There is no collection to bound, so this tool carries no row bound and
+  no capped-count hint.
+
+The footer shall name the tool that searches the rebuilt graph, carrying the package scope, so the
+caller's next step lands in the graph just rebuilt rather than across every indexed package - the
+scope-equivalence obligation in [Hint wording](#hint-wording).
+
+### Refresh failure modes
+
+This tool raises where `describeBindingTool` degrades, including for the identical
+unresolvable-root state: without a project root there is no cache to key, so the rebuild cannot be
+performed at all.
+
+- If no project root resolves, then the `refreshPackageGraphTool` shall return the TOON error
+  block.
+- If `name` is not a possible package name, then the `refreshPackageGraphTool` shall return the
+  TOON error block.
+- If `name` names a package not installed in the venv, then the `refreshPackageGraphTool` shall
+  return the TOON error block.
+- If the named package cannot be imported, then the `refreshPackageGraphTool` shall return the
+  TOON error block.
+- If a submodule raises at import time during the walk, then the rebuild shall skip that submodule
+  and complete, per
+  [Import boundaries](../behaviors/output-contract.md#import-boundaries). One unimportable
+  submodule is not a failed refresh.
+- If the rebuild raises after the package's existing nodes have been cleared, then the
+  `refreshPackageGraphTool` shall return the TOON error block and the package shall be left
+  unindexed rather than half-built, so the next query for it rebuilds. This is
+  [Rebuild](../behaviors/cache-refresh.md#rebuild) observed from this surface: a failed refresh
+  costs the cached graph, and that is the safe direction to fail in.
+- If a SQLite-level failure occurs during the rebuild, then the `refreshPackageGraphTool` shall
+  return the TOON error block.
+
+None of these carries a `help[N]:` footer. No error above leaves a next step this surface can name
+beyond what the message already says, and the
+[error shape](../behaviors/output-contract.md#error-shape) omits the footer entirely rather than
+padding it.
+
+### The refresh description is part of the contract
+
+The registered description carries the weight it does for
+[`describeBindingTool`](#the-description-is-part-of-the-contract), for a sharper reason. Staleness
+is silent, so an agent never forms the suspicion that would send it looking for this tool. A
+description that does not say when to call it will not be read at the moment it is worth anything.
+
+The `refreshPackageGraphTool` description shall state what it rebuilds, name the situation calling
+for it - source changed with no reinstall, which no other tool on this surface can detect - and
+mark it as a rebuild rather than a read.
+
+The last clause is not padding. A rebuild imports and walks a package's modules, and a description
+reading like a cheap precondition invites an agent to prefix every lookup with it - the cost the
+[refresh divergence](#divergences-from-the-cli) was withholding the capability to avoid.
 
 ## Divergences from the CLI
 
 These are deliberate and MUST be preserved:
 
-- **`describeBindingTool` mirrors no CLI command.** It is the only tool on this surface with no
-  entry in `specs/commands/`, and the only one whose behaviour is declared here in full. The
+- **`describeBindingTool` mirrors no CLI command.** It is the only tool on this surface with no CLI
+  counterpart of any shape - `refreshPackageGraphTool` at least mirrors a flag. The
   nearest CLI relative is the bare `venvaxi` [home view](../commands/home.md), and it is a relative
   rather than an equivalent: home reports `bin`, `venv` and `status` and deliberately never
   resolves the project root, while this tool reports `root` and omits `bin`. Neither surface is
@@ -155,8 +337,20 @@ These are deliberate and MUST be preserved:
   over MCP it names the `__main__.py` inside the venv already reported, so it restates `venv` less
   directly. `root` is the reverse - a CLI caller knows the directory they are standing in, and an
   MCP caller controls neither the spawn directory nor the interpreter.
-- **No `refresh` parameter on any tool.** MCP callers get cache-driven rebuilds only. Forcing a
-  rebuild is an explicit, potentially slow operation that belongs at the CLI.
+
+  The [cache summary](#cache-summary) [#49](https://github.com/andyrids/venv-axi/issues/49) added
+  is the one exception to 'no CLI counterpart of any shape' - it mirrors
+  [`venvaxi cache`](../commands/cache.md) field for field, even though `root`, `venv` and `status`
+  still has none. One tool now carries two different relationships to the CLI at once: a genuine
+  equivalent for the half describing the cache, and no equivalent at all for the half describing
+  the binding.
+- **No `refresh` parameter on any read tool.** The nine read tools answer from the cache and take
+  no `refresh` parameter; refresh reaches this surface only through the dedicated
+  [`refreshPackageGraphTool`](#the-refresh-tool). The reason the parameter was refused still
+  holds - forcing a rebuild is an explicit, potentially slow operation - and the dedicated tool is
+  what keeps it explicitly invoked. A `refresh` parameter on nine schemas makes a slow rebuild
+  reachable by setting a flag on a read, and it would then be set by whichever caller guessed it
+  should be; one named tool cannot be reached by accident.
 - **`inspect` is split into two tools.** The CLI dispatches on whether the argument contains
   `::`; MCP exposes `getSymbolTool` and `showModuleTool` separately, because a typed tool schema
   should not hide two different return shapes behind one parameter. The split's malformed-input
@@ -167,12 +361,22 @@ These are deliberate and MUST be preserved:
   `--fields` equivalent.
 
 Footer suppression under `docstring=true` is **not** on this list. `getSymbolTool`,
-`showPackageApiTool` and `showModuleTool` shall each omit the `help[]` footer when `docstring` is
-set, which is exactly what `inspect --docstring` and `show --api --docstring` do - parity, and
+`showPackageApiTool` and `showModuleTool` shall each suppress the `docstring` hint when
+`docstring` is set, and shall omit the `help[]` footer entirely where that leaves no hint to
+emit - which is exactly what `inspect --docstring` and `show --api --docstring` do - parity, and
 already required of both surfaces by the suppression rule in
 [Output contract](../behaviors/output-contract.md#contextual-disclosure). It was listed here once
 as a `getSymbolTool` divergence; it never was one, and listing parity as divergence is as
 misleading as omitting a real one.
+
+What is suppressed is **that hint, not the footer**. A hint naming a step the caller has not
+taken survives `docstring=true`: a capped `showPackageApiTool` result carries its bounded-results
+hint under
+[Bounded collections](../behaviors/output-contract.md#bounded-collections) whether or not
+docstrings were asked for, because the two answer different questions - one widens each row, the
+other lifts the bound on rows. Suppressing it would return twenty of a package's several hundred
+symbols with no signal that the answer was capped, which is the confidently-wrong truncated
+result the bound exists to prevent.
 
 ## Malformed qualified names
 
@@ -228,43 +432,70 @@ or the parameter that carried it. `--limit` names nothing a tool caller can set 
 names nothing a shell caller can type, so a message picking either one misdirects half its
 readers, and it misdirects them while they are already recovering from an error.
 
+The same obligation runs across **commands**, not only surfaces. A message on a path shared by
+more than one command shall name the input in a spelling true of every command that reaches it: a
+rejection raised by both `find` and `show --api` cannot call the value a *search* limit, because
+one of the two is not a search. This is the same rule, not a second one - when it was written
+there was a single bounded command, so its examples are all about surfaces.
+
 Hints keep the opposite rule, always spelled for the surface, per
 [Hint wording](#hint-wording): a hint names a next action, and a next action exists on one
 surface at a time, whereas a message names a fact about the input and that fact is the same on
 both. Where a message genuinely can only be phrased for one surface, it belongs at that
 surface's boundary rather than in the shared path.
 
-- If `findSymbolTool` is called with a negative `limit`, then it shall return the TOON error
-  block, carrying neither the CLI footer nor a CLI flag spelling. The rejection is `find`'s, per
-  [Bounded results](../commands/find.md#bounded-results); this surface inherits it, which is
-  parity rather than a divergence.
+- If `findSymbolTool` or `showPackageApiTool` is called with a negative `limit`, then it shall
+  return the TOON error block, carrying neither the CLI footer nor a CLI flag spelling. The
+  rejection is
+  [Bounded collections](../behaviors/output-contract.md#bounded-collections)'; this surface
+  inherits it, which is parity rather than a divergence.
+- If a rebuild is requested with no package to scope it, then the rejection message shall name the
+  missing package scope rather than the flags that spell it on the CLI. The rejection sits on the
+  path both surfaces share, and `--refresh` and `--package` name nothing a tool caller can set.
 
-### Known exception
+One rejection, written once on the shared path, is the point. Each surface that re-implements a
+bound is a place for the two to drift, and a bound written twice is a bound that will be raised
+once.
 
-One message on the shared path predates this rule and does not conform. `find_symbol` rejects
-`refresh` without `package` in the CLI's own flag spelling, naming `--refresh` and `--package`.
-No tool exposes `refresh` today - the absence is
-[#68](https://github.com/andyrids/venv-axi/issues/68) - so the message reaches no tool caller
-and the divergence is latent rather than live.
-
-It stops being latent the moment a refresh parameter reaches this surface. Whichever change adds
-one shall bring that message into conformance with this rule in the same move, rather than
-shipping a reachable message that contradicts it.
+Moving the unscoped-rebuild rejection to the CLI boundary would also satisfy this section's
+one-surface escape hatch, and is deliberately not taken. The guard on the shared path is what
+stops a rebuild request carrying no scope from being silently ignored, and a guard existing at one
+surface only is a guard the other surface does not have.
 
 ## Out of scope
 
 - **MCP resources and prompts** - the surface is tools only; no resource or prompt is served.
   No future spec is planned.
-- **Mutating and lifecycle tools** - the nine tools cover the query surface; `setup` and
-  `serve` remain CLI-only. Never - an MCP tool that mutates the consuming repo would run without
-  the explicit invocation
+- **Repo-mutating and lifecycle tools** - `setup` and `serve` remain CLI-only. Never - an MCP tool
+  that mutates the consuming repo would run without the explicit invocation
   [principle 7, ambient context](../principles.md#principle-7-ambient-context) requires.
-- **Cache state** - `describeBindingTool` reports which project and venv the server is bound to,
-  never what the symbol graph currently holds. Built version and built depth are a separate
-  question with a separate failure mode - a correct binding serving a stale graph - and
-  [#49](https://github.com/andyrids/venv-axi/issues/49) owns it. Where it lands is this tool: the
-  binding report is the natural home for a cache summary, and a future spec adding one extends
-  this contract rather than replacing it.
+  [`refreshPackageGraphTool`](#the-refresh-tool) is not an exception to this Never, and the
+  distinction has to be stated or it lands looking like one. What it mutates is the symbol cache:
+  disposable derived data, living outside the consuming repo, safe to delete at any moment and
+  rebuilt by the next query that needs it
+  ([Cache and refresh](../behaviors/cache-refresh.md#cache-identity)). The rebuild is idempotent,
+  as [Non-interactive](../behaviors/output-contract.md#non-interactive) requires of any mutation,
+  and it writes nothing the project owns. Principle 7 guards against a tool changing the caller's
+  work without the caller choosing it; a rebuilt cache changes only how current the same answer
+  is.
+- **A staleness signal on every read answer.** [#49](https://github.com/andyrids/venv-axi/issues/49)
+  settled where a cache summary lands: `describeBindingTool`'s [Cache summary](#cache-summary),
+  reporting schema version, on-disk size, and each indexed package's built version, depth and
+  symbol count - the diagnostic gap the issue raised, closed without adding an eleventh tool. What
+  stays out of scope is the wider question: no *other* tool's read answer carries an inline
+  staleness annotation of its own. The cache summary is checked separately, on the one tool built
+  for it, rather than folded into every symbol answer - which would put the same fact in ten
+  places instead of one.
+  [`refreshPackageGraphTool`](#the-refresh-tool) answers neither question, and the line between it
+  and the cache summary is drawn deliberately because it is thin. It reports the outcome of a
+  rebuild it has just performed, for the one package it was given; it is silent about every other
+  package, and it reports nothing at all unless a rebuild was asked for. 'What does the graph
+  currently hold?' is a question a caller must be able to ask without mutating anything, and
+  answering it by rebuilding is the most expensive possible reading of it. That the refresh receipt
+  names a depth and a symbol count does not make it a cache summary - those are facts about the
+  walk that just ran, not about the graph as the caller found it before asking.
+- **Cache eviction** - not this tool's job. See
+  [Cache and refresh](../behaviors/cache-refresh.md#out-of-scope) Out of scope.
 
 ## Principles
 

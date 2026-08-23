@@ -167,6 +167,32 @@ def _try_resolve_package(name: str) -> PackageInfo | None:
         return None
 
 
+def installed_count() -> int:
+    """Count distinct distribution names installed in the active venv.
+
+    NOTE: Reads `importlib.metadata.distributions()` fresh on every
+    call, deliberately uncached - the same read `resolve_package`
+    already performs per call, and caching this one would break that
+    uniform "read fresh" pattern across `_packages.py` (techspec
+    `installed-package-visibility`, (4) implementation directives).
+    Carries no filtering by role: every distribution the import system
+    reports counts, because every one resolves through the identical
+    `metadata.distribution(name)` lookup `resolve_package` performs
+    (`specs/commands/list.md`, Data requirements).
+
+    Returns:
+        The number of distinct distribution names, deduplicated by the
+        lower-cased name (mirroring `_requirement_name`'s
+        normalization) - `importlib.metadata.distributions()` can
+        yield more entries than distinct names.
+    """
+    names = {
+        dist.metadata.get("Name", "").lower()
+        for dist in metadata.distributions()
+    }
+    return len(names)
+
+
 def list_packages(
     root: Path, *, include_dev: bool = False
 ) -> list[PackageInfo]:

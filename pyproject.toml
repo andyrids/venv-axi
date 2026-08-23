@@ -29,7 +29,9 @@ mcp = ["fastmcp>=0.1.0"]
 dev = [
     "coverage>=7.14.1",
     "fastmcp>=0.1.0",
+    "numpy",
     "pkgdx",
+    "polars",
     "pytest>=9.1.1",
 ]
 
@@ -69,10 +71,13 @@ exclude = [
 ]
 
 [tool.pytest.ini_options]
-addopts = ["--import-mode=importlib"]
+addopts = ["--import-mode=importlib", "-m", "not conformance"]
 log_cli = true
 log_cli_level = "INFO"
 tmp_path_retention_policy = "failed"
+markers = [
+    "conformance: real-dependency conformance tier (opt-in, -m conformance)",
+]
 
 # NOTE: `pkgdx` is not on PyPI - it ships to a GitLab project package
 # registry, which is publicly readable (no auth required).

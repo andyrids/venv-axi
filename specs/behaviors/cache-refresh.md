@@ -14,8 +14,13 @@ never by file hash or incremental parse.
 
 ## Applies to
 
-`show --api`, `find`, `tree`, `inspect`, `inherits` - every command accepting `--refresh`.
+`show --api`, `find`, `tree`, `inspect`, `inherits` - every command accepting `--refresh` - and
+`refreshPackageGraphTool`, the MCP tool that performs a rebuild with no query attached
+([MCP tools](../mcp/tools.md#the-refresh-tool)).
 `list` and `show` (metadata) read installed distribution metadata directly and are not cached.
+[`cache`](../commands/cache.md) and `describeBindingTool`'s cache summary
+([MCP tools](../mcp/tools.md#cache-summary)) read the store's recorded build state and schema
+version directly, without invoking the path above, and therefore never rebuild.
 
 ## Details
 
@@ -73,6 +78,33 @@ half-built graph behind that would then be treated as valid.
 If a build raises, then the store shall roll back, close, and re-raise. If a SQLite-level failure
 occurs, then it shall be re-raised as `StoreError`.
 
+The clearing happens first and survives the failure, so a build that raises leaves the package
+**unindexed** rather than stale. Under [Validity](#validity) it has no recorded build, so the next
+query for it rebuilds. A failed refresh therefore costs the cached graph, which is the safe
+direction to fail in: an absent graph is rebuilt on demand, and a half-built one would be served.
+
+### Rebuild scope and depth
+
+A rebuild request carrying no query has nothing to derive its scope or its depth from, so both
+come from the request itself.
+
+- A rebuild request naming no package shall be rejected. There is no 'rebuild everything' form:
+  the graph is keyed by package, and a request naming none names no graph.
+- Where a rebuild request carries no query to derive a depth from, the rebuild shall walk to the
+  default build depth.
+
+The second has a consequence worth stating, because it is observable and reads like a regression.
+A graph previously built deeper - by a `tree` request at a greater depth, or by a query naming a
+module below the default - is **narrowed** by such a rebuild, and its recorded depth is reset with
+it. Most of that repairs itself: under [Validity](#validity) the next query requiring more depth
+finds the recorded depth insufficient and rebuilds to what it needs.
+
+[`inherits`](../commands/inherits.md) is the one that does not repair itself, because it requests
+only the depth its own name implies rather than the depth the graph last held. A subclass homed
+below the default depth becomes invisible again until some query builds that deep - the
+[lazy-depth model](#lazy-depth-model) running backwards. That is why an `inherits` answer can
+shrink as well as grow, and it is the price of a rebuild request that is scope-only by design.
+
 ### Lazy-depth model
 
 The graph grows as queries demand depth; it is not exhaustively built up front. This has a
@@ -83,20 +115,42 @@ insufficient depth.
 
 ### When a rebuild is needed
 
-After changing installed dependencies, the version check catches it automatically. `--refresh` is
-for the cases the version check cannot see - a reinstall at the same version, an editable install
-whose source changed, or a suspected corrupt graph.
+After changing installed dependencies, the version check catches it automatically. An explicit
+rebuild is for the cases the version check cannot see - a reinstall at the same version, an
+editable install whose source changed, or a suspected corrupt graph.
 
-`find` requires `--package` alongside `--refresh`, because there is no package scope to rebuild
-otherwise.
+The editable-install case is the common one, not a corner. The recorded version is the frozen
+`Version` field of the installed distribution's metadata, so it does not move when source is
+edited in place; only a reinstall moves it, and a dynamic version derived from VCS at build time
+is no exception, because the value in the metadata was frozen at that build. For an ordinary
+edit-and-verify loop against an editable-installed project, version-based invalidation never
+fires at all, and an explicit rebuild is the only thing that will.
+
+Every rebuild request names the package to rebuild, per
+[Rebuild scope and depth](#rebuild-scope-and-depth). Most commands take that from the query they
+are already answering; `find` requires `--package` alongside `--refresh` because a search has no
+package scope of its own, and the MCP refresh tool takes the package as a required input for the
+same reason.
 
 ## Out of scope
 
 - **File-hash and incremental invalidation** - the Rule rejects them by name. Never - caches are
   disposable derived data, and version-plus-depth is the whole contract; a file-watching scheme
   would buy precision the disposable model does not need.
-- **Cache eviction** - no size cap or LRU policy. No future spec is planned; the databases are
-  small, per-project, and safe to delete.
+- **Cache eviction** - no size cap or LRU policy. No future spec is planned. The databases are not
+  reliably small - a single three-dependency project's cache has been measured at 102 MiB
+  ([#49](https://github.com/andyrids/venv-axi/issues/49), second comment) - but they remain
+  per-project and safe to delete regardless of size. Growth is unbounded in two directions this
+  spec does not bound: per project root, with nothing pruning a root that no longer exists, and per
+  package within one cache, with nothing evicting a package no longer installed.
+  [`cache`](../commands/cache.md) and `describeBindingTool`'s cache summary make both directions
+  observable; neither bounds them.
+- **A staleness signal carried by a read answer** - no command or tool annotates its answer with
+  how current the graph behind it is. [#49](https://github.com/andyrids/venv-axi/issues/49) settled
+  the narrower question - `describeBindingTool` now carries a cache summary, per
+  [MCP tools](../mcp/tools.md#cache-summary) - but a signal folded into every *other* read answer
+  is a wider question this spec still does not answer. An explicit rebuild, checked against the
+  cache summary beforehand, is the remedy this spec provides.
 
 ## Principles
 

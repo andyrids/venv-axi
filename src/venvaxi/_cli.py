@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from venvaxi._ambient import mcp_available, setup_ambient_context
+from venvaxi._cache import read_cache_state
 from venvaxi._core import (
     CLIContext,
     ExitCode,
@@ -16,6 +17,7 @@ from venvaxi._core import (
     get_project_root,
 )
 from venvaxi._introspect import (
+    DEFAULT_API_ROW_LIMIT,
     SYMBOL_INFO_FIELDS,
     find_symbol,
     get_inheritors,
@@ -27,6 +29,7 @@ from venvaxi._introspect import (
 )
 from venvaxi._packages import (
     PACKAGE_INFO_FIELDS,
+    installed_count,
     list_packages,
     resolve_package,
 )
@@ -117,6 +120,7 @@ def command_home(_: CLIContext) -> int:
                 "Run `venvaxi tree <package>` for a nested module tree",
                 "Run `venvaxi inspect <qualified_name>` for symbol detail",
                 "Run `venvaxi inherits <qualified_name>` for subclasses",
+                "Run `venvaxi cache` for this project's cache state",
                 "Run `venvaxi serve` to start the MCP server over stdio",
                 "Run `venvaxi setup` to install ambient context",
             ]
@@ -137,6 +141,12 @@ def command_list(ctx: CLIContext) -> int:
     root = get_project_root()
     packages = list_packages(root, include_dev=ctx.args.all)
     fields = _parse_fields(ctx.args.fields)
+    declared = len(packages)
+    # NOTE: `installed` is a second, pre-computed aggregate alongside
+    # `count:` - independent of `--all`/`--fields` and of the
+    # empty-branch hint logic below, which stays untouched
+    # (`specs/commands/list.md`, Installed-package visibility).
+    installed = installed_count()
 
     if not packages:
         # NOTE: An empty `list --all` is definitive - no broader query
@@ -149,13 +159,19 @@ def command_list(ctx: CLIContext) -> int:
         )
 
         _emit("count: 0")
+        # NOTE: Suppressed when declared equals installed (0 == 0) -
+        # never emitted as zero, never emitted with a marker.
+        if installed != declared:
+            _emit(f"installed: {installed}")
         _emit(format_help([help_txt]))
         return ExitCode.EX_OK
 
     rows = [asdict(package) for package in packages]
 
-    _emit(f"count: {len(packages)}")
+    _emit(f"count: {declared}")
     _emit(encode_table("packages", rows, fields))
+    if installed != declared:
+        _emit(f"installed: {installed}")
     _emit(format_help(["Run `venvaxi show <package>` for package info"]))
     return ExitCode.EX_OK
 
@@ -169,17 +185,33 @@ def _command_show_api(ctx: CLIContext) -> int:
     Returns:
         The process exit code.
     """
-    symbols = get_public_api(
+    result = get_public_api(
         ctx.args.package,
         docstring=ctx.args.docstring,
+        max_rows=ctx.args.limit,
         refresh=ctx.args.refresh,
     )
+    symbols = result.symbols
+    # NOTE: Spelled here rather than in `get_public_api` - a hint names
+    # a next action, and a next action exists on one surface at a time,
+    # so a single spelling reaching both would teach one of them an
+    # invocation it cannot make (`specs/mcp/tools.md`, Hint wording).
+    capped_hint = (
+        f"Results capped at --limit {ctx.args.limit}"
+        " - re-run with a higher --limit to see more"
+    )
     if not symbols:
+        # NOTE: An empty listing under a bound of `0` is capped, not
+        # empty - the package's surface is unknown rather than absent,
+        # so `tree` is not the next step
+        # (`specs/behaviors/output-contract.md`, Bounded collections).
         _emit("count: 0")
         _emit(
             format_help(
                 [
-                    (
+                    capped_hint
+                    if result.capped
+                    else (
                         f"Run `venvaxi tree {ctx.args.package}`"
                         " for the nested module tree"
                     )
@@ -192,17 +224,21 @@ def _command_show_api(ctx: CLIContext) -> int:
     _emit(f"count: {len(symbols)}")
     _emit(encode_table("symbols", rows, SYMBOL_INFO_FIELDS))
 
-    if not ctx.args.docstring:
-        _emit(
-            format_help(
-                [
-                    (
-                        f"Run `venvaxi show {ctx.args.package} "
-                        "--api --docstring` for complete docstrings"
-                    )
-                ]
-            )
+    hints: list[str] = []
+    if result.capped:
+        # NOTE: A count equal to the bound means 'at least', not
+        # 'exactly'. `--docstring` is deliberately not offered here: it
+        # widens each row rather than lifting the row bound, and over
+        # MCP it is the exact call the token-limit guard refuses (#67;
+        # `specs/commands/show.md`, Outputs).
+        hints.append(capped_hint)
+    elif not ctx.args.docstring:
+        hints.append(
+            f"Run `venvaxi show {ctx.args.package} "
+            "--api --docstring` for complete docstrings"
         )
+    if hints:
+        _emit(format_help(hints))
     return ExitCode.EX_OK
 
 
@@ -479,6 +515,71 @@ def command_inspect(ctx: CLIContext) -> int:
     return ExitCode.EX_OK
 
 
+def command_cache(ctx: CLIContext) -> int:
+    """Show this project's cache state without changing it.
+
+    NOTE: `read_cache_state` opens SQLite read-only, directly on the
+    cache database, so a stale recorded schema version is reported as
+    a fact, never corrected by the act of asking about it
+    (`specs/commands/cache.md`, Local principle).
+
+    Args:
+        ctx: The CLI context.
+
+    Returns:
+        The process exit code.
+    """
+    root = get_project_root()
+    state = read_cache_state(root)
+
+    fields = {
+        "schema_version": (
+            "(not built)"
+            if state.schema_version is None
+            else state.schema_version
+        ),
+        "db_path": format_path(state.db_path),
+        "db_size_bytes": state.db_size_bytes,
+    }
+    _emit(encode_object(fields))
+
+    if not state.builds:
+        # NOTE: Two situations both report no builds - never built, and
+        # built but empty - kept apart by `schema_version` alone; both
+        # carry the identical next step (`specs/commands/cache.md`).
+        _emit("count: 0")
+        _emit(
+            format_help(
+                [
+                    (
+                        "Run `venvaxi show <package> --api` to index a"
+                        " package into this project's cache"
+                    )
+                ]
+            )
+        )
+        return ExitCode.EX_OK
+
+    rows = [asdict(build) for build in state.builds]
+    _emit(f"count: {len(state.builds)}")
+    _emit(
+        encode_table(
+            "builds", rows, ["package", "version", "depth", "symbols"]
+        )
+    )
+    _emit(
+        format_help(
+            [
+                (
+                    "Run `venvaxi show <package> --api --refresh` to"
+                    " rebuild a package whose recorded build looks stale"
+                )
+            ]
+        )
+    )
+    return ExitCode.EX_OK
+
+
 def command_serve(_: CLIContext) -> int:
     """Serve a dedicated AXI MCP server over STDIO.
 
@@ -572,6 +673,12 @@ def add_subparser(subparsers: "argparse._SubParsersAction[Any]") -> None:
         action="store_true",
         help="Show complete docstrings (with --api)",
     )
+    parser_show.add_argument(
+        "--limit",
+        type=int,
+        default=DEFAULT_API_ROW_LIMIT,
+        help="Maximum number of symbol rows (with --api)",
+    )
     _add_refresh_argument(parser_show)
     parser_show.set_defaults(func=command_show)
 
@@ -644,6 +751,12 @@ def add_subparser(subparsers: "argparse._SubParsersAction[Any]") -> None:
     )
     _add_refresh_argument(parser_inherits)
     parser_inherits.set_defaults(func=command_inherits)
+
+    # `cache` command
+    parser_cache = subparsers.add_parser(
+        "cache", help="Show this project's cache state"
+    )
+    parser_cache.set_defaults(func=command_cache)
 
     # `serve` command
     parser_serve = subparsers.add_parser(

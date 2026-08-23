@@ -26,7 +26,7 @@ from typing import Self
 
 logger = logging.getLogger(__package__)
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 """The cache schema version, stored as SQLite's `PRAGMA user_version`.
 
 NOTE: Tracks *what a walk records*, not only the table shape - node
@@ -38,6 +38,11 @@ existing cache serving the old value. Bump on either kind of change; see
 NOTE: 6 - signatures are now recorded for every callable symbol
 whatever its kind (#66); a version-5 cache serves `""` for callable
 attributes indefinitely.
+
+NOTE: 7 - `_doc_of` now keeps an `attribute`'s docstring when it is the
+same as its type's, unless that type is standard-library (#82); a
+version-6 cache serves `(no docstring)` for a package-defined singleton
+(`pytest.fail`) indefinitely.
 """
 
 
@@ -389,6 +394,7 @@ class SymbolStore:
             (
                 like_pattern,
                 like_pattern,
+                like_pattern,
                 package,
                 package,
                 query,
@@ -430,6 +436,22 @@ class SymbolStore:
             (package,),
         ).fetchone()
         return None if row is None else (row["version"], row["max_depth"])
+
+    def count_nodes(self, package: str) -> int:
+        """Count the symbol nodes recorded for a package graph.
+
+        Args:
+            package: The package (import) name.
+
+        Returns:
+            The number of `nodes` rows belonging to `package`, or `0`
+            if the package holds no graph.
+        """
+        row = self._connection.execute(
+            "SELECT COUNT(*) AS total FROM nodes WHERE package = ?",
+            (package,),
+        ).fetchone()
+        return int(row["total"])
 
     def clear_package(self, package: str) -> None:
         """Delete all nodes|edges belonging to a package.
