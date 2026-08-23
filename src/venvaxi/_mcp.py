@@ -25,7 +25,7 @@ from venvaxi._introspect import (
     show_module,
     summarize_doc,
 )
-from venvaxi._packages import list_packages, resolve_package
+from venvaxi._packages import installed_count, list_packages, resolve_package
 from venvaxi._toon import (
     encode_object,
     encode_table,
@@ -238,6 +238,12 @@ def list_packages_tool(include_dev: bool = False) -> str:
     """List venv packages for a consuming repo (TOON format)."""
     root = get_project_root()
     packages = list_packages(root, include_dev=include_dev)
+    declared = len(packages)
+    # NOTE: `installed` is a second, pre-computed aggregate alongside
+    # `count:` - independent of `include_dev` and matching
+    # `command_list` field for field (`specs/commands/list.md`,
+    # Installed-package visibility; `specs/mcp/tools.md`, parity).
+    installed = installed_count()
     if not packages:
         # NOTE: An empty `include_dev=true` answer is definitive - the
         # hint names the file that would have to change rather than the
@@ -249,13 +255,21 @@ def list_packages_tool(include_dev: bool = False) -> str:
             if include_dev
             else f"Call `{cname}` with include_dev=true"
         )
-        return _with_help("count: 0", [hint])
+        output = "count: 0"
+        # NOTE: Suppressed when declared equals installed (0 == 0) -
+        # never emitted as zero, never emitted with a marker.
+        if installed != declared:
+            output = f"{output}\ninstalled: {installed}"
+        return _with_help(output, [hint])
     rows = [asdict(package) for package in packages]
     table = encode_table("packages", rows, ["name", "version"])
+    output = f"count: {declared}\n{table}"
+    if installed != declared:
+        output = f"{output}\ninstalled: {installed}"
 
     cname = camel_case(show_package_tool.__name__)
     return _with_help(
-        f"count: {len(packages)}\n{table}",
+        output,
         [f"Call `{cname}` for package metadata"],
     )
 

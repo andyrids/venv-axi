@@ -29,6 +29,7 @@ from venvaxi._introspect import (
 )
 from venvaxi._packages import (
     PACKAGE_INFO_FIELDS,
+    installed_count,
     list_packages,
     resolve_package,
 )
@@ -140,6 +141,12 @@ def command_list(ctx: CLIContext) -> int:
     root = get_project_root()
     packages = list_packages(root, include_dev=ctx.args.all)
     fields = _parse_fields(ctx.args.fields)
+    declared = len(packages)
+    # NOTE: `installed` is a second, pre-computed aggregate alongside
+    # `count:` - independent of `--all`/`--fields` and of the
+    # empty-branch hint logic below, which stays untouched
+    # (`specs/commands/list.md`, Installed-package visibility).
+    installed = installed_count()
 
     if not packages:
         # NOTE: An empty `list --all` is definitive - no broader query
@@ -152,13 +159,19 @@ def command_list(ctx: CLIContext) -> int:
         )
 
         _emit("count: 0")
+        # NOTE: Suppressed when declared equals installed (0 == 0) -
+        # never emitted as zero, never emitted with a marker.
+        if installed != declared:
+            _emit(f"installed: {installed}")
         _emit(format_help([help_txt]))
         return ExitCode.EX_OK
 
     rows = [asdict(package) for package in packages]
 
-    _emit(f"count: {len(packages)}")
+    _emit(f"count: {declared}")
     _emit(encode_table("packages", rows, fields))
+    if installed != declared:
+        _emit(f"installed: {installed}")
     _emit(format_help(["Run `venvaxi show <package>` for package info"]))
     return ExitCode.EX_OK
 

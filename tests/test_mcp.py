@@ -509,6 +509,98 @@ def test_list_packages_tool_empty_all_hint_names_pyproject(
     assert "include_dev=true" not in result
 
 
+def test_list_packages_tool_installed_appears_when_declared_differs(
+    tmp_path: Path, make_package_info: PackageFactory
+) -> None:
+    """`installed: <m>` is appended after the `packages` table when the
+    declared count differs from the installed count, matching
+    `command_list` field for field."""
+    server = build_server()
+    with (
+        mock.patch(f"{MCP}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.list_packages", return_value=[make_package_info()]),
+        mock.patch(f"{MCP}.installed_count", return_value=100),
+    ):
+        tool = asyncio.run(server.get_tool(camel_case("list_packages_tool")))
+        result = tool.fn()
+    assert "installed: 100" in result
+    assert result.index("installed: 100") < result.index("help[")
+
+
+def test_list_packages_tool_installed_suppressed_when_equal(
+    tmp_path: Path, make_package_info: PackageFactory
+) -> None:
+    """The `installed:` line is omitted, not emitted as zero or with a
+    marker, when the declared count equals the installed count - a
+    one-way `in`-assertion would pass on unrelated output text."""
+    server = build_server()
+    with (
+        mock.patch(f"{MCP}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.list_packages", return_value=[make_package_info()]),
+        mock.patch(f"{MCP}.installed_count", return_value=1),
+    ):
+        tool = asyncio.run(server.get_tool(camel_case("list_packages_tool")))
+        result = tool.fn()
+    assert "count: 1" in result
+    assert "installed:" not in result
+
+
+def test_list_packages_tool_empty_installed_between_count_and_help(
+    tmp_path: Path,
+) -> None:
+    """On `count: 0`, `installed: <m>` lands between `count: 0` and the
+    `help[]` footer when the venv holds at least one distribution."""
+    server = build_server()
+    with (
+        mock.patch(f"{MCP}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.list_packages", return_value=[]),
+        mock.patch(f"{MCP}.installed_count", return_value=100),
+    ):
+        tool = asyncio.run(server.get_tool(camel_case("list_packages_tool")))
+        result = tool.fn()
+    assert (
+        result.index("count: 0")
+        < result.index("installed: 100")
+        < result.index("help[")
+    )
+
+
+def test_list_packages_tool_empty_installed_suppressed_when_zero(
+    tmp_path: Path,
+) -> None:
+    """`installed:` is omitted on `count: 0` when the venv itself holds
+    no distributions - declared (0) equals installed (0)."""
+    server = build_server()
+    with (
+        mock.patch(f"{MCP}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.list_packages", return_value=[]),
+        mock.patch(f"{MCP}.installed_count", return_value=0),
+    ):
+        tool = asyncio.run(server.get_tool(camel_case("list_packages_tool")))
+        result = tool.fn()
+    assert result.startswith("count: 0")
+    assert "installed:" not in result
+
+
+def test_list_packages_tool_empty_all_hint_unaffected_by_installed(
+    tmp_path: Path,
+) -> None:
+    """The `include_dev`-conditional empty-state hint selection is
+    unchanged by the new `installed:` line - the two mechanisms are
+    independent, mirroring the CLI's `list --all` branch."""
+    server = build_server()
+    with (
+        mock.patch(f"{MCP}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.list_packages", return_value=[]),
+        mock.patch(f"{MCP}.installed_count", return_value=100),
+    ):
+        tool = asyncio.run(server.get_tool(camel_case("list_packages_tool")))
+        result = tool.fn(include_dev=True)
+    assert "pyproject.toml" in result
+    assert "include_dev=true" not in result
+    assert "installed: 100" in result
+
+
 def test_show_package_tool_returns_toon(
     make_package_info: PackageFactory,
 ) -> None:

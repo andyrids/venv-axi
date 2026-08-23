@@ -231,6 +231,127 @@ def test_command_list_with_packages(
     assert "rich|15.0.0" in out
 
 
+def test_command_list_installed_appears_when_declared_differs(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+    make_package_info: PackageFactory,
+) -> None:
+    """`installed: <m>` is appended after the `packages` table when the
+    declared count differs from the installed count."""
+    packages = [make_package_info()]
+    ctx = make_cli_context(
+        args=argparse.Namespace(all=False, fields="name,version")
+    )
+    with (
+        mock.patch(f"{CLI}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{CLI}.list_packages", return_value=packages),
+        mock.patch(f"{CLI}.installed_count", return_value=100),
+    ):
+        exit_code = _cli.command_list(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "installed: 100" in out
+    assert out.index("installed: 100") < out.index("help[")
+
+
+def test_command_list_installed_suppressed_when_equal(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+    make_package_info: PackageFactory,
+) -> None:
+    """The `installed:` line is omitted, not emitted as zero or with a
+    marker, when the declared count equals the installed count - a
+    one-way `in`-assertion would pass on unrelated output text."""
+    packages = [make_package_info()]
+    ctx = make_cli_context(
+        args=argparse.Namespace(all=False, fields="name,version")
+    )
+    with (
+        mock.patch(f"{CLI}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{CLI}.list_packages", return_value=packages),
+        mock.patch(f"{CLI}.installed_count", return_value=1),
+    ):
+        exit_code = _cli.command_list(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "count: 1" in out
+    assert "installed:" not in out
+
+
+def test_command_list_empty_installed_appears_between_count_and_help(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+) -> None:
+    """On `count: 0`, `installed: <m>` lands between `count: 0` and the
+    `help[]` footer when the venv holds at least one distribution -
+    the sharpest case the unit exists for."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(all=False, fields="name,version")
+    )
+    with (
+        mock.patch(f"{CLI}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{CLI}.list_packages", return_value=[]),
+        mock.patch(f"{CLI}.installed_count", return_value=100),
+    ):
+        exit_code = _cli.command_list(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert (
+        out.index("count: 0")
+        < out.index("installed: 100")
+        < out.index("help[")
+    )
+
+
+def test_command_list_empty_installed_suppressed_when_zero(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+) -> None:
+    """`installed:` is omitted on `count: 0` when the venv itself holds
+    no distributions - declared (0) equals installed (0)."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(all=False, fields="name,version")
+    )
+    with (
+        mock.patch(f"{CLI}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{CLI}.list_packages", return_value=[]),
+        mock.patch(f"{CLI}.installed_count", return_value=0),
+    ):
+        exit_code = _cli.command_list(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "count: 0" in out
+    assert "installed:" not in out
+
+
+def test_command_list_empty_all_hint_unaffected_by_installed(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+) -> None:
+    """The `--all`-conditional empty-state hint selection is unchanged
+    by the new `installed:` line - the two mechanisms are independent
+    (`specs/commands/list.md`)."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(all=True, fields="name,version")
+    )
+    with (
+        mock.patch(f"{CLI}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{CLI}.list_packages", return_value=[]),
+        mock.patch(f"{CLI}.installed_count", return_value=100),
+    ):
+        exit_code = _cli.command_list(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "pyproject.toml" in out
+    assert "--all" not in out
+    assert "installed: 100" in out
+
+
 def test_command_list_invalid_fields_raises(
     tmp_path: Path,
     make_cli_context: ContextFactory,
