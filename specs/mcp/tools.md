@@ -57,7 +57,7 @@ shall catch `BaseException`, re-raising only `KeyboardInterrupt` and `SystemExit
 | `describeBindingTool` | none                                | none - see below          |
 | `listPackagesTool`    | `include_dev=False`                 | `list [--all]`            |
 | `showPackageTool`     | `name`                              | `show <package>`          |
-| `showPackageApiTool`  | `name`, `docstring=False`           | `show <package> --api`    |
+| `showPackageApiTool`  | `name`, `docstring=False`, `limit=20` | `show <package> --api`  |
 | `showModuleTool`      | `name`, `docstring=False`           | `inspect <module>`        |
 | `getSymbolTool`       | `qualified_name`, `docstring=False` | `inspect <symbol>`        |
 | `findSymbolTool`      | `query`, `limit=20`, `package=None` | `find <query>`            |
@@ -167,12 +167,22 @@ These are deliberate and MUST be preserved:
   `--fields` equivalent.
 
 Footer suppression under `docstring=true` is **not** on this list. `getSymbolTool`,
-`showPackageApiTool` and `showModuleTool` shall each omit the `help[]` footer when `docstring` is
-set, which is exactly what `inspect --docstring` and `show --api --docstring` do - parity, and
+`showPackageApiTool` and `showModuleTool` shall each suppress the `docstring` hint when
+`docstring` is set, and shall omit the `help[]` footer entirely where that leaves no hint to
+emit - which is exactly what `inspect --docstring` and `show --api --docstring` do - parity, and
 already required of both surfaces by the suppression rule in
 [Output contract](../behaviors/output-contract.md#contextual-disclosure). It was listed here once
 as a `getSymbolTool` divergence; it never was one, and listing parity as divergence is as
 misleading as omitting a real one.
+
+What is suppressed is **that hint, not the footer**. A hint naming a step the caller has not
+taken survives `docstring=true`: a capped `showPackageApiTool` result carries its bounded-results
+hint under
+[Bounded collections](../behaviors/output-contract.md#bounded-collections) whether or not
+docstrings were asked for, because the two answer different questions - one widens each row, the
+other lifts the bound on rows. Suppressing it would return twenty of a package's several hundred
+symbols with no signal that the answer was capped, which is the confidently-wrong truncated
+result the bound exists to prevent.
 
 ## Malformed qualified names
 
@@ -228,16 +238,27 @@ or the parameter that carried it. `--limit` names nothing a tool caller can set 
 names nothing a shell caller can type, so a message picking either one misdirects half its
 readers, and it misdirects them while they are already recovering from an error.
 
+The same obligation runs across **commands**, not only surfaces. A message on a path shared by
+more than one command shall name the input in a spelling true of every command that reaches it: a
+rejection raised by both `find` and `show --api` cannot call the value a *search* limit, because
+one of the two is not a search. This is the same rule, not a second one - when it was written
+there was a single bounded command, so its examples are all about surfaces.
+
 Hints keep the opposite rule, always spelled for the surface, per
 [Hint wording](#hint-wording): a hint names a next action, and a next action exists on one
 surface at a time, whereas a message names a fact about the input and that fact is the same on
 both. Where a message genuinely can only be phrased for one surface, it belongs at that
 surface's boundary rather than in the shared path.
 
-- If `findSymbolTool` is called with a negative `limit`, then it shall return the TOON error
-  block, carrying neither the CLI footer nor a CLI flag spelling. The rejection is `find`'s, per
-  [Bounded results](../commands/find.md#bounded-results); this surface inherits it, which is
-  parity rather than a divergence.
+- If `findSymbolTool` or `showPackageApiTool` is called with a negative `limit`, then it shall
+  return the TOON error block, carrying neither the CLI footer nor a CLI flag spelling. The
+  rejection is
+  [Bounded collections](../behaviors/output-contract.md#bounded-collections)'; this surface
+  inherits it, which is parity rather than a divergence.
+
+One rejection, written once on the shared path, is the point. Each surface that re-implements a
+bound is a place for the two to drift, and a bound written twice is a bound that will be raised
+once.
 
 ### Known exception
 

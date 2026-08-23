@@ -9,6 +9,7 @@ from typing import Any
 from venvaxi._constants import NO_PROJECT_ROOT
 from venvaxi._core import get_project_root, resolve_binding
 from venvaxi._introspect import (
+    DEFAULT_API_ROW_LIMIT,
     MCP_ESCAPE_HATCH,
     SYMBOL_INFO_FIELDS,
     find_symbol,
@@ -190,22 +191,52 @@ def show_package_tool(name: str) -> str:
     )
 
 
-def show_package_api_tool(name: str, docstring: bool = False) -> str:
+def show_package_api_tool(
+    name: str,
+    docstring: bool = False,
+    limit: int = DEFAULT_API_ROW_LIMIT,
+) -> str:
     """Show public API symbols for a package (TOON format)."""
-    symbols = get_public_api(
-        name, docstring=docstring, escape_hatch=MCP_ESCAPE_HATCH
+    result = get_public_api(
+        name,
+        docstring=docstring,
+        max_rows=limit,
+        escape_hatch=MCP_ESCAPE_HATCH,
+    )
+    symbols = result.symbols
+    # NOTE: Mirrors the CLI capped-count hint in the spelling of this
+    # surface - the parameter, not the flag (`specs/mcp/tools.md`, Hint
+    # wording).
+    capped_hint = (
+        f"Results capped at limit={limit}"
+        " - re-call with a higher limit to see more"
     )
     if not symbols:
+        # NOTE: An empty listing under a bound of `0` is capped, not
+        # empty - the module tree is not the next step for it
+        # (`specs/behaviors/output-contract.md`, Bounded collections).
         cname = camel_case(get_module_tree_tool.__name__)
-        return _with_help("count: 0", [f"Call `{cname}` with name={name}"])
+        hint = (
+            capped_hint
+            if result.capped
+            else f"Call `{cname}` with name={name}"
+        )
+        return _with_help("count: 0", [hint])
     rows = [asdict(symbol) for symbol in symbols]
     table = encode_table("symbols", rows, SYMBOL_INFO_FIELDS)
     output = f"count: {len(symbols)}\n{table}"
-    if docstring:
+    hints: list[str] = []
+    if result.capped:
+        # NOTE: `docstring=true` is deliberately not offered on a
+        # capped result - it widens each row without lifting the row
+        # bound, and it is the exact call this surface refuses over a
+        # large package (#67; `specs/commands/show.md`, Outputs).
+        hints.append(capped_hint)
+    elif not docstring:
+        hints.append("Re-call with docstring=true for complete docstrings")
+    if not hints:
         return output
-    return _with_help(
-        output, ["Re-call with docstring=true for complete docstrings"]
-    )
+    return _with_help(output, hints)
 
 
 def show_module_tool(name: str, docstring: bool = False) -> str:

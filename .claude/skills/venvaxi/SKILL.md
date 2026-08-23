@@ -110,7 +110,7 @@ Verified against `venvaxi --help` output; defaults shown in parentheses.
 | `venvaxi` | - | Home view: bin/venv paths, active status, next-step hints |
 | `venvaxi list` | `--all`, `--fields` (`name,version`) | Declared, installed venv packages |
 | `venvaxi show <pkg>` | `--fields` (`name,version,location`) | Installed package metadata |
-| `venvaxi show <pkg> --api` | `--docstring`, `--refresh` | Public top-level API symbols |
+| `venvaxi show <pkg> --api` | `--docstring`, `--limit` (`20`), `--refresh` | Public API symbols |
 | `venvaxi find <query>` | `--package`, `--limit` (`20`), `--refresh` | Search cached symbols |
 | `venvaxi tree <pkg>` | `--max-depth` (`2`), `--refresh` | Nested module tree |
 | `venvaxi inspect <name>` | `--docstring`, `--refresh` | Symbol detail, or module children |
@@ -126,6 +126,11 @@ Notes on the positional arguments and shared flags:
   before `--fields` is parsed.
 - `-v` / `--verbose` is a global flag enabling DEBUG logging on STDERR - reach for it when a
   `setup` or `serve` failure produced no useful message.
+- `--limit` bounds the rows a collection command returns, and is `20` on both `find` and
+  `show --api`. A `count:` equal to the active limit means *at least* that many, and says so
+  in a `help[]` hint; below it the count is definitive. `--limit 0` is a bound honoured
+  exactly (`count: 0`, exit `0`); a negative `--limit` is a hard error. It applies to
+  `show` *with* `--api` only; passed without it, it is **silently ignored**, not an error.
 - `show <pkg> --api` takes a distribution name or any importable dotted module path, and
   emits the columns `name|kind|signature|doc`.
 - `inspect` takes either a qualified symbol name (`module::Symbol`, `module::Class.method`)
@@ -164,7 +169,7 @@ error block instead of an MCP transport error.
 | `describeBindingTool` | none | none |
 | `listPackagesTool` | `include_dev=False` | `venvaxi list [--all]` |
 | `showPackageTool` | `name` | `venvaxi show <pkg>` |
-| `showPackageApiTool` | `name`, `docstring=False` | `venvaxi show <pkg> --api` |
+| `showPackageApiTool` | `name`, `docstring=False`, `limit=20` | `venvaxi show <pkg> --api` |
 | `showModuleTool` | `name`, `docstring=False` | `venvaxi inspect <module>` |
 | `getSymbolTool` | `qualified_name`, `docstring=False` | `venvaxi inspect <qname>` |
 | `findSymbolTool` | `query`, `limit=20`, `package=None` | `venvaxi find <query>` |

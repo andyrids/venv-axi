@@ -103,7 +103,9 @@ def make_cli_context() -> Callable[..., CLIContext]:
         # NOTE: Shared flag defaults mirror the argparse defaults in
         # `venvaxi._cli.add_subparser`, so each test declares only the
         # arguments its command actually reads.
-        args = argparse.Namespace(refresh=False, docstring=False, package=None)
+        args = argparse.Namespace(
+            refresh=False, docstring=False, package=None, limit=20
+        )
         vars(args).update(vars(overrides.pop("args", argparse.Namespace())))
         defaults: dict[str, Any] = {"args": args, "is_verbose": False}
         return CLIContext(**{**defaults, **overrides})

@@ -46,6 +46,16 @@ logger = logging.getLogger(__package__)
 DEFAULT_TRUNCATE_LIMIT = 200
 DEFAULT_MAX_DEPTH = 2
 
+DEFAULT_API_ROW_LIMIT = 20
+"""The default row bound on a public API listing.
+
+NOTE: Distinct from `DEFAULT_TRUNCATE_LIMIT`, which bounds *characters*
+within one docstring. This one bounds *rows*, and is the same 20 `find`
+carries, so one number covers both collection commands
+(`specs/commands/show.md`; `specs/behaviors/output-contract.md`,
+Bounded collections).
+"""
+
 CLI_ESCAPE_HATCH = "use --docstring to see complete body"
 """Truncation escape-hatch clause, spelled for the CLI surface.
 
@@ -97,6 +107,35 @@ class SymbolInfo:
 
 SYMBOL_INFO_FIELDS = tuple(field.name for field in fields(SymbolInfo))
 """The ordered `SymbolInfo` field names, forming TOON tabular headers."""
+
+
+@dataclass(frozen=True, slots=True)
+class PublicAPI:
+    """A bounded public API listing, with the bound it was cut to.
+
+    NOTE: The bound travels back with the rows so that capped-ness is
+    derived in exactly one place. Returning the row list alone loses
+    the fact entirely, and recomputing `len(symbols) == max_rows` at
+    each call site duplicates the rule the capped-count hint depends
+    on, which is how two surfaces over one graph start disagreeing
+    about whether an answer was complete
+    (`specs/behaviors/output-contract.md`, Bounded collections).
+    """
+
+    symbols: list[SymbolInfo]
+    max_rows: int
+
+    @property
+    def capped(self) -> bool:
+        """Whether the row bound cut the listing short.
+
+        NOTE: A count equal to the active bound means *at least* that
+        many, never exactly - which is what the capped-count hint
+        exists to say. A bound of `0` is capped by the same rule: the
+        listing is empty because the bound said so, not because the
+        package declares no public API.
+        """
+        return len(self.symbols) == self.max_rows
 
 
 def truncate(
@@ -939,6 +978,38 @@ def get_module_tree(
         return store.get_module_tree(resolved, max_depth)
 
 
+def _ensure_non_negative_limit(limit: int) -> None:
+    """Reject a negative row bound before any work is done.
+
+    NOTE: A negative limit is the absence of a bound, not a smaller one
+    - it reaches SQLite's `LIMIT ?` unbounded, and slices a sorted
+    listing from the wrong end, so the caller is handed the whole graph
+    under the very argument that exists to prevent that, with the cap
+    hint unable to fire because a count never equals a negative limit.
+    Rejected, not clamped: clamping to the default answers a question
+    the caller never asked, indistinguishably from theirs (#73, #67;
+    `specs/behaviors/output-contract.md`, Bounded collections).
+
+    NOTE: One rejection site, shared by every bounded collection, so
+    both surfaces inherit it before any store is opened or graph built
+    and a bad argument costs nothing. The message names neither
+    `--limit` nor `limit=`, and calls the value a *result* limit rather
+    than a *search* one - the path is shared by `find` and
+    `show --api`, and only one of those is a search, so the wording has
+    to be true of every command that reaches it as well as of both
+    surfaces (`specs/mcp/tools.md`, Error message wording).
+
+    Args:
+        limit: The caller-supplied bound on returned rows.
+
+    Raises:
+        InvalidArgumentError: On `limit` being negative.
+    """
+    if limit < 0:
+        msg = f"Result limit `{limit}` must not be negative"
+        raise InvalidArgumentError(msg)
+
+
 def find_symbol(
     query: str,
     limit: int = 20,
@@ -976,19 +1047,7 @@ def find_symbol(
         msg = "Search query must be non-empty"
         raise InvalidArgumentError(msg)
 
-    if limit < 0:
-        # NOTE: A negative limit is the absence of a bound, not a
-        # smaller one - it reaches SQLite's `LIMIT ?` unbounded and
-        # returns the whole graph under the flag that exists to prevent
-        # that, with the #69 cap hint unable to fire because a count
-        # never equals a negative limit. Rejected, not clamped, and
-        # rejected here so both surfaces and both search paths inherit
-        # it before any store is opened (#73;
-        # `specs/commands/find.md`, Bounded results). The message names
-        # neither `--limit` nor `limit=` - it is raised on the shared
-        # path (`specs/mcp/tools.md`, Error message wording).
-        msg = f"Search limit `{limit}` must not be negative"
-        raise InvalidArgumentError(msg)
+    _ensure_non_negative_limit(limit)
 
     if package is None:
         if refresh:
@@ -1009,9 +1068,10 @@ def get_public_api(
     *,
     docstring: bool = False,
     limit: int = DEFAULT_TRUNCATE_LIMIT,
+    max_rows: int = DEFAULT_API_ROW_LIMIT,
     escape_hatch: str = CLI_ESCAPE_HATCH,
     refresh: bool = False,
-) -> list[SymbolInfo]:
+) -> PublicAPI:
     """Extract top-level public symbols from a package.
 
     NOTE: Compatibility shim over the `SymbolStore` introspection engine.
@@ -1020,6 +1080,13 @@ def get_public_api(
     mirroring `get_symbol` - a dotted module deeper than
     `DEFAULT_MAX_DEPTH` must not answer from whatever depth the cache
     happens to hold. See `specs/behaviors/cache-refresh.md` (Validity).
+
+    NOTE: Two bounds, deliberately named apart. `limit` is a
+    *character* count applied inside one docstring; `max_rows` is a
+    *row* count applied to the listing. Wiring one to the other would
+    silently trade a package's public surface for its prose width
+    (`specs/commands/show.md`; `specs/behaviors/output-contract.md`,
+    Truncation and Bounded collections).
 
     NOTE: `MODULE`/`PACKAGE` children are excluded, every other kind is
     reported - `_walk_submodules` records a package's submodules under
@@ -1033,23 +1100,26 @@ def get_public_api(
         name: The package (distribution) name, or a dotted module path.
         docstring: Return complete docstrings instead of the truncated
             first line.
-        limit: The docstring truncation limit.
+        limit: The per-docstring character truncation limit.
+        max_rows: The maximum number of symbol rows returned. Defaults
+            to 20.
         escape_hatch: The size hint's escape-hatch clause, spelled for
             the caller's surface. Defaults to the CLI spelling.
         refresh: Rebuild the cached graph first.
 
     Raises:
         InvalidArgumentError: On `name` not being a possible package
-            name.
+            name, or a negative `max_rows`.
         PackageNotFoundError: On `name` not being installed in the active
             venv.
         PackageImportError: On resolved module import error.
 
     Returns:
-        Public top-level symbols, with their kind, signature and
-        docstring.
+        The bounded public top-level symbols, with their kind,
+        signature and docstring, alongside the bound applied.
     """
     _ensure_valid_name(name, name)
+    _ensure_non_negative_limit(max_rows)
 
     # NOTE: `_resolve_qualified_name`, not `_resolve_import_name` - the
     # store is keyed by root-resolved import names, and whole-argument
@@ -1092,4 +1162,10 @@ def get_public_api(
         for node in children
         if node.kind not in (NodeKind.MODULE, NodeKind.PACKAGE)
     ]
-    return sorted(symbols, key=lambda symbol: symbol.name)
+    # NOTE: Bounded *after* the sort, so the rows returned are the
+    # first N of the declared order rather than an arbitrary N of it -
+    # a bound over an unsorted listing makes the answer depend on walk
+    # order (`specs/behaviors/output-contract.md`, Bounded
+    # collections).
+    ordered = sorted(symbols, key=lambda symbol: symbol.name)
+    return PublicAPI(symbols=ordered[:max_rows], max_rows=max_rows)

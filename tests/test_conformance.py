@@ -54,28 +54,6 @@ accepts a genuinely reasonable payload rather than a strawman; `numpy`
 2x-14x - the unbounded-payload defect issue #67 exists to fix.
 """
 
-# NOTE: `fastmcp` is the live regression guard - its payload already
-# clears `SANE_PAYLOAD_BYTES` today, so it asserts normally. The other
-# three are pinned `xfail(strict=True)`, named to issue #67: none of
-# them bound `--api --docstring` yet, confirmed by direct measurement
-# against the versions resolved into this venv, not by the issue's own
-# (differently-versioned) numbers.
-_UNBOUNDED_PAYLOAD_TODAY = {"numpy", "polars", "pydantic"}
-
-
-def _payload_case(specimen: str) -> object:
-    """Wrap a specimen in a strict `xfail` when its payload is known
-    unbounded today (issue #67), leaving a conformant specimen bare."""
-    if specimen not in _UNBOUNDED_PAYLOAD_TODAY:
-        return pytest.param(specimen)
-    return pytest.param(
-        specimen,
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="unbounded --api --docstring payload, issue #67",
-        ),
-    )
-
 
 @pytest.mark.parametrize("specimen", SPECIMENS)
 def test_tree_completes_over_real_package(
@@ -187,7 +165,11 @@ def test_public_api_surface_not_narrowed_by_kind(
         for child in children
         if child.kind not in (NodeKind.MODULE, NodeKind.PACKAGE)
     ]
-    symbols = get_public_api(specimen)
+    # NOTE: `max_rows` is raised past the walk's own child count on
+    # purpose - the property under test is which *kinds* reach the
+    # listing, and the default bound of 20 would answer a different
+    # question for any specimen with a wide surface (#67).
+    symbols = get_public_api(specimen, max_rows=len(children) + 1).symbols
     assert len(symbols) == len(symbol_children)
     assert {symbol.name for symbol in symbols} == {
         child.name for child in symbol_children
@@ -196,7 +178,7 @@ def test_public_api_surface_not_narrowed_by_kind(
     assert "package" not in {symbol.kind for symbol in symbols}
 
 
-@pytest.mark.parametrize("specimen", [_payload_case(s) for s in SPECIMENS])
+@pytest.mark.parametrize("specimen", SPECIMENS)
 def test_show_api_docstring_payload_stays_bounded(
     isolated_cache: Path,
     make_cli_context: ContextFactory,
@@ -206,13 +188,14 @@ def test_show_api_docstring_payload_stays_bounded(
     """A single `show --api --docstring` payload stays under a sane
     byte bound (#67).
 
-    `numpy`, `polars` and `pydantic` are pinned `xfail(strict=True)`
-    today - `strict=True` is load-bearing: it keeps this tier green now,
-    and the moment issue #67 bounds the payload the assertion passes
-    unexpectedly and fails the suite, forcing that unit to flip the
-    mark rather than let the bug pass unnoticed. `fastmcp` carries no
-    such mark and must keep passing - the live regression guard for
-    this invariant.
+    NOTE: Every specimen asserts unconditionally. `numpy`, `polars` and
+    `pydantic` were pinned `xfail(strict=True)` while `show --api` had
+    no row bound; `strict=True` was load-bearing, so the moment the
+    bound landed the assertion passed unexpectedly and failed the tier,
+    forcing the removal of the marks rather than letting the fix land
+    unrecorded. `fastmcp` never carried one - it cleared the bound
+    unbounded, and remains the live regression guard for the case where
+    the bound is not what is doing the work.
     """
     pytest.importorskip(specimen)
     ctx = make_cli_context(
