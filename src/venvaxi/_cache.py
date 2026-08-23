@@ -13,6 +13,7 @@ import hashlib
 import importlib
 import logging
 import sqlite3
+from dataclasses import dataclass
 from importlib import metadata
 from pathlib import Path
 
@@ -55,6 +56,111 @@ def get_cache_db_path(root: Path) -> Path:
         The project-scoped `SymbolStore` SQLite database path.
     """
     return get_cache_dir() / f"{_project_hash(root)}.db"
+
+
+@dataclass(frozen=True, slots=True)
+class PackageBuild:
+    """One package's recorded build: version, depth and symbol count.
+
+    NOTE: Named fields, following `RefreshReceipt`/`PublicAPI` - short
+    scalars about the same build, so a positional tuple would leave a
+    call site free to transpose `depth` and `symbols` unnoticed
+    (`specs/mcp/tools.md`, The rebuild receipt).
+    """
+
+    package: str
+    version: str
+    depth: int
+    symbols: int
+
+
+@dataclass(frozen=True, slots=True)
+class CacheState:
+    """A project's cache state, read directly without mutating it.
+
+    NOTE: `schema_version` is `None` for the not-built empty state - the
+    `(not built)` marker is applied at emission, never stored here, per
+    `specs/behaviors/output-contract.md#definitive-empty-states`
+    ('markers shall be applied at emission, never recorded').
+    """
+
+    schema_version: int | None
+    db_path: Path
+    db_size_bytes: int
+    builds: list[PackageBuild]
+
+
+def read_cache_state(root: Path) -> CacheState:
+    """Read this project's cache state without mutating it.
+
+    NOTE: Opens a raw, read-only SQLite connection directly on the
+    cache database path - never through `SymbolStore`, whose
+    constructor runs `_ensure_schema()`, which drops and rebuilds a
+    schema-mismatched cache's tables as a side effect of merely
+    connecting (`_store.py::_ensure_schema`). This reader exists to
+    answer 'what does the cache hold, as found', which the existing
+    open path cannot do without falsifying the very thing being asked
+    about (`specs/commands/cache.md`, Data requirements; Local
+    principle).
+
+    Args:
+        root: The consuming project's root directory.
+
+    Raises:
+        StoreError: If the cache database exists but a SQLite-level
+            failure prevents reading it.
+
+    Returns:
+        The project's `CacheState`. `schema_version` is `None` when
+        the database has never been created - distinct from a database
+        that exists and records zero builds, whose `schema_version` is
+        the real recorded value.
+    """
+    db_path = get_cache_db_path(root)
+    if not db_path.exists():
+        # NOTE: Opening a nonexistent path in read-only URI mode raises
+        # - checked here so 'never built' is reported without treating
+        # it as a failure, and without opening SQLite at all.
+        return CacheState(
+            schema_version=None, db_path=db_path, db_size_bytes=0, builds=[]
+        )
+
+    try:
+        connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            (schema_version,) = connection.execute(
+                "PRAGMA user_version"
+            ).fetchone()
+            build_rows = connection.execute(
+                "SELECT package, version, max_depth FROM package_builds"
+                " ORDER BY package"
+            ).fetchall()
+            symbol_counts = dict(
+                connection.execute(
+                    "SELECT package, COUNT(*) FROM nodes GROUP BY package"
+                ).fetchall()
+            )
+        finally:
+            connection.close()
+    except sqlite3.Error as err:
+        msg = f"Failed to read cache state at `{db_path}`"
+        raise exceptions.StoreError(msg) from err
+
+    builds = [
+        PackageBuild(
+            package=package,
+            version=version,
+            depth=max_depth,
+            symbols=symbol_counts.get(package, 0),
+        )
+        for package, version, max_depth in build_rows
+    ]
+    return CacheState(
+        schema_version=schema_version,
+        db_path=db_path,
+        db_size_bytes=db_path.stat().st_size,
+        builds=builds,
+    )
 
 
 def _installed_version(package_name: str) -> str:

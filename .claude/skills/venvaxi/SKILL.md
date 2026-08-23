@@ -115,6 +115,7 @@ Verified against `venvaxi --help` output; defaults shown in parentheses.
 | `venvaxi tree <pkg>` | `--max-depth` (`2`), `--refresh` | Nested module tree |
 | `venvaxi inspect <name>` | `--docstring`, `--refresh` | Symbol detail, or module children |
 | `venvaxi inherits <qname>` | `--refresh` | Classes directly subclassing a base |
+| `venvaxi cache` | - | This project's cache/build state - schema, path/size, per-package build |
 | `venvaxi serve` | - | Run the MCP server over stdio |
 | `venvaxi setup` | `--skill`, `--no-skill` | Install ambient context (MCP config & skill) |
 
@@ -179,6 +180,13 @@ error block instead of an MCP transport error.
 
 Types are `str` for names|queries, `bool` for `include_dev`|`docstring`, `int` for
 `limit`|`max_depth`, and `str | None` for `package`.
+
+`describeBindingTool` additionally reports this project's cache state whenever `root` resolves -
+`schema_version`, `db_path`, `db_size_bytes`, then `count:` and a `builds` table of
+`package`/`version`/`depth`/`symbols`, field for field the same as `venvaxi cache`. If the cache
+database cannot be read, those fields degrade to `schema_version: (cache unreadable)` with
+`count`/`builds` omitted (never `count: 0`) and a third hint naming the `db_path` as safe to
+delete, rather than raising - `root`/`venv`/`status` still report normally either way.
 
 Notable CLI differences:
 
@@ -271,7 +279,11 @@ Notable CLI differences:
   repo's `.mcp.json` by re-running `venvaxi setup` from inside that project - `--refresh`
   cannot help, because the server is bound elsewhere. Over MCP, `status: inactive` means the
   registered command names a base interpreter, so answers are drawn from an environment the
-  project never installed into - re-register, do not activate anything.
+  project never installed into - re-register, do not activate anything. `describeBindingTool`
+  is also the way to check a *suspected-stale* graph without spending a rebuild to find out -
+  its cache summary reports each indexed package's built version and depth, so a rebuild via
+  `refreshPackageGraphTool` is spent only when the recorded build actually looks behind, not on
+  a hunch.
 - **`setup` writes files - it is not a diagnostic command.** It rewrites
   `.mcp.json`/`.vscode/mcp.json` every time it runs, it overwrites
   `.claude/skills/venvaxi/SKILL.md` wholesale unless `--no-skill` is given, and it deletes a

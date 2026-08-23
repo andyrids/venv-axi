@@ -18,6 +18,9 @@ never by file hash or incremental parse.
 `refreshPackageGraphTool`, the MCP tool that performs a rebuild with no query attached
 ([MCP tools](../mcp/tools.md#the-refresh-tool)).
 `list` and `show` (metadata) read installed distribution metadata directly and are not cached.
+[`cache`](../commands/cache.md) and `describeBindingTool`'s cache summary
+([MCP tools](../mcp/tools.md#cache-summary)) read the store's recorded build state and schema
+version directly, without invoking the path above, and therefore never rebuild.
 
 ## Details
 
@@ -134,13 +137,20 @@ same reason.
 - **File-hash and incremental invalidation** - the Rule rejects them by name. Never - caches are
   disposable derived data, and version-plus-depth is the whole contract; a file-watching scheme
   would buy precision the disposable model does not need.
-- **Cache eviction** - no size cap or LRU policy. No future spec is planned; the databases are
-  small, per-project, and safe to delete.
+- **Cache eviction** - no size cap or LRU policy. No future spec is planned. The databases are not
+  reliably small - a single three-dependency project's cache has been measured at 102 MiB
+  ([#49](https://github.com/andyrids/venv-axi/issues/49), second comment) - but they remain
+  per-project and safe to delete regardless of size. Growth is unbounded in two directions this
+  spec does not bound: per project root, with nothing pruning a root that no longer exists, and per
+  package within one cache, with nothing evicting a package no longer installed.
+  [`cache`](../commands/cache.md) and `describeBindingTool`'s cache summary make both directions
+  observable; neither bounds them.
 - **A staleness signal carried by a read answer** - no command or tool annotates its answer with
-  how current the graph behind it is. Not settled here:
-  [#49](https://github.com/andyrids/venv-axi/issues/49) owns whether the MCP binding report grows
-  a cache summary, and a signal on every read answer is a wider question again. An explicit
-  rebuild is the remedy this spec provides.
+  how current the graph behind it is. [#49](https://github.com/andyrids/venv-axi/issues/49) settled
+  the narrower question - `describeBindingTool` now carries a cache summary, per
+  [MCP tools](../mcp/tools.md#cache-summary) - but a signal folded into every *other* read answer
+  is a wider question this spec still does not answer. An explicit rebuild, checked against the
+  cache summary beforehand, is the remedy this spec provides.
 
 ## Principles
 

@@ -10,6 +10,7 @@ import pytest
 
 pytest.importorskip("fastmcp")
 # ruff: disable[E402]
+from venvaxi._cache import CacheState, PackageBuild, get_cache_db_path
 from venvaxi._constants import NO_PROJECT_ROOT
 from venvaxi._core import resolve_binding
 from venvaxi._introspect import (
@@ -67,7 +68,9 @@ def test_build_server_registers_tools() -> None:
     }
 
 
-def test_describe_binding_tool_reports_binding(tmp_path: Path) -> None:
+def test_describe_binding_tool_reports_binding(
+    tmp_path: Path, isolated_cache: Path
+) -> None:
     """The tool emits the flat `root`/`venv`/`status` object."""
     server = build_server()
     with mock.patch(f"{CORE}.get_project_root", return_value=tmp_path):
@@ -81,7 +84,7 @@ def test_describe_binding_tool_reports_binding(tmp_path: Path) -> None:
 
 
 def test_describe_binding_tool_footer_names_camel_case(
-    tmp_path: Path,
+    tmp_path: Path, isolated_cache: Path
 ) -> None:
     """The success footer names next-step tools by camelCase name and
     carries no `venvaxi` shell spelling."""
@@ -142,6 +145,258 @@ def test_describe_binding_tool_description_is_call_first() -> None:
     assert "venv" in description
     assert "answers from" in description
     assert "Call this first" in description
+
+
+def test_describe_binding_tool_registered_schema_takes_no_parameters() -> None:
+    """The registered `describeBindingTool` schema still declares no
+    parameters - the cache summary is unconditional on `root`, never a
+    new argument (Validation criterion 18)."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("describe_binding_tool")))
+    assert tool.parameters.get("properties", {}) == {}
+
+
+def test_describe_binding_tool_description_states_cache_summary() -> None:
+    """The registered description also states that the report includes
+    a cache summary - schema version, on-disk size, and which packages
+    are indexed at which built version and depth (#49;
+    `specs/mcp/tools.md`, The description is part of the contract)."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("describe_binding_tool")))
+    description = tool.description or ""
+    assert "schema version" in description
+    assert "on-disk size" in description
+    assert "built version and depth" in description
+
+
+def test_describe_binding_tool_reports_cache_summary_when_root_resolves(
+    tmp_path: Path,
+) -> None:
+    """When `root` resolves, the object gains `schema_version`,
+    `db_path`, `db_size_bytes`, then `count:` and a `builds` table,
+    field for field matching `venvaxi cache` (#49)."""
+    server = build_server()
+    state = CacheState(
+        schema_version=7,
+        db_path=tmp_path / "cache.db",
+        db_size_bytes=1234,
+        builds=[
+            PackageBuild(package="rich", version="1.0.0", depth=2, symbols=42)
+        ],
+    )
+    with (
+        mock.patch(f"{CORE}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.read_cache_state", return_value=state),
+    ):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "schema_version: 7" in result
+    assert "db_size_bytes: 1234" in result
+    assert "count: 1" in result
+    assert "rich|1.0.0|2|42" in result
+
+
+def test_describe_binding_tool_cache_summary_empty_omits_table(
+    tmp_path: Path,
+) -> None:
+    """A real, empty cache reports `count: 0` and no `builds` table -
+    distinct from the `(cache unreadable)` degrade below."""
+    server = build_server()
+    state = CacheState(
+        schema_version=7,
+        db_path=tmp_path / "cache.db",
+        db_size_bytes=0,
+        builds=[],
+    )
+    with (
+        mock.patch(f"{CORE}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.read_cache_state", return_value=state),
+    ):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "schema_version: 7" in result
+    assert "count: 0" in result
+    assert "builds" not in result
+
+
+def test_describe_binding_tool_cache_summary_not_built_reports_marker(
+    tmp_path: Path,
+) -> None:
+    """A never-built cache reports `schema_version: (not built)`, never
+    the literal string stored - it is applied at emission only."""
+    server = build_server()
+    state = CacheState(
+        schema_version=None,
+        db_path=tmp_path / "cache.db",
+        db_size_bytes=0,
+        builds=[],
+    )
+    with (
+        mock.patch(f"{CORE}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.read_cache_state", return_value=state),
+    ):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "schema_version: (not built)" in result
+    assert "count: 0" in result
+
+
+def test_describe_binding_tool_cache_nonzero_count_appends_third_hint(
+    tmp_path: Path,
+) -> None:
+    """A nonzero `count` appends a third hint naming
+    `refreshPackageGraphTool`, additional to the two onboarding hints."""
+    server = build_server()
+    state = CacheState(
+        schema_version=7,
+        db_path=tmp_path / "cache.db",
+        db_size_bytes=1234,
+        builds=[
+            PackageBuild(package="rich", version="1.0.0", depth=2, symbols=42)
+        ],
+    )
+    with (
+        mock.patch(f"{CORE}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.read_cache_state", return_value=state),
+    ):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "help[3]:" in result
+    assert "refreshPackageGraphTool" in result
+
+
+def test_describe_binding_tool_cache_zero_count_omits_third_hint(
+    tmp_path: Path,
+) -> None:
+    """A `count: 0` cache summary appends no third hint - both
+    onboarding hints already name the way to populate a first entry."""
+    server = build_server()
+    state = CacheState(
+        schema_version=7,
+        db_path=tmp_path / "cache.db",
+        db_size_bytes=0,
+        builds=[],
+    )
+    with (
+        mock.patch(f"{CORE}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{MCP}.read_cache_state", return_value=state),
+    ):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "help[2]:" in result
+    assert "refreshPackageGraphTool" not in result
+
+
+def test_describe_binding_tool_no_root_omits_cache_fields() -> None:
+    """No resolvable root omits the cache summary entirely - there is
+    nothing truthful to say about a cache belonging to no project."""
+    server = build_server()
+    with mock.patch(
+        f"{CORE}.get_project_root",
+        side_effect=ProjectRootNotFoundError("nope"),
+    ):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "schema_version" not in result
+    assert "db_path" not in result
+    assert "count:" not in result
+
+
+def test_describe_binding_tool_unreadable_cache_degrades(
+    tmp_path: Path, isolated_cache: Path
+) -> None:
+    """A SQLite-level failure reading the cache degrades that half of
+    the object rather than raising - `root`/`venv`/`status` still
+    report exactly as on a healthy read, and no error block is
+    returned (#49; `specs/mcp/tools.md`, Failure modes)."""
+    server = build_server()
+    root = tmp_path / "proj"
+    root.mkdir()
+    db_path = get_cache_db_path(root)
+    db_path.write_bytes(b"not a real sqlite file" * 10)
+    with (
+        mock.patch(f"{CORE}.get_project_root", return_value=root),
+        mock.patch(
+            f"{MCP}.read_cache_state", side_effect=StoreError("bad schema")
+        ),
+    ):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "root:" in result
+    assert "venv:" in result
+    assert "status:" in result
+    assert "error: true" not in result
+    assert "schema_version: (cache unreadable)" in result
+    assert f"db_size_bytes: {db_path.stat().st_size}" in result
+    # NOTE: A wording-correction/shape assertion checks the wrong form
+    # is absent, not merely that the right form is present
+    # (`reference-toolchain-pytest.md`) - `count: 0` here would
+    # misstate an unreadable database as a real, empty one.
+    assert "count:" not in result
+    assert "builds" not in result
+
+
+def test_describe_binding_tool_unreadable_cache_never_emits_count_zero(
+    tmp_path: Path, isolated_cache: Path
+) -> None:
+    """The unreadable-cache degrade never emits `count: 0` - that is
+    the positive claim the database opened cleanly and held nothing, a
+    different state from 'could not be read at all'."""
+    server = build_server()
+    root = tmp_path / "proj"
+    root.mkdir()
+    db_path = get_cache_db_path(root)
+    db_path.write_bytes(b"garbage")
+    with (
+        mock.patch(f"{CORE}.get_project_root", return_value=root),
+        mock.patch(
+            f"{MCP}.read_cache_state", side_effect=StoreError("bad schema")
+        ),
+    ):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "count: 0" not in result
+
+
+def test_describe_binding_tool_unreadable_cache_hints_delete(
+    tmp_path: Path, isolated_cache: Path
+) -> None:
+    """The unreadable-cache degrade appends a third hint naming the
+    reported `db_path` as safe to delete."""
+    server = build_server()
+    root = tmp_path / "proj"
+    root.mkdir()
+    db_path = get_cache_db_path(root)
+    db_path.write_bytes(b"garbage")
+    with (
+        mock.patch(f"{CORE}.get_project_root", return_value=root),
+        mock.patch(
+            f"{MCP}.read_cache_state", side_effect=StoreError("bad schema")
+        ),
+    ):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "help[3]:" in result
+    assert "disposable derived data" in result
+    assert str(db_path.name) in result
 
 
 def test_build_server_instructions_carry_binding() -> None:

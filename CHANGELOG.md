@@ -20,6 +20,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `venvaxi cache`, reporting this project's cache schema version, database path and size, plus a
+  `builds` table of every package with a recorded build - its built version, built depth and
+  current symbol count. Nothing on either surface previously reported what the cache held, only
+  what a package's installed metadata said - the only way to detect a stale or dropped cache was
+  diffing printed symbol lists by eye, or a file mtime the tool surface never exposed. The read
+  never opens the cache through `SymbolStore`, whose `__init__` drops and rebuilds every table on
+  a schema-version mismatch as a side effect of merely connecting - proved empirically by hashing
+  a stale-schema cache file before and after a read (byte-identical) and, as a failing-first
+  demonstration, showing a `SymbolStore`-based read silently reports the freshly-rebuilt current
+  version and an emptied `builds` table instead of the stale recorded one. `--refresh` is
+  deliberately absent - this is the one command guaranteed never to touch the cache it reports on
+  - and the collection is unbounded, matching `list` (issue 49).
+- `describeBindingTool` extends its report with the same cache summary, field-for-field, whenever
+  `root` resolves - `schema_version`, `db_path`, `db_size_bytes`, `count:` and the `builds` table -
+  plus a third hint naming `refreshPackageGraphTool` when `count` is nonzero. An unreadable cache
+  degrades rather than raises: `root`/`venv`/`status` still report normally, `schema_version`
+  reads `(cache unreadable)`, `db_path`/`db_size_bytes` still report, `count`/`builds` are omitted
+  entirely (never `count: 0`), and a third hint names the database path as safe to delete. On
+  `venvaxi cache` the cache is the whole answer, so a read failure raises; here it is half of one,
+  and `root`/`venv`/`status` cost no file I/O, so withholding them to match a cache-read failure
+  would break the one promise this tool exists to keep (issue 49).
+
 - `refreshPackageGraphTool`, a tenth MCP tool taking a package name and rebuilding that package's
   cached symbol graph. A cached graph is invalidated by installed version plus build depth, and an
   editable install edited in place moves neither - so for an ordinary edit-and-verify loop nothing
@@ -42,6 +64,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The packaged skill's CLI command table gains a `venvaxi cache` row, its MCP tool prose states
+  `describeBindingTool`'s cache-summary fields and the unreadable-cache degrade shape, and the
+  wrongly-bound-server gotcha gains a sentence naming `describeBindingTool` as the way to check a
+  suspected-stale graph without paying for a rebuild (issue 49).
 - `show <package> --api` is now bounded, returning at most 20 rows where it previously emitted a
   package's entire public surface. `show numpy --api --docstring` went from 1,023,453 bytes to
   34,245 - over MCP the unbounded call was refused outright by the token-limit guard, and the
