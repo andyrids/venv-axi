@@ -2,7 +2,7 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs:
   - specs/behaviors/output-contract.md
@@ -11,7 +11,7 @@ specs:
 authors:
   - specs/commands/find.md
 issues: [67]
-pr:
+pr: 86
 ---
 
 # Plan: api-collection-bound
