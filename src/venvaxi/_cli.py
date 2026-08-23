@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from venvaxi._ambient import mcp_available, setup_ambient_context
+from venvaxi._cache import read_cache_state
 from venvaxi._core import (
     CLIContext,
     ExitCode,
@@ -118,6 +119,7 @@ def command_home(_: CLIContext) -> int:
                 "Run `venvaxi tree <package>` for a nested module tree",
                 "Run `venvaxi inspect <qualified_name>` for symbol detail",
                 "Run `venvaxi inherits <qualified_name>` for subclasses",
+                "Run `venvaxi cache` for this project's cache state",
                 "Run `venvaxi serve` to start the MCP server over stdio",
                 "Run `venvaxi setup` to install ambient context",
             ]
@@ -500,6 +502,71 @@ def command_inspect(ctx: CLIContext) -> int:
     return ExitCode.EX_OK
 
 
+def command_cache(ctx: CLIContext) -> int:
+    """Show this project's cache state without changing it.
+
+    NOTE: `read_cache_state` opens SQLite read-only, directly on the
+    cache database, so a stale recorded schema version is reported as
+    a fact, never corrected by the act of asking about it
+    (`specs/commands/cache.md`, Local principle).
+
+    Args:
+        ctx: The CLI context.
+
+    Returns:
+        The process exit code.
+    """
+    root = get_project_root()
+    state = read_cache_state(root)
+
+    fields = {
+        "schema_version": (
+            "(not built)"
+            if state.schema_version is None
+            else state.schema_version
+        ),
+        "db_path": format_path(state.db_path),
+        "db_size_bytes": state.db_size_bytes,
+    }
+    _emit(encode_object(fields))
+
+    if not state.builds:
+        # NOTE: Two situations both report no builds - never built, and
+        # built but empty - kept apart by `schema_version` alone; both
+        # carry the identical next step (`specs/commands/cache.md`).
+        _emit("count: 0")
+        _emit(
+            format_help(
+                [
+                    (
+                        "Run `venvaxi show <package> --api` to index a"
+                        " package into this project's cache"
+                    )
+                ]
+            )
+        )
+        return ExitCode.EX_OK
+
+    rows = [asdict(build) for build in state.builds]
+    _emit(f"count: {len(state.builds)}")
+    _emit(
+        encode_table(
+            "builds", rows, ["package", "version", "depth", "symbols"]
+        )
+    )
+    _emit(
+        format_help(
+            [
+                (
+                    "Run `venvaxi show <package> --api --refresh` to"
+                    " rebuild a package whose recorded build looks stale"
+                )
+            ]
+        )
+    )
+    return ExitCode.EX_OK
+
+
 def command_serve(_: CLIContext) -> int:
     """Serve a dedicated AXI MCP server over STDIO.
 
@@ -671,6 +738,12 @@ def add_subparser(subparsers: "argparse._SubParsersAction[Any]") -> None:
     )
     _add_refresh_argument(parser_inherits)
     parser_inherits.set_defaults(func=command_inherits)
+
+    # `cache` command
+    parser_cache = subparsers.add_parser(
+        "cache", help="Show this project's cache state"
+    )
+    parser_cache.set_defaults(func=command_cache)
 
     # `serve` command
     parser_serve = subparsers.add_parser(

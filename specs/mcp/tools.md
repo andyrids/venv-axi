@@ -108,6 +108,35 @@ the home view makes, but not the same signal. A server registered by `setup` run
 interpreter, so `inactive` over MCP means the registered command names a base interpreter and the
 symbol answers are being drawn from an environment the project never installed into.
 
+### Cache summary
+
+When `root` resolves, `describeBindingTool` shall also report the state of this project's cached
+symbol graph, extending the object above with `schema_version`, `db_path` and `db_size_bytes`, then
+`count: <n>` and a `builds` table of `package`, `version`, `depth`, `symbols` - field for field the
+same shape [`venvaxi cache`](../commands/cache.md) reports, read the same way: directly, without
+opening the graph-build path that would rebuild a schema-mismatched cache as a side effect of
+inspecting it. See [`venvaxi cache`](../commands/cache.md#data-requirements) for what each field
+means and how the two empty states it shares with this tool - no cache built yet, and a cache
+built but empty - stay distinguishable. This tool alone carries a third state - the cache database
+could not be read at all - specified under [Failure modes](#failure-modes) below, since
+`venvaxi cache` answers that same trigger by raising rather than by reporting a state.
+
+This closes the gap [#49](https://github.com/andyrids/venv-axi/issues/49) raised: an MCP-only
+caller had no remedy and no diagnosis for a suspected-stale graph, because refresh reaches this
+surface only through [`refreshPackageGraphTool`](#the-refresh-tool), and nothing reported what the
+graph held before a rebuild was spent finding out. [Out of scope](#out-of-scope) below draws the
+line between the two.
+
+The `builds` table carries no row bound, for the same reason
+[`venvaxi cache`](../commands/cache.md#out-of-scope) does not: a project's cache holds one row per
+package a query has actually touched, which stays small in practice without needing a ceiling.
+
+When `count` is nonzero, the tool shall append a third hint naming
+[`refreshPackageGraphTool`](#the-refresh-tool) as the way to rebuild a package whose recorded build
+looks stale. This is additional to, not a replacement for, the two onboarding hints under
+[Outputs](#outputs) above. When `count` is zero, no third hint is added - both onboarding hints
+already name the way to populate a first entry.
+
 ### Failure modes
 
 This tool shall answer in a broken or uninitialized project, because a caller reaching for it has
@@ -124,10 +153,46 @@ That state is not exotic. It is close to diagnostic of an ephemeral or tool-venv
 the project root as its parent and resolves. The hint shall therefore name the registration as the
 thing to check, phrased for the MCP caller per [Hint wording](#hint-wording).
 
-The degrade is scoped to that trigger alone. If resolving the root raises anything other than a
-failure to find one, then the tool shall return the `Unexpected error:` block like any other tool.
-Widening the catch would convert a genuine fault - an unreadable or deleted working directory -
-into a confident report that the project simply does not exist.
+Without a resolved `root` there is no project to key a cache to, so the degrade shall omit the
+[cache summary](#cache-summary) entirely rather than reporting a marker for it - there is nothing
+truthful to say about a cache belonging to no project.
+
+If the cache database exists but cannot be read due to a SQLite-level failure, then the tool shall
+degrade the cache half of the object rather than raise. `root`, `venv` and `status` are emitted
+exactly as on a healthy read - they cost no file I/O into the cache and a cache fault is no reason
+to withhold them. `schema_version` shall be reported as `(cache unreadable)`. `db_path` and
+`db_size_bytes` shall still be reported: both are filesystem facts about the database file, not its
+contents, so they stay knowable when the contents cannot be read, and a caller wanting to delete
+the offending file needs the path regardless of why it could not be opened. `count` and the
+`builds` table shall be omitted entirely.
+
+The tool shall **not** report `count: 0` here. `count: 0` is the positive claim that the database
+opened cleanly and recorded no builds - the state [Cache summary](#cache-summary) already reserves
+for a real, empty database. Reusing it for 'could not be read at all' would collapse two different
+facts into one marker, which is the same
+[Principle 5](../principles.md#principle-5-definitive-empty-states) trap 'never built' and 'built
+but empty' are already kept apart from - a third state, 'could not ask', needs its own marker
+rather than borrowing either existing one.
+
+The tool shall append a third hint naming the reported `db_path` as safe to delete - it is
+disposable derived data, per [Cache and refresh](../behaviors/cache-refresh.md#cache-identity) -
+after which the next command that touches the cache creates a fresh one, the same bootstrap every
+project's first query already performs.
+
+[`venvaxi cache`](../commands/cache.md#failure-modes) makes the opposite choice on the identical
+trigger, deliberately: there the cache **is** the whole answer, so a read that cannot produce it
+fails honestly. Here the cache summary is only half the object - `root`, `venv` and `status` are
+the other half, and they are exactly what a caller already distrusting its binding needs most.
+Withholding them to match `venvaxi cache`'s raise would break the one promise this tool exists to
+keep: answering in a broken or uninitialized project.
+
+Each degrade is scoped to its own trigger, and neither absorbs a failure outside it. If resolving
+the root raises anything other than a failure to find one, then the tool shall return the
+`Unexpected error:` block like any other tool - widening that catch would convert a genuine fault,
+an unreadable or deleted working directory, into a confident report that the project simply does
+not exist. Likewise, once `root` resolves, only a SQLite-level failure reading the cache degrades
+the cache summary; any other exception raised while reading it still returns the
+`Unexpected error:` block.
 
 **This tool degrades where the other nine raise**, for the identical unresolvable-root state. That
 is deliberate and MUST be preserved: for the other nine an unresolvable root means the answer
@@ -140,6 +205,11 @@ The registered tool description is the only channel that reaches an agent withou
 `venvaxi setup` registers the server as the primary ambient integration, and the harness keeps
 tool descriptions in context. The `describeBindingTool` description shall state that it identifies
 the project and venv the server answers from, and that it is the tool to call first.
+
+It shall also state that the report includes a summary of the cached symbol graph - schema
+version, on-disk size, and which packages are indexed at which built version and depth - so an
+agent holding a suspected-stale answer knows this is the tool that can confirm or rule it out
+without paying for a rebuild.
 
 A description that merely names the return shape wastes the one ambient slot this surface has, and
 leaves the tool discoverable only by an agent that already suspects the problem it exists to
@@ -267,6 +337,13 @@ These are deliberate and MUST be preserved:
   over MCP it names the `__main__.py` inside the venv already reported, so it restates `venv` less
   directly. `root` is the reverse - a CLI caller knows the directory they are standing in, and an
   MCP caller controls neither the spawn directory nor the interpreter.
+
+  The [cache summary](#cache-summary) [#49](https://github.com/andyrids/venv-axi/issues/49) added
+  is the one exception to 'no CLI counterpart of any shape' - it mirrors
+  [`venvaxi cache`](../commands/cache.md) field for field, even though `root`, `venv` and `status`
+  still has none. One tool now carries two different relationships to the CLI at once: a genuine
+  equivalent for the half describing the cache, and no equivalent at all for the half describing
+  the binding.
 - **No `refresh` parameter on any read tool.** The nine read tools answer from the cache and take
   no `refresh` parameter; refresh reaches this surface only through the dedicated
   [`refreshPackageGraphTool`](#the-refresh-tool). The reason the parameter was refused still
@@ -401,20 +478,24 @@ surface only is a guard the other surface does not have.
   and it writes nothing the project owns. Principle 7 guards against a tool changing the caller's
   work without the caller choosing it; a rebuilt cache changes only how current the same answer
   is.
-- **Cache state** - `describeBindingTool` reports which project and venv the server is bound to,
-  never what the symbol graph currently holds. Built version and built depth are a separate
-  question with a separate failure mode - a correct binding serving a stale graph - and
-  [#49](https://github.com/andyrids/venv-axi/issues/49) owns it. Where it lands is this tool: the
-  binding report is the natural home for a cache summary, and a future spec adding one extends
-  this contract rather than replacing it.
-  [`refreshPackageGraphTool`](#the-refresh-tool) does not answer that question either, and the
-  line is drawn deliberately because it is thin. It reports the outcome of a rebuild it has just
-  performed, for the one package it was given; it is silent about every other package, and it
-  reports nothing at all unless a rebuild was asked for. 'What does the graph currently hold?' is
-  a question a caller must be able to ask without mutating anything, and answering it by
-  rebuilding is the most expensive possible reading of it. That the refresh receipt names a depth
-  and a symbol count does not make it a cache summary - those are facts about the walk that just
-  ran, not about the graph as the caller found it.
+- **A staleness signal on every read answer.** [#49](https://github.com/andyrids/venv-axi/issues/49)
+  settled where a cache summary lands: `describeBindingTool`'s [Cache summary](#cache-summary),
+  reporting schema version, on-disk size, and each indexed package's built version, depth and
+  symbol count - the diagnostic gap the issue raised, closed without adding an eleventh tool. What
+  stays out of scope is the wider question: no *other* tool's read answer carries an inline
+  staleness annotation of its own. The cache summary is checked separately, on the one tool built
+  for it, rather than folded into every symbol answer - which would put the same fact in ten
+  places instead of one.
+  [`refreshPackageGraphTool`](#the-refresh-tool) answers neither question, and the line between it
+  and the cache summary is drawn deliberately because it is thin. It reports the outcome of a
+  rebuild it has just performed, for the one package it was given; it is silent about every other
+  package, and it reports nothing at all unless a rebuild was asked for. 'What does the graph
+  currently hold?' is a question a caller must be able to ask without mutating anything, and
+  answering it by rebuilding is the most expensive possible reading of it. That the refresh receipt
+  names a depth and a symbol count does not make it a cache summary - those are facts about the
+  walk that just ran, not about the graph as the caller found it before asking.
+- **Cache eviction** - not this tool's job. See
+  [Cache and refresh](../behaviors/cache-refresh.md#out-of-scope) Out of scope.
 
 ## Principles
 

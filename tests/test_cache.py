@@ -10,7 +10,7 @@ from unittest import mock
 import pytest
 
 from venvaxi import _cache, exceptions
-from venvaxi._store import NodeKind, SymbolNode, SymbolStore
+from venvaxi._store import SCHEMA_VERSION, NodeKind, SymbolNode, SymbolStore
 
 NodeFactory = Callable[..., SymbolNode]
 
@@ -276,3 +276,213 @@ def test_get_or_build_store_import_failure_closes_store(
     ):
         _cache.get_or_build_store(root, "definitely_not_a_real_module")
     close_mock.assert_called_once()
+
+
+def test_read_cache_state_not_built_without_opening_sqlite(
+    isolated_cache: Path, tmp_path: Path
+) -> None:
+    """A project with no cache database reports the not-built empty
+    state - `schema_version: None`, `db_size_bytes: 0`, no builds -
+    without opening SQLite at all (Validation criterion 2)."""
+    root = tmp_path / "proj"
+    root.mkdir()
+    with mock.patch(f"{CACHE}.sqlite3.connect") as connect:
+        state = _cache.read_cache_state(root)
+    connect.assert_not_called()
+    assert state.schema_version is None
+    assert state.db_size_bytes == 0
+    assert state.builds == []
+    assert state.db_path == _cache.get_cache_db_path(root)
+
+
+def test_read_cache_state_reports_builds_and_symbol_counts(
+    isolated_cache: Path, tmp_path: Path, make_symbol_node: NodeFactory
+) -> None:
+    """A built cache reports each package's recorded version, depth
+    and current symbol count, at the real recorded schema version
+    (Validation criteria 1, 3)."""
+    root = tmp_path / "proj"
+    root.mkdir()
+    db_path = _cache.get_cache_db_path(root)
+    with SymbolStore(db_path) as store:
+        store.upsert_node(
+            make_symbol_node(
+                qualified_name="rich",
+                kind=NodeKind.PACKAGE,
+                name="rich",
+                package="rich",
+            )
+        )
+        store.upsert_node(
+            make_symbol_node(
+                qualified_name="rich::Console",
+                name="Console",
+                package="rich",
+            )
+        )
+        store.record_build("rich", "1.0.0", 2)
+        store.flush()
+
+    state = _cache.read_cache_state(root)
+    assert state.schema_version == SCHEMA_VERSION
+    assert state.db_size_bytes == db_path.stat().st_size
+    assert state.builds == [
+        _cache.PackageBuild(
+            package="rich", version="1.0.0", depth=2, symbols=2
+        )
+    ]
+
+
+def test_read_cache_state_symbols_default_to_zero_without_nodes(
+    isolated_cache: Path, tmp_path: Path
+) -> None:
+    """A recorded build with no matching `nodes` rows reports
+    `symbols: 0` rather than raising."""
+    root = tmp_path / "proj"
+    root.mkdir()
+    db_path = _cache.get_cache_db_path(root)
+    with SymbolStore(db_path) as store:
+        store.record_build("ghost", "1.0.0", 2)
+        store.flush()
+
+    state = _cache.read_cache_state(root)
+    assert state.builds == [
+        _cache.PackageBuild(
+            package="ghost", version="1.0.0", depth=2, symbols=0
+        )
+    ]
+
+
+def test_read_cache_state_orders_builds_by_package(
+    isolated_cache: Path, tmp_path: Path
+) -> None:
+    """Multiple recorded builds are ordered by `package`
+    (`specs/commands/cache.md`, Outputs)."""
+    root = tmp_path / "proj"
+    root.mkdir()
+    db_path = _cache.get_cache_db_path(root)
+    with SymbolStore(db_path) as store:
+        store.record_build("zeta", "1.0.0", 2)
+        store.record_build("alpha", "1.0.0", 2)
+        store.flush()
+
+    state = _cache.read_cache_state(root)
+    assert [build.package for build in state.builds] == ["alpha", "zeta"]
+
+
+def test_read_cache_state_built_but_empty_reports_real_schema_version(
+    isolated_cache: Path, tmp_path: Path
+) -> None:
+    """A cache database that exists but records zero builds reports
+    the real recorded `schema_version`, distinguishable from the
+    not-built state by that field alone (Validation criterion 3)."""
+    root = tmp_path / "proj"
+    root.mkdir()
+    db_path = _cache.get_cache_db_path(root)
+    SymbolStore(db_path).close()
+
+    state = _cache.read_cache_state(root)
+    assert state.schema_version == SCHEMA_VERSION
+    assert state.builds == []
+
+
+def test_read_cache_state_stale_schema_reported_unchanged(
+    isolated_cache: Path, tmp_path: Path, make_symbol_node: NodeFactory
+) -> None:
+    """A cache database whose recorded schema version differs from the
+    current schema version is reported with the stale value, unchanged
+    (Validation criterion 6)."""
+    root = tmp_path / "proj"
+    root.mkdir()
+    db_path = _cache.get_cache_db_path(root)
+    with SymbolStore(db_path) as store:
+        store.upsert_node(
+            make_symbol_node(
+                qualified_name="pkg",
+                kind=NodeKind.PACKAGE,
+                name="pkg",
+                package="pkg",
+            )
+        )
+        store.record_build("pkg", "1.0.0", 2)
+        store.flush()
+
+    stale_version = SCHEMA_VERSION - 1
+    raw = sqlite3.connect(db_path)
+    try:
+        raw.execute(f"PRAGMA user_version = {stale_version}")
+        raw.commit()
+    finally:
+        raw.close()
+
+    state = _cache.read_cache_state(root)
+    assert state.schema_version == stale_version
+
+
+def test_read_cache_state_does_not_mutate_stale_schema_database(
+    isolated_cache: Path, tmp_path: Path, make_symbol_node: NodeFactory
+) -> None:
+    """After `read_cache_state` reads a stale-schema cache, the
+    database's own recorded schema version and `package_builds` rows
+    are byte-identical to before the read (Validation criterion 7) -
+    the guard against this unit's central risk: a `SymbolStore` open
+    would drop and rebuild `nodes`/`edges`/`package_builds` as a side
+    effect of merely connecting (`_store.py::_ensure_schema`).
+
+    This is the test that fails against a `SymbolStore`-based
+    implementation - see the stage 02 report for the failing-first
+    demonstration.
+    """
+    root = tmp_path / "proj"
+    root.mkdir()
+    db_path = _cache.get_cache_db_path(root)
+    with SymbolStore(db_path) as store:
+        store.upsert_node(
+            make_symbol_node(
+                qualified_name="pkg",
+                kind=NodeKind.PACKAGE,
+                name="pkg",
+                package="pkg",
+            )
+        )
+        store.record_build("pkg", "1.0.0", 2)
+        store.flush()
+
+    stale_version = SCHEMA_VERSION - 1
+    raw = sqlite3.connect(db_path)
+    try:
+        raw.execute(f"PRAGMA user_version = {stale_version}")
+        raw.commit()
+    finally:
+        raw.close()
+
+    before_bytes = db_path.read_bytes()
+
+    _cache.read_cache_state(root)
+
+    raw = sqlite3.connect(db_path)
+    try:
+        (version_after,) = raw.execute("PRAGMA user_version").fetchone()
+        rows_after = raw.execute(
+            "SELECT package, version, max_depth FROM package_builds"
+        ).fetchall()
+    finally:
+        raw.close()
+
+    assert version_after == stale_version
+    assert rows_after == [("pkg", "1.0.0", 2)]
+    assert db_path.read_bytes() == before_bytes
+
+
+def test_read_cache_state_wraps_sqlite_error(
+    isolated_cache: Path, tmp_path: Path
+) -> None:
+    """A SQLite-level failure reading an existing cache database raises
+    `StoreError` (Validation criterion 9)."""
+    root = tmp_path / "proj"
+    root.mkdir()
+    db_path = _cache.get_cache_db_path(root)
+    db_path.write_bytes(b"this is not a sqlite database, honest")
+
+    with pytest.raises(exceptions.StoreError):
+        _cache.read_cache_state(root)

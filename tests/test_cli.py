@@ -8,6 +8,7 @@ from unittest import mock
 import pytest
 
 from venvaxi import __main__, _cli, exceptions
+from venvaxi._cache import CacheState, PackageBuild
 from venvaxi._core import CLIContext, ExitCode
 from venvaxi._introspect import (
     SYMBOL_INFO_FIELDS,
@@ -106,7 +107,17 @@ def test_command_home_prints_status(
     assert "description:" in out
     assert "bin:" in out
     assert "status:" in out
-    assert "help[9]:" in out
+    assert "help[10]:" in out
+
+
+def test_command_home_footer_names_cache(
+    capsys: pytest.CaptureFixture, make_cli_context: ContextFactory
+) -> None:
+    """The home footer names `venvaxi cache` - `specs/commands/home.md`
+    requires the footer to name every available command (#49)."""
+    _cli.command_home(make_cli_context())
+    out = capsys.readouterr().out
+    assert "Run `venvaxi cache`" in out
 
 
 def test_command_home_status_active_when_prefixes_differ(
@@ -906,6 +917,212 @@ def test_command_find_passes_refresh(
     with mock.patch(f"{CLI}.find_symbol", return_value=[]) as find:
         _cli.command_find(ctx)
     find.assert_called_once_with("Console", 20, "rich", refresh=True)
+
+
+def test_add_subparser_cache_takes_no_arguments() -> None:
+    """The `cache` subcommand accepts no positional or flag arguments."""
+    parser = _make_axi_parser()
+    args = parser.parse_args(["cache"])
+    assert args.func is _cli.command_cache
+    with pytest.raises(SystemExit):
+        parser.parse_args(["cache", "extra"])
+
+
+def test_command_cache_with_builds(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+) -> None:
+    """A cache with recorded builds prints the object, `count:` and the
+    `builds` table, ordered by `package` (Validation criterion 1)."""
+    state = CacheState(
+        schema_version=7,
+        db_path=tmp_path / "cache.db",
+        db_size_bytes=38191104,
+        builds=[
+            PackageBuild(
+                package="venvaxi", version="0.4.0", depth=2, symbols=842
+            )
+        ],
+    )
+    with (
+        mock.patch(f"{CLI}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{CLI}.read_cache_state", return_value=state),
+    ):
+        exit_code = _cli.command_cache(make_cli_context())
+    out = capsys.readouterr().out
+    assert exit_code == ExitCode.EX_OK
+    assert "schema_version: 7" in out
+    assert "db_size_bytes: 38191104" in out
+    assert "count: 1" in out
+    assert "venvaxi|0.4.0|2|842" in out
+
+
+def test_command_cache_with_builds_hint_names_refresh(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+) -> None:
+    """A nonzero `count` ends with a hint naming `show --api --refresh`
+    (Validation criterion 5)."""
+    state = CacheState(
+        schema_version=7,
+        db_path=tmp_path / "cache.db",
+        db_size_bytes=1,
+        builds=[
+            PackageBuild(package="rich", version="1.0.0", depth=2, symbols=9)
+        ],
+    )
+    with (
+        mock.patch(f"{CLI}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{CLI}.read_cache_state", return_value=state),
+    ):
+        _cli.command_cache(make_cli_context())
+    out = capsys.readouterr().out
+    assert "Run `venvaxi show <package> --api --refresh`" in out
+
+
+def test_command_cache_not_built(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+) -> None:
+    """A never-built cache reports `schema_version: (not built)`,
+    `db_size_bytes: 0`, `count: 0`, and the would-be `db_path`
+    (Validation criterion 2) - the marker is applied at emission, never
+    stored, so the wrong (stored-literal) form must also be absent."""
+    db_path = tmp_path / "cache.db"
+    state = CacheState(
+        schema_version=None, db_path=db_path, db_size_bytes=0, builds=[]
+    )
+    with (
+        mock.patch(f"{CLI}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{CLI}.read_cache_state", return_value=state),
+    ):
+        exit_code = _cli.command_cache(make_cli_context())
+    out = capsys.readouterr().out
+    assert exit_code == ExitCode.EX_OK
+    assert "schema_version: (not built)" in out
+    assert "db_size_bytes: 0" in out
+    assert "count: 0" in out
+    assert db_path.name in out
+    assert "builds" not in out
+
+
+def test_command_cache_built_but_empty(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+) -> None:
+    """A cache that exists but records zero builds reports the real
+    recorded `schema_version` and `count: 0` - distinguishable from the
+    not-built state by `schema_version` alone (Validation criterion 3)."""
+    state = CacheState(
+        schema_version=7,
+        db_path=tmp_path / "cache.db",
+        db_size_bytes=53248,
+        builds=[],
+    )
+    with (
+        mock.patch(f"{CLI}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{CLI}.read_cache_state", return_value=state),
+    ):
+        exit_code = _cli.command_cache(make_cli_context())
+    out = capsys.readouterr().out
+    assert exit_code == ExitCode.EX_OK
+    assert "schema_version: 7" in out
+    assert "schema_version: (not built)" not in out
+    assert "count: 0" in out
+
+
+def test_command_cache_empty_hint_names_show_api(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+) -> None:
+    """Both empty states carry the identical hint naming `show --api`
+    (Validation criterion 4)."""
+    state = CacheState(
+        schema_version=7,
+        db_path=tmp_path / "cache.db",
+        db_size_bytes=0,
+        builds=[],
+    )
+    with (
+        mock.patch(f"{CLI}.get_project_root", return_value=tmp_path),
+        mock.patch(f"{CLI}.read_cache_state", return_value=state),
+    ):
+        _cli.command_cache(make_cli_context())
+    out = capsys.readouterr().out
+    assert "Run `venvaxi show <package> --api`" in out
+    assert "--refresh" not in out
+
+
+def test_command_cache_no_project_root_propagates(
+    make_cli_context: ContextFactory,
+) -> None:
+    """No resolvable project root propagates
+    `ProjectRootNotFoundError` unchanged (Validation criterion 8)."""
+    with (
+        mock.patch(
+            f"{CLI}.get_project_root",
+            side_effect=exceptions.ProjectRootNotFoundError("nope"),
+        ),
+        pytest.raises(exceptions.ProjectRootNotFoundError),
+    ):
+        _cli.command_cache(make_cli_context())
+
+
+def test_command_cache_store_error_propagates(
+    tmp_path: Path, make_cli_context: ContextFactory
+) -> None:
+    """A SQLite-level read failure propagates `StoreError` unchanged -
+    `cache` fails honestly rather than degrading (Validation criterion
+    9; #49)."""
+    with (
+        mock.patch(f"{CLI}.get_project_root", return_value=tmp_path),
+        mock.patch(
+            f"{CLI}.read_cache_state",
+            side_effect=exceptions.StoreError("bad schema"),
+        ),
+        pytest.raises(exceptions.StoreError),
+    ):
+        _cli.command_cache(make_cli_context())
+
+
+def test_main_cache_no_project_root_maps_to_exit_1(
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """`venvaxi cache` with no resolvable project root reports the TOON
+    error block and exits 1 (Validation criterion 8)."""
+    with mock.patch(
+        f"{CLI}.get_project_root",
+        side_effect=exceptions.ProjectRootNotFoundError("no root"),
+    ):
+        exit_code = _run_main(["cache"])
+    out = capsys.readouterr().out
+    assert exit_code == ExitCode.EX_FAILURE
+    assert "error: true" in out
+    assert "no root" in out
+
+
+def test_main_cache_store_error_maps_to_exit_1(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """`venvaxi cache` against an unreadable cache reports the TOON
+    error block and exits 1 (Validation criterion 9)."""
+    with (
+        mock.patch(f"{CLI}.get_project_root", return_value=tmp_path),
+        mock.patch(
+            f"{CLI}.read_cache_state",
+            side_effect=exceptions.StoreError("bad schema"),
+        ),
+    ):
+        exit_code = _run_main(["cache"])
+    out = capsys.readouterr().out
+    assert exit_code == ExitCode.EX_FAILURE
+    assert "error: true" in out
+    assert "bad schema" in out
 
 
 def test_command_setup(

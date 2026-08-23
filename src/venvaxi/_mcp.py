@@ -2,12 +2,16 @@
 
 import functools
 import logging
+import sys
 from collections.abc import Callable
 from dataclasses import asdict
+from pathlib import Path
 from typing import Any
 
+from venvaxi import _core
+from venvaxi._cache import get_cache_db_path, read_cache_state
 from venvaxi._constants import NO_PROJECT_ROOT
-from venvaxi._core import get_project_root, resolve_binding
+from venvaxi._core import format_path, get_project_root, resolve_binding
 from venvaxi._introspect import (
     DEFAULT_API_ROW_LIMIT,
     MCP_ESCAPE_HATCH,
@@ -28,7 +32,12 @@ from venvaxi._toon import (
     format_error,
     format_help,
 )
-from venvaxi.exceptions import Error, InvalidArgumentError
+from venvaxi.exceptions import (
+    Error,
+    InvalidArgumentError,
+    ProjectRootNotFoundError,
+    StoreError,
+)
 
 logger = logging.getLogger(__package__)
 
@@ -112,21 +121,50 @@ def describe_binding_tool() -> str:
     Call this first: every other tool returns results about a binding
     it never names, so a server bound to the wrong project or venv
     returns plausible answers with no warning. Reports the resolved
-    project `root`, the serving `venv` and the venv `status`.
+    project `root`, the serving `venv` and the venv `status`. When
+    `root` resolves, the report also includes a summary of the cached
+    symbol graph - schema version, on-disk size, and which packages
+    are indexed at which built version and depth - so a
+    suspected-stale graph can be confirmed or ruled out without
+    paying for a rebuild.
     """
     # NOTE: The docstring above is the registered MCP description -
     # FastMCP reads `__doc__` - and `specs/mcp/tools.md` makes it part
-    # of the contract: it must state what the tool identifies and that
-    # it is the tool to call first. Functional text, not commentary.
-    root, venv, status = resolve_binding()
-    output = encode_object({"root": root, "venv": venv, "status": status})
-    if root == NO_PROJECT_ROOT:
+    # of the contract: it must state what the tool identifies, that it
+    # is the tool to call first, and that the report includes a cache
+    # summary. Functional text, not commentary.
+    #
+    # NOTE: `root` is resolved directly here (via `_core.get_project_root`,
+    # module-qualified so it stays mockable through `venvaxi._core`),
+    # rather than through `resolve_binding()` - that helper formats
+    # `root` for display before returning it, and the cache summary
+    # below needs the unformatted `Path`, resolved once and reused, not
+    # re-derived by parsing the formatted string back apart.
+    root_path: Path | None
+    try:
+        resolved_root = _core.get_project_root()
+        root_path = resolved_root
+        root = format_path(resolved_root)
+    # NOTE: `ProjectRootNotFoundError` exactly, never a broad arm - a
+    # failure to *find* a root is the fact the marker states, while any
+    # other exception must keep propagating to `_toon_errors` as the
+    # `Unexpected error:` block (`specs/mcp/tools.md`, Failure modes).
+    except ProjectRootNotFoundError:
+        root_path = None
+        root = NO_PROJECT_ROOT
+    venv = format_path(Path(sys.prefix).resolve())
+    status = "active" if sys.prefix != sys.base_prefix else "inactive"
+    fields: dict[str, Any] = {"root": root, "venv": venv, "status": status}
+
+    if root_path is None:
         # NOTE: The degraded hint names the registration, not an
         # invocation - an MCP caller cannot change the server's working
         # directory, and naming a file to inspect is not a shell
-        # spelling (`specs/mcp/tools.md`, Hint wording).
+        # spelling (`specs/mcp/tools.md`, Hint wording). Without a
+        # resolved root there is no project to key a cache to, so the
+        # cache summary is omitted entirely rather than marked.
         return _with_help(
-            output,
+            encode_object(fields),
             [
                 (
                     "This server is bound to no project - check the"
@@ -136,18 +174,64 @@ def describe_binding_tool() -> str:
                 )
             ],
         )
+
     list_name = camel_case(list_packages_tool.__name__)
     find_name = camel_case(find_symbol_tool.__name__)
-    return _with_help(
-        output,
-        [
-            (
-                f"Call `{list_name}` with include_dev=true for the"
-                " declared dependencies"
-            ),
-            f"Call `{find_name}` with a query to search the symbol graph",
-        ],
+    hints = [
+        (
+            f"Call `{list_name}` with include_dev=true for the"
+            " declared dependencies"
+        ),
+        f"Call `{find_name}` with a query to search the symbol graph",
+    ]
+
+    try:
+        state = read_cache_state(root_path)
+    except StoreError:
+        # NOTE: The cache half degrades rather than raises here, per
+        # the maintainer's decision at review - `root`/`venv`/`status`
+        # cost no cache I/O and stay knowable regardless of the
+        # cache's health. `StoreError` carries no payload, so
+        # `db_path`/`db_size_bytes` are recomputed directly rather
+        # than threaded through the exception
+        # (`specs/mcp/tools.md`, Failure modes).
+        db_path = get_cache_db_path(root_path)
+        fields["schema_version"] = "(cache unreadable)"
+        fields["db_path"] = format_path(db_path)
+        fields["db_size_bytes"] = db_path.stat().st_size
+        hints.append(
+            f"Delete `{format_path(db_path)}` - it is disposable"
+            " derived data, and the next command that touches the"
+            " cache creates a fresh one"
+        )
+        return _with_help(encode_object(fields), hints)
+
+    fields["schema_version"] = (
+        "(not built)" if state.schema_version is None else state.schema_version
     )
+    fields["db_path"] = format_path(state.db_path)
+    fields["db_size_bytes"] = state.db_size_bytes
+    output = encode_object(fields)
+
+    if state.builds:
+        rows = [asdict(build) for build in state.builds]
+        table = encode_table(
+            "builds", rows, ["package", "version", "depth", "symbols"]
+        )
+        output = f"{output}\ncount: {len(state.builds)}\n{table}"
+        refresh_name = camel_case(refresh_package_graph_tool.__name__)
+        hints.append(
+            f"Call `{refresh_name}` with the name of a package whose"
+            " recorded build looks stale"
+        )
+    else:
+        # NOTE: A real, empty cache - `count: 0` is a positive claim
+        # the database opened cleanly, distinct from `StoreError`'s
+        # `(cache unreadable)` marker above
+        # (`specs/mcp/tools.md`, Cache summary).
+        output = f"{output}\ncount: 0"
+
+    return _with_help(output, hints)
 
 
 def list_packages_tool(include_dev: bool = False) -> str:
