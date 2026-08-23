@@ -2,7 +2,7 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs:
   - specs/mcp/tools.md
@@ -10,7 +10,7 @@ specs:
 authors:
   - specs/behaviors/cache-refresh.md
 issues: [68]
-pr:
+pr: 88
 ---
 
 # Plan: mcp-cache-refresh
