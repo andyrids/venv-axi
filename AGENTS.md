@@ -5,7 +5,7 @@ immutable: false
 recommended-context-tokens: 900
 ---
 
-# [Project name]
+# `venv-axi`
 
 The venv-axi project is an Agent eXperience Interface (AXI) CLI for token-efficient querying of
 venv dependencies. See `docs/architecture.md` for more details.
