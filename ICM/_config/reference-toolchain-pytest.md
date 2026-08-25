@@ -51,6 +51,16 @@ Pytest is used for unit testing, with tests colocated in `tests/`.
 - One behavioural assertion focus per test; state the expected behaviour in a one-line docstring
 - A test written for a bug fix SHOULD be shown to fail against the previous implementation - a
   regression test that passes both before and after the fix asserts nothing
+- A test asserting on STDOUT or STDERR MUST NOT replace `sys.stdout` or `sys.stderr` with
+  `mock.patch`. pytest's default fd-level capture re-asserts both mid-test - in the #45 run, while
+  a fixture package was being imported - so the patched stream receives nothing and the test fails
+  identically with and without the fix under test, which is the show-it-failing rule above
+  defeated in the opposite direction. Request `capsys` and reconfigure the captured stream, itself
+  a real `io.TextIOWrapper`, so the code under test meets the type it meets in production:
+  `stream.reconfigure(encoding="cp1252")`. Measured driving `venvaxi.__main__.main()`, a patched
+  stream received 0 bytes under the default capture and 291 under `--capture=no`.
+  `tests/test_stdout_encoding.py` is the worked example and records the reasoning in its module
+  docstring (#56)
 - A test asserting corrected *wording* SHOULD assert the wrong form is absent as well as the
   right form present. A one-way assertion passes on a substring: when a hint naming
   `showPackageTool` was reworded from 'for a package's public API' to 'for package metadata',
