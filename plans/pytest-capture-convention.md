@@ -2,12 +2,12 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs: []
 authors: []
 issues: [56]
-pr:
+pr: 99
 ---
 
 # Plan: Pytest capture convention
@@ -108,12 +108,13 @@ scaffolding for a defect that documentation now makes it easy to avoid - YAGNI
 (`ICM/_config/reference-standard-yagni.md`). If a violation is ever introduced, the fourth
 Validation gate's `grep` is what a future contributor re-runs to find it.
 
-**Held at `in-progress` pending the PR.** Every Validation box is ticked and evidenced, and the
-`CHANGELOG.md` entry is written, so the work itself is complete. `plans/README.md` closeout step 1
-flips `status` to `done` **and** adds `pr:` in the same edit, and the closeout gate enforces the
-pair - a plan at `done` with an empty `pr:` is a record claiming a merge that has not happened.
-This run makes no commit, so no PR number exists yet. The closeout commit - the last before merge -
-sets both fields together.
+**Closed out over two commits, not one.** `plans/README.md` closeout step 1 flips `status` to
+`done` **and** adds `pr:` in the same edit, and the closeout gate enforces the pair - a plan at
+`done` with an empty `pr:` is a record claiming a merge that has not happened. A PR number cannot
+exist before the commit it describes, so the work commit lands first and a second commit freezes
+the plan against [PR 99](https://github.com/andyrids/venv-axi/pull/99). That is the same two-step
+every plan in this repository closes with, and it does not widen the `express-change` eligibility
+test, which bounds the work rather than the commit count.
 
 ## Follow-ups
 
