@@ -18,7 +18,7 @@ judgements that resolve ambiguity live in [principles](../specs/principles.md).
 
 ## Module map
 
-- `__main__.py` - CLI entry point, global `--verbose`, top-level error handling
+- `__main__.py` - CLI entry point, global `--verbose`/`--version`, top-level error handling
 - `_ambient.py` - Ambient context installation (MCP config, optional skill, legacy block removal)
 - `_cache.py` - On-disk symbol graph cache, version-hash invalidation
 - `_cli.py` - Argparse subcommands and their handlers

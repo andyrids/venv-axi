@@ -10,6 +10,7 @@ import pytest
 
 pytest.importorskip("fastmcp")
 # ruff: disable[E402]
+import venvaxi
 from venvaxi._cache import CacheState, PackageBuild, get_cache_db_path
 from venvaxi._constants import NO_PROJECT_ROOT
 from venvaxi._core import resolve_binding
@@ -83,6 +84,38 @@ def test_describe_binding_tool_reports_binding(
     assert "status:" in result
 
 
+def test_describe_binding_tool_version_is_first_field(
+    tmp_path: Path, isolated_cache: Path
+) -> None:
+    """`version` is the first field of the returned TOON object, ahead
+    of `root`, `venv` and `status` (`specs/mcp/tools.md`, Outputs)."""
+    server = build_server()
+    with mock.patch(f"{CORE}.get_project_root", return_value=tmp_path):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert result.splitlines()[0].startswith("version:")
+    assert result.index("version:") < result.index("root:")
+
+
+def test_describe_binding_tool_healthy_path_unavailable_metadata_marker(
+    tmp_path: Path, isolated_cache: Path
+) -> None:
+    """A falsy `venvaxi.__version__` renders the `(no version metadata)`
+    marker on the healthy path."""
+    server = build_server()
+    with (
+        mock.patch(f"{CORE}.get_project_root", return_value=tmp_path),
+        mock.patch("venvaxi.__version__", ""),
+    ):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "version: (no version metadata)" in result
+
+
 def test_describe_binding_tool_footer_names_camel_case(
     tmp_path: Path, isolated_cache: Path
 ) -> None:
@@ -119,6 +152,40 @@ def test_describe_binding_tool_no_root_reports_marker() -> None:
     assert "error: true" not in result
     assert ".mcp.json" in result
     assert "venvaxi " not in result
+
+
+def test_describe_binding_tool_no_root_reports_version() -> None:
+    """`version` is present, unmarked, on the no-root degrade - resolved
+    before and unaffected by the trigger (`specs/mcp/tools.md`, Failure
+    modes)."""
+    server = build_server()
+    with mock.patch(
+        f"{CORE}.get_project_root",
+        side_effect=ProjectRootNotFoundError("nope"),
+    ):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert f"version: {venvaxi.__version__}" in result
+
+
+def test_describe_binding_tool_no_root_unavailable_metadata_marker() -> None:
+    """A falsy `venvaxi.__version__` renders the marker on the no-root
+    degrade too."""
+    server = build_server()
+    with (
+        mock.patch(
+            f"{CORE}.get_project_root",
+            side_effect=ProjectRootNotFoundError("nope"),
+        ),
+        mock.patch("venvaxi.__version__", ""),
+    ):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "version: (no version metadata)" in result
 
 
 def test_describe_binding_tool_unexpected_error_returns_error_block() -> None:
@@ -167,6 +234,16 @@ def test_describe_binding_tool_description_states_cache_summary() -> None:
     assert "schema version" in description
     assert "on-disk size" in description
     assert "built version and depth" in description
+
+
+def test_describe_binding_tool_description_states_version() -> None:
+    """The registered description states the report includes venvaxi's
+    own version, since `version` is the field the report leads with
+    (`specs/mcp/tools.md`, The description is part of the contract)."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("describe_binding_tool")))
+    description = tool.description or ""
+    assert "own version" in description
 
 
 def test_describe_binding_tool_reports_cache_summary_when_root_resolves(
@@ -348,6 +425,53 @@ def test_describe_binding_tool_unreadable_cache_degrades(
     # misstate an unreadable database as a real, empty one.
     assert "count:" not in result
     assert "builds" not in result
+
+
+def test_describe_binding_tool_unreadable_cache_reports_version(
+    tmp_path: Path, isolated_cache: Path
+) -> None:
+    """`version` is present, unmarked, on the unreadable-cache degrade
+    (`specs/mcp/tools.md`, Failure modes)."""
+    server = build_server()
+    root = tmp_path / "proj"
+    root.mkdir()
+    db_path = get_cache_db_path(root)
+    db_path.write_bytes(b"not a real sqlite file" * 10)
+    with (
+        mock.patch(f"{CORE}.get_project_root", return_value=root),
+        mock.patch(
+            f"{MCP}.read_cache_state", side_effect=StoreError("bad schema")
+        ),
+    ):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert f"version: {venvaxi.__version__}" in result
+
+
+def test_describe_binding_tool_unreadable_cache_unavailable_metadata_marker(
+    tmp_path: Path, isolated_cache: Path
+) -> None:
+    """A falsy `venvaxi.__version__` renders the marker on the
+    unreadable-cache degrade too."""
+    server = build_server()
+    root = tmp_path / "proj"
+    root.mkdir()
+    db_path = get_cache_db_path(root)
+    db_path.write_bytes(b"not a real sqlite file" * 10)
+    with (
+        mock.patch(f"{CORE}.get_project_root", return_value=root),
+        mock.patch(
+            f"{MCP}.read_cache_state", side_effect=StoreError("bad schema")
+        ),
+        mock.patch("venvaxi.__version__", ""),
+    ):
+        tool = asyncio.run(
+            server.get_tool(camel_case("describe_binding_tool"))
+        )
+        result = tool.fn()
+    assert "version: (no version metadata)" in result
 
 
 def test_describe_binding_tool_unreadable_cache_never_emits_count_zero(

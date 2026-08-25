@@ -8,6 +8,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+import venvaxi
 from venvaxi import _core
 from venvaxi._cache import get_cache_db_path, read_cache_state
 from venvaxi._constants import NO_PROJECT_ROOT
@@ -126,7 +127,7 @@ def describe_binding_tool() -> str:
     symbol graph - schema version, on-disk size, and which packages
     are indexed at which built version and depth - so a
     suspected-stale graph can be confirmed or ruled out without
-    paying for a rebuild.
+    paying for a rebuild. The report also includes venvaxi's own version.
     """
     # NOTE: The docstring above is the registered MCP description -
     # FastMCP reads `__doc__` - and `specs/mcp/tools.md` makes it part
@@ -154,7 +155,20 @@ def describe_binding_tool() -> str:
         root = NO_PROJECT_ROOT
     venv = format_path(Path(sys.prefix).resolve())
     status = "active" if sys.prefix != sys.base_prefix else "inactive"
-    fields: dict[str, Any] = {"root": root, "venv": venv, "status": status}
+    # NOTE: `version` is resolved before, and unaffected by, either
+    # degrade below - it is a fact about the server itself, not about
+    # the project or venv it is bound to (`specs/mcp/tools.md`, Failure
+    # modes). Module-qualified (`venvaxi.__version__`), not
+    # `from venvaxi import __version__`, so a test mock stays honoured
+    # the same way `_core.get_project_root()` is called module-qualified
+    # elsewhere in this file for mockability.
+    version = venvaxi.__version__ or "(no version metadata)"
+    fields: dict[str, Any] = {
+        "version": version,
+        "root": root,
+        "venv": venv,
+        "status": status,
+    }
 
     if root_path is None:
         # NOTE: The degraded hint names the registration, not an

@@ -97,8 +97,10 @@ another project's installed packages, with the mismatch still invisible.
 
 ### Outputs
 
-The `describeBindingTool` shall emit a flat TOON object of `root`, `venv` and `status`, followed by
-a `help[]` footer.
+The `describeBindingTool` shall emit a flat TOON object of `version`, `root`, `venv` and `status`,
+followed by a `help[]` footer. `version` comes first because the server identifies itself before
+naming the binding it speaks for - a caller comparing two servers' answers reads which build
+answered before which project it answered about.
 
 Both paths are rendered `~/`-prefixed when under the home directory, else absolute, matching
 [the home view](../commands/home.md).
@@ -138,6 +140,13 @@ looks stale. This is additional to, not a replacement for, the two onboarding hi
 already name the way to populate a first entry.
 
 ### Failure modes
+
+`version` is resolved before either degrade below and is unaffected by both: it is a fact about
+the server itself, not about the project or venv it is bound to. If package metadata is
+unavailable - an uninstalled source checkout, for example - then `describeBindingTool` shall
+report `version: (no version metadata)` on every path, including the no-root and unreadable-cache
+degrades - the same definitive-empty-state marker
+[the home view](../commands/home.md#failure-modes) reports for the identical trigger.
 
 This tool shall answer in a broken or uninitialized project, because a caller reaching for it has
 most likely already been given an answer it distrusts.
@@ -210,6 +219,9 @@ It shall also state that the report includes a summary of the cached symbol grap
 version, on-disk size, and which packages are indexed at which built version and depth - so an
 agent holding a suspected-stale answer knows this is the tool that can confirm or rule it out
 without paying for a rebuild.
+
+It shall also state that the report includes venvaxi's own version, since `version` is the field
+the report leads with.
 
 A description that merely names the return shape wastes the one ambient slot this surface has, and
 leaves the tool discoverable only by an agent that already suspects the problem it exists to
@@ -339,11 +351,12 @@ These are deliberate and MUST be preserved:
   MCP caller controls neither the spawn directory nor the interpreter.
 
   The [cache summary](#cache-summary) [#49](https://github.com/andyrids/venv-axi/issues/49) added
-  is the one exception to 'no CLI counterpart of any shape' - it mirrors
-  [`venvaxi cache`](../commands/cache.md) field for field, even though `root`, `venv` and `status`
-  still has none. One tool now carries two different relationships to the CLI at once: a genuine
-  equivalent for the half describing the cache, and no equivalent at all for the half describing
-  the binding.
+  was the first exception to 'no CLI counterpart of any shape'; `version`
+  ([#81](https://github.com/andyrids/venv-axi/issues/81)) is the second - it mirrors the CLI's
+  `--version` line exactly, resolved once and reported first, ahead of `root`. This tool now
+  carries three different relationships to the CLI at once: a genuine equivalent for the version
+  field, a genuine equivalent for the half describing the cache, and no equivalent at all for the
+  half describing the binding (`root`, `venv`, `status`).
 - **No `refresh` parameter on any read tool.** The nine read tools answer from the cache and take
   no `refresh` parameter; refresh reaches this surface only through the dedicated
   [`refreshPackageGraphTool`](#the-refresh-tool). The reason the parameter was refused still
