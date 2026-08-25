@@ -2,7 +2,7 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs:
   - specs/commands/home.md
@@ -10,7 +10,7 @@ specs:
   - specs/behaviors/skill-content.md
 authors: []
 issues: [81]
-pr:
+pr: 100
 ---
 
 # Plan: version-probe
