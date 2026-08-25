@@ -108,6 +108,7 @@ Verified against `venvaxi --help` output; defaults shown in parentheses.
 | Command | Flags | Purpose |
 | --- | --- | --- |
 | `venvaxi` | - | Home view: bin/venv paths, active status, next-step hints |
+| `venvaxi --version` | - | Installed venvaxi version, then exits - no bin/venv/status |
 | `venvaxi list` | `--all`, `--fields` (`name,version`) | Declared; `installed:` names the gap |
 | `venvaxi show <pkg>` | `--fields` (`name,version,location`) | Installed package metadata |
 | `venvaxi show <pkg> --api` | `--docstring`, `--limit` (`20`), `--refresh` | Public API symbols |
@@ -181,12 +182,13 @@ error block instead of an MCP transport error.
 Types are `str` for names|queries, `bool` for `include_dev`|`docstring`, `int` for
 `limit`|`max_depth`, and `str | None` for `package`.
 
-`describeBindingTool` additionally reports this project's cache state whenever `root` resolves -
-`schema_version`, `db_path`, `db_size_bytes`, then `count:` and a `builds` table of
+`describeBindingTool` leads with `version` - venvaxi's own version, resolved once and unaffected
+by either degrade below - then additionally reports this project's cache state whenever `root`
+resolves - `schema_version`, `db_path`, `db_size_bytes`, then `count:` and a `builds` table of
 `package`/`version`/`depth`/`symbols`, field for field the same as `venvaxi cache`. If the cache
 database cannot be read, those fields degrade to `schema_version: (cache unreadable)` with
 `count`/`builds` omitted (never `count: 0`) and a third hint naming the `db_path` as safe to
-delete, rather than raising - `root`/`venv`/`status` still report normally either way.
+delete, rather than raising - `version`/`root`/`venv`/`status` still report normally either way.
 
 Notable CLI differences:
 

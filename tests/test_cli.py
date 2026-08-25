@@ -7,6 +7,7 @@ from unittest import mock
 
 import pytest
 
+import venvaxi
 from venvaxi import __main__, _cli, exceptions
 from venvaxi._cache import CacheState, PackageBuild
 from venvaxi._core import CLIContext, ExitCode
@@ -1515,3 +1516,71 @@ def test_main_defaults_to_non_verbose() -> None:
         exit_code = _run_main([])
     assert exit_code == ExitCode.EX_OK
     assert recorded["ctx"].is_verbose is False
+
+
+def test_version_flag_emits_version_and_exits_ok(
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """`venvaxi --version` emits a single `version: <ver>` TOON line and
+    exits `EX_OK`, with no home-view fields alongside it
+    (`specs/commands/home.md`, Outputs)."""
+    exit_code = _run_main(["--version"])
+    out = capsys.readouterr().out
+    expected = venvaxi.__version__ or "(no version metadata)"
+    assert exit_code == ExitCode.EX_OK
+    assert out == f"version: {expected}\n"
+    assert "description:" not in out
+    assert "help[" not in out
+
+
+def test_version_flag_short_circuits_subcommand_dispatch(
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """`--version` exits before subcommand dispatch even when a
+    subcommand is also given on the command line."""
+    with mock.patch(f"{CLI}.command_list") as command_list:
+        exit_code = _run_main(["--version", "list"])
+    out = capsys.readouterr().out
+    assert exit_code == ExitCode.EX_OK
+    assert "version:" in out
+    command_list.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [["--version", "-v"], ["-v", "--version"]],
+    ids=["version-then-verbose", "verbose-then-version"],
+)
+def test_version_flag_short_circuits_regardless_of_order(
+    capsys: pytest.CaptureFixture, argv: list[str]
+) -> None:
+    """`--version` short-circuits `-v`/`--verbose` identically in either
+    order - argparse actions fire in parse order, not registration
+    order, so both orderings must behave the same."""
+    exit_code = _run_main(argv)
+    out = capsys.readouterr().out
+    expected = venvaxi.__version__ or "(no version metadata)"
+    assert exit_code == ExitCode.EX_OK
+    assert out == f"version: {expected}\n"
+
+
+def test_version_flag_unavailable_metadata_reports_marker(
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """A falsy `venvaxi.__version__` renders the `(no version metadata)`
+    marker rather than an empty value (`specs/commands/home.md`, Failure
+    modes)."""
+    with mock.patch("venvaxi.__version__", ""):
+        exit_code = _run_main(["--version"])
+    out = capsys.readouterr().out
+    assert exit_code == ExitCode.EX_OK
+    assert "version: (no version metadata)" in out
+
+
+def test_help_lists_version_flag(capsys: pytest.CaptureFixture) -> None:
+    """`venvaxi --help` lists `--version` alongside `-v`/`--verbose`
+    (Invariant 4, `specs/README.md`)."""
+    exit_code = _run_main(["--help"])
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "--version" in out

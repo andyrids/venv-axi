@@ -12,11 +12,14 @@ The bare invocation. No subcommand.
 ## Invocation / inputs
 
 ```text
-venvaxi [-v|--verbose]
+venvaxi [-v|--verbose] [--version]
 ```
 
 The subparsers action is deliberately **not** `required`, so a bare `venvaxi` falls through to
 this view instead of erroring.
+
+`--version` is checked ahead of subcommand dispatch and short-circuits every other input,
+including `-v`/`--verbose`; see [Outputs](#outputs) below.
 
 ## Data requirements
 
@@ -36,6 +39,12 @@ followed by a `help[]` footer naming every available command with a concrete, ru
 
 This is the content-first surface: it shows live, actionable state, never help text.
 
+Where `--version` is given, the bare invocation shall instead emit a single `version: <version>`
+TOON line and exit `EX_OK`, short-circuiting the view above - no `description`/`bin`/`venv`/
+`status` object and no `help[]` footer are emitted alongside it. There is no next step to
+disclose, so none is manufactured to keep the shape constant with every other command
+(`specs/behaviors/output-contract.md#contextual-disclosure`).
+
 ## Failure modes
 
 The bare invocation shall exit `EX_OK` on every run.
@@ -43,6 +52,13 @@ The bare invocation shall exit `EX_OK` on every run.
 If the project root is unresolvable or the project is broken or uninitialized, then the bare
 invocation shall still emit the status object and exit `EX_OK` - none by design, because this is
 the first thing an agent runs and it has to answer before anything else works.
+
+If package metadata is unavailable - an uninstalled source checkout, for example - then
+`--version` shall emit `version: (no version metadata)` rather than raising, and still exit
+`EX_OK`. The marker is a definitive empty state under
+[Output contract](../behaviors/output-contract.md#definitive-empty-states), matching the house
+pattern (`(no project root)`, `(no docstring)`) rather than a bare empty string a caller could
+mistake for a real, empty version.
 
 ## Out of scope
 
@@ -57,6 +73,16 @@ the first thing an agent runs and it has to answer before anything else works.
   and a CLI caller chose that directory - so the answer is one they already have. An MCP caller
   chose neither the directory nor the interpreter, which is why the same field is load-bearing
   over there and inert here.
+- **A short `-V` spelling for `--version`** - not offered. Never - `-v` already means
+  `--verbose` and is unaffected by this addition
+  ([#81](https://github.com/andyrids/venv-axi/issues/81) is explicit that the flag letter was
+  never the defect, only the missing capability), and a second short flag was not asked for.
+- **`version` on the home view's own output block** - not added, though issue #81's resolution 3
+  named it as a cheap addition once `__version__` is already being read. Declined for now:
+  `--version` alone already answers the question for a caller who reaches for it, and folding a
+  version field into every bare `venvaxi` invocation conflates two different questions -
+  'what am I running' and 'what state is this venv in' - on the one view built to answer the
+  second quickly. Revisit only if a future issue argues the home block itself needs it.
 
 ## Principles
 

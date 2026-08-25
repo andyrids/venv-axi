@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `--version` reports the installed version as a single `version: <version>` TOON line and exits
+  (issue #81).
+- `describeBindingTool` gains a `version` field, reported first, so an MCP-only caller can also
+  identify the server's build.
+
 ### Changed
 
 - `ICM/_config/reference-toolchain-pytest.md` records the pytest fd-capture trap that defeats a

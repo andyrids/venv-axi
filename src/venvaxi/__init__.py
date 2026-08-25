@@ -9,18 +9,22 @@ TOON Documentation: https://toonformat.dev/
 AXI Documentation: https://axi.md/
 """
 
-import contextlib
 from importlib import metadata
 from pathlib import Path
 
 from venvaxi import exceptions
 from venvaxi._logging import configure_pkg_logging
 
-__all__: list[str] = ["exceptions"]
+__all__: list[str] = ["exceptions", "__version__"]
 
 VENVAXI_ROOT: Path = Path(__file__).parent
 
 configure_pkg_logging()
 
-with contextlib.suppress(metadata.PackageNotFoundError):
+# NOTE: Unconditionally bound - so both the CLI `--version` action and
+# `describe_binding_tool` can read it directly, from an installed or an
+# uninstalled source tree alike.
+try:
     __version__: str = metadata.version("venv-axi")
+except metadata.PackageNotFoundError:
+    __version__ = ""

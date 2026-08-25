@@ -4,11 +4,12 @@ import argparse
 import io
 import logging
 import sys
-from typing import NoReturn
+from typing import Any, NoReturn
 
+import venvaxi
 from venvaxi import _cli, _core, exceptions
 from venvaxi._logging import configure_cli_logging
-from venvaxi._toon import format_error
+from venvaxi._toon import encode_object, format_error
 
 logger = logging.getLogger(__package__)
 
@@ -18,6 +19,40 @@ __all__: list[str] = ["main"]
 # formatter is surface-neutral and each surface supplies its own footer
 # (`specs/behaviors/output-contract.md`, Error shape).
 CLI_ERROR_HINT = "Run `venvaxi --help` for available commands"
+
+
+class _VersionAction(argparse.Action):
+    """Emit `venvaxi`'s version as a TOON line and exit `EX_OK`.
+
+    NOTE: Not argparse's built-in `action="version"` - that prints a bare
+    string outside venvaxi's own TOON path, diverging from the
+    unconditional output contract on arrival
+    (`specs/behaviors/output-contract.md`).
+    """
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: Any,
+        option_string: str | None = None,
+    ) -> None:
+        """Write the `version:` TOON line and exit `EX_OK`.
+
+        Args:
+            parser: The parser this action is registered on.
+            namespace: The namespace being populated (unused; `--version`
+                short-circuits before any other value is consumed).
+            values: The parsed value(s) for this action (unused; `nargs=0`).
+            option_string: The option string that triggered this action.
+
+        Returns:
+            None - `parser.exit()` raises `SystemExit` before this
+            returns.
+        """
+        version = venvaxi.__version__ or "(no version metadata)"
+        sys.stdout.write(f"{encode_object({'version': version})}\n")
+        parser.exit(status=_core.ExitCode.EX_OK)
 
 
 def main() -> NoReturn:
@@ -42,6 +77,12 @@ def main() -> NoReturn:
         "--verbose",
         action="store_true",
         help="Enable verbose logging [DEBUG]",
+    )
+    parser.add_argument(
+        "--version",
+        action=_VersionAction,
+        nargs=0,
+        help="Show the installed venvaxi version and exit",
     )
     # NOTE: Attribute access (not a module-level `from ... import`) so the
     # bare-invocation default resolves at call time, like every other
