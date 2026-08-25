@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > - `Fixed` for any bug fixes.
 > - `Security` in case of vulnerabilities.
 
+## [Unreleased]
+
+### Changed
+
+- `ICM/_config/reference-toolchain-pytest.md` records the pytest fd-capture trap that defeats a
+  `mock.patch` of `sys.stdout`.
+
 ## [0.4.0] - 2026-08-23
 
 ### Added
