@@ -2,14 +2,14 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs:
   - specs/behaviors/cache-refresh.md
   - specs/commands/cache.md
 authors: []
 issues: [89]
-pr:
+pr: 102
 ---
 
 # Plan: cache-version-resolution
