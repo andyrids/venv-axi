@@ -34,6 +34,7 @@ from venvaxi._introspect import (
     get_public_api,
     get_symbol,
     refresh_package_graph,
+    resolve_import_and_distributions,
     show_module,
     summarize_doc,
     truncate,
@@ -1043,6 +1044,96 @@ def test_resolve_import_name_fallback_preserves_case() -> None:
         assert _resolve_import_name("my-pkg") == "my_pkg"
 
 
+def test_resolve_import_and_distributions_import_name_key_unchanged() -> None:
+    """The combined resolver agrees with `_resolve_import_name` for an
+    import-name-key input, and reports its claiming distribution
+    (Validation criterion 8)."""
+    with mock.patch(
+        "venvaxi._introspect.metadata.packages_distributions",
+        return_value={"PIL": ["pillow"]},
+    ):
+        assert resolve_import_and_distributions("PIL") == ("PIL", ("pillow",))
+        assert resolve_import_and_distributions("pillow") == (
+            "PIL",
+            ("pillow",),
+        )
+
+
+def test_resolve_import_and_distributions_fallback_preserves_case() -> None:
+    """The combined resolver's unmapped fallback matches
+    `_resolve_import_name` and reports no claiming distribution
+    (Validation criterion 8)."""
+    with mock.patch(
+        "venvaxi._introspect.metadata.packages_distributions",
+        return_value={},
+    ):
+        assert resolve_import_and_distributions("MyPkg") == ("MyPkg", ())
+        assert resolve_import_and_distributions("my-pkg") == ("my_pkg", ())
+
+
+def test_resolve_import_and_distributions_differing_import_name() -> None:
+    """An import name claimed by a differently-spelled distribution
+    resolves both the import name and the real claiming distribution -
+    `dns`/`dnspython` is the live case (#89)."""
+    with mock.patch(
+        "venvaxi._introspect.metadata.packages_distributions",
+        return_value={"dns": ["dnspython"]},
+    ):
+        assert resolve_import_and_distributions("dns") == (
+            "dns",
+            ("dnspython",),
+        )
+        assert resolve_import_and_distributions("dnspython") == (
+            "dns",
+            ("dnspython",),
+        )
+
+
+def test_resolve_import_and_distributions_multiple_distributions() -> None:
+    """An import name claimed by two or more distributions reports all
+    of them, in the mapping's own order (composite ordering is
+    `_cache._installed_version`'s responsibility, not the resolver's)."""
+    with mock.patch(
+        "venvaxi._introspect.metadata.packages_distributions",
+        return_value={
+            "jaraco": [
+                "jaraco.classes",
+                "jaraco.context",
+                "jaraco.functools",
+            ]
+        },
+    ):
+        assert resolve_import_and_distributions("jaraco") == (
+            "jaraco",
+            ("jaraco.classes", "jaraco.context", "jaraco.functools"),
+        )
+
+
+def test_build_store_for_calls_packages_distributions_at_most_once(
+    fake_package: str,
+) -> None:
+    """Resolving one package name for a rebuild calls
+    `metadata.packages_distributions()` at most once across a
+    `_build_store_for` invocation - the performance constraint
+    threading `distributions` through exists to guarantee (Validation
+    criterion 7). Instrumented with `wraps`, not read from code.
+
+    NOTE: `_build_store_for` directly, not `show_module` - `show_module`
+    also calls `_resolve_qualified_name`, a pre-existing, unrelated
+    caller of `packages_distributions()` this fix does not touch.
+    """
+    from venvaxi import _introspect
+
+    with mock.patch.object(
+        metadata,
+        "packages_distributions",
+        wraps=metadata.packages_distributions,
+    ) as wrapped:
+        with _introspect._build_store_for(fake_package):
+            pass
+    assert wrapped.call_count == 1
+
+
 def test_get_module_tree_dotted_name_measures_depth_from_submodule(
     fake_package: str,
 ) -> None:
@@ -1323,10 +1414,19 @@ def test_refresh_package_graph_reports_resolved_import_name(
 ) -> None:
     """A distribution name is reported as the import name the graph is
     keyed by, not as the caller spelled it."""
-    with mock.patch.object(
-        metadata,
-        "packages_distributions",
-        return_value={fake_package: ["fake-dist"]},
+    with (
+        mock.patch.object(
+            metadata,
+            "packages_distributions",
+            return_value={fake_package: ["fake-dist"]},
+        ),
+        # NOTE: `_installed_version` now resolves the version from the
+        # claiming distribution itself ("fake-dist"), not the import
+        # name - "fake-dist" is a fictional distribution present only
+        # in the mocked mapping above, so `metadata.version` is mocked
+        # here too, or the real (unmocked) lookup raises
+        # `PackageNotFoundError` for a name that was never installed.
+        mock.patch.object(metadata, "version", return_value="1.2.3"),
     ):
         receipt = refresh_package_graph("fake-dist")
     assert receipt.package == fake_package

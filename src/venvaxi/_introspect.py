@@ -294,6 +294,42 @@ def _doc_of(obj: Any, kind: NodeKind) -> str:
     return "" if _is_stdlib_type(type(obj)) else doc
 
 
+def resolve_import_and_distributions(name: str) -> tuple[str, tuple[str, ...]]:
+    """Resolve an import name and the distribution(s) claiming it.
+
+    NOTE: Import names are case-sensitive (`PIL`, not `pil`) - a name
+    already present as an import-name key is returned unchanged, and the
+    fallback only normalizes dashes, never case.
+
+    NOTE: Holds the matching logic `_resolve_import_name` used to
+    contain, plus the reverse lookup off the same `mapping` -
+    `packages_distributions()` costs ~145ms and is not memoized, so a
+    caller needing both the import name and its claiming distributions
+    resolves both from one call rather than two (#89).
+
+    Args:
+        name: The distribution (package) or import name.
+
+    Returns:
+        The best-effort importable top-level module name, and the
+        distribution name(s) `packages_distributions()` maps it to
+        (empty if none).
+    """
+    mapping = metadata.packages_distributions()
+    if name in mapping:
+        import_name = name
+    else:
+        normalized = name.lower().replace("-", "_")
+        import_name = name.replace("-", "_")
+        for candidate, dist_names in mapping.items():
+            if any(
+                d.lower().replace("-", "_") == normalized for d in dist_names
+            ):
+                import_name = candidate
+                break
+    return import_name, tuple(mapping.get(import_name, ()))
+
+
 def _resolve_import_name(name: str) -> str:
     """Resolve import slugs from distribution names.
 
@@ -307,15 +343,7 @@ def _resolve_import_name(name: str) -> str:
     Returns:
         The best-effort importable top-level module name.
     """
-    mapping = metadata.packages_distributions()
-    if name in mapping:
-        return name
-    normalized = name.lower().replace("-", "_")
-    for import_name, dist_names in mapping.items():
-        for dist_name in dist_names:
-            if dist_name.lower().replace("-", "_") == normalized:
-                return import_name
-    return name.replace("-", "_")
+    return resolve_import_and_distributions(name)[0]
 
 
 def _ensure_installed(import_name: str, name: str) -> None:
@@ -822,12 +850,13 @@ def _build_store_for(
     # belongs in a 'not installed' message.
     root = _top_level_root(name)
     _ensure_valid_name(root, name)
-    root_package = _resolve_import_name(root)
+    root_package, distributions = resolve_import_and_distributions(root)
     _ensure_installed(root_package, root)
     try:
         return _cache.get_or_build_store(
             get_project_root(),
             root_package,
+            distributions,
             max_depth=max_depth,
             force_refresh=refresh,
         )

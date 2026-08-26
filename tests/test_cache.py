@@ -4,6 +4,7 @@ import sqlite3
 import sys
 import types
 from collections.abc import Callable, Iterator
+from importlib import metadata
 from pathlib import Path
 from unittest import mock
 
@@ -66,14 +67,34 @@ def test_get_cache_db_path_differs_per_project(
     assert _cache.get_cache_db_path(root_a) != _cache.get_cache_db_path(root_b)
 
 
-def test_installed_version_known_package() -> None:
-    """A real installed distribution resolves a non-empty version."""
-    assert _cache._installed_version("pytest") != ""
+def test_installed_version_single_distribution_returns_bare_version() -> None:
+    """Exactly one claiming distribution records its bare version string
+    (Validation criterion 1)."""
+    assert _cache._installed_version(("pytest",)) == metadata.version("pytest")
 
 
-def test_installed_version_unknown_package_returns_empty() -> None:
-    """A non-distribution name degrades gracefully to an empty string."""
-    assert _cache._installed_version("this-is-not-a-real-distribution") == ""
+def test_installed_version_multiple_distributions_composite() -> None:
+    """Two or more claiming distributions record a sorted, comma-joined
+    `name=version` composite (Validation criterion 2)."""
+    versions = {"zeta-dist": "2.0.0", "alpha-dist": "1.0.0"}
+    with mock.patch(
+        f"{CACHE}.metadata.version", side_effect=lambda dist: versions[dist]
+    ):
+        result = _cache._installed_version(("zeta-dist", "alpha-dist"))
+    assert result == "alpha-dist=1.0.0,zeta-dist=2.0.0"
+
+
+def test_installed_version_no_distribution_returns_marker() -> None:
+    """No claiming distribution records the literal `(no distribution)`
+    marker (Validation criterion 3).
+
+    This rewrites the prior pinned assertion
+    (`_installed_version("this-is-not-a-real-distribution") == ""`),
+    which asserted exactly the silent-wrong-value behaviour #89 exists
+    to remove - an import name resolving to no distribution recorded
+    `""`, which then compared equal to itself forever.
+    """
+    assert _cache._installed_version(()) == "(no distribution)"
 
 
 def test_is_cache_valid_false_when_node_missing(tmp_path: Path) -> None:
@@ -111,7 +132,7 @@ def test_get_or_build_store_builds_on_first_call(
     """A fresh cache builds the store and records the package node."""
     root = tmp_path / "project"
     with mock.patch(f"{CACHE}._installed_version", return_value=""):
-        store = _cache.get_or_build_store(root, fake_module.__name__)
+        store = _cache.get_or_build_store(root, fake_module.__name__, ())
     try:
         node = store.get_node(fake_module.__name__)
         assert node is not None
@@ -144,7 +165,7 @@ def test_get_or_build_store_releases_store_on_base_exception(
         mock.patch(f"{CACHE}._installed_version", return_value=""),
         pytest.raises(WalkCrash),
     ):
-        _cache.get_or_build_store(root, fake_module.__name__)
+        _cache.get_or_build_store(root, fake_module.__name__, ())
     # The database is deletable, which an open connection blocks on
     # Windows - the observable release the spec requires.
     _cache.get_cache_db_path(root).unlink()
@@ -156,10 +177,10 @@ def test_get_or_build_store_skips_rebuild_when_valid(
     """A cache hit does not re-walk the module."""
     root = tmp_path / "project"
     with mock.patch(f"{CACHE}._installed_version", return_value="1.0.0"):
-        first = _cache.get_or_build_store(root, fake_module.__name__)
+        first = _cache.get_or_build_store(root, fake_module.__name__, ())
         first.close()
         with mock.patch("venvaxi._introspect._walk_module") as walk:
-            second = _cache.get_or_build_store(root, fake_module.__name__)
+            second = _cache.get_or_build_store(root, fake_module.__name__, ())
             second.close()
         walk.assert_not_called()
 
@@ -170,10 +191,10 @@ def test_get_or_build_store_rebuilds_on_version_change(
     """A version mismatch triggers a rebuild."""
     root = tmp_path / "project"
     with mock.patch(f"{CACHE}._installed_version", return_value="1.0.0"):
-        first = _cache.get_or_build_store(root, fake_module.__name__)
+        first = _cache.get_or_build_store(root, fake_module.__name__, ())
         first.close()
     with mock.patch(f"{CACHE}._installed_version", return_value="2.0.0"):
-        second = _cache.get_or_build_store(root, fake_module.__name__)
+        second = _cache.get_or_build_store(root, fake_module.__name__, ())
         try:
             node = second.get_node(fake_module.__name__)
             assert node is not None
@@ -182,17 +203,91 @@ def test_get_or_build_store_rebuilds_on_version_change(
             second.close()
 
 
+def test_get_or_build_store_threads_distributions_to_installed_version(
+    tmp_path: Path, fake_module: types.ModuleType
+) -> None:
+    """`get_or_build_store` resolves the version from the `distributions`
+    tuple the caller threads in, not by re-deriving it (Validation
+    criterion 7 - no second `packages_distributions()` call is needed
+    here because the caller already resolved it)."""
+    root = tmp_path / "project"
+    with mock.patch(
+        f"{CACHE}._installed_version", return_value="9.9.9"
+    ) as installed_version:
+        _cache.get_or_build_store(
+            root, fake_module.__name__, ("some-dist", "other-dist")
+        )
+    installed_version.assert_called_once_with(("some-dist", "other-dist"))
+
+
+def test_get_or_build_store_differing_import_name_records_real_version(
+    tmp_path: Path, fake_module: types.ModuleType
+) -> None:
+    """A package whose import name differs from its claiming
+    distribution's name records that distribution's real installed
+    version, never `""` (Validation criterion 4) - `pytest` stands in
+    for the live `dns`/`dnspython` case (#89)."""
+    root = tmp_path / "project"
+    store = _cache.get_or_build_store(root, fake_module.__name__, ("pytest",))
+    try:
+        node = store.get_node(fake_module.__name__)
+        assert node is not None
+        assert node.version == metadata.version("pytest")
+        assert node.version != ""
+    finally:
+        store.close()
+
+
+def test_get_or_build_store_rebuilds_on_claiming_distribution_version_change(
+    tmp_path: Path, fake_module: types.ModuleType
+) -> None:
+    """A version change on the distribution claiming a cached import
+    name invalidates the cache on the next query (Validation criterion
+    5)."""
+    root = tmp_path / "project"
+    with mock.patch(f"{CACHE}.metadata.version", return_value="1.0.0"):
+        first = _cache.get_or_build_store(
+            root, fake_module.__name__, ("some-dist",)
+        )
+        first.close()
+    with mock.patch(f"{CACHE}.metadata.version", return_value="2.0.0"):
+        second = _cache.get_or_build_store(
+            root, fake_module.__name__, ("some-dist",)
+        )
+        try:
+            node = second.get_node(fake_module.__name__)
+            assert node is not None
+            assert node.version == "2.0.0"
+        finally:
+            second.close()
+
+
+def test_get_or_build_store_no_distribution_stays_valid_without_rebuild(
+    tmp_path: Path, fake_module: types.ModuleType
+) -> None:
+    """An import name claiming no distribution stays valid across
+    queries at sufficient depth - it does not rebuild on the strength
+    of a version comparison alone (Validation criterion 6)."""
+    root = tmp_path / "project"
+    first = _cache.get_or_build_store(root, fake_module.__name__, ())
+    first.close()
+    with mock.patch("venvaxi._introspect._walk_module") as walk:
+        second = _cache.get_or_build_store(root, fake_module.__name__, ())
+        second.close()
+    walk.assert_not_called()
+
+
 def test_get_or_build_store_force_refresh(
     tmp_path: Path, fake_module: types.ModuleType
 ) -> None:
     """`force_refresh=True` rebuilds even when the cache is valid."""
     root = tmp_path / "project"
     with mock.patch(f"{CACHE}._installed_version", return_value="1.0.0"):
-        first = _cache.get_or_build_store(root, fake_module.__name__)
+        first = _cache.get_or_build_store(root, fake_module.__name__, ())
         first.close()
         with mock.patch("venvaxi._introspect._walk_module") as walk:
             second = _cache.get_or_build_store(
-                root, fake_module.__name__, force_refresh=True
+                root, fake_module.__name__, (), force_refresh=True
             )
             second.close()
         walk.assert_called_once()
@@ -215,10 +310,10 @@ def test_get_or_build_store_wraps_database_error(
         ),
         pytest.raises(exceptions.StoreError),
     ):
-        _cache.get_or_build_store(root, fake_module.__name__)
+        _cache.get_or_build_store(root, fake_module.__name__, ())
 
     with mock.patch(f"{CACHE}._installed_version", return_value="1.0.0"):
-        store = _cache.get_or_build_store(root, fake_module.__name__)
+        store = _cache.get_or_build_store(root, fake_module.__name__, ())
     try:
         assert _cache.is_cache_valid(store, fake_module.__name__, "1.0.0")
     finally:
@@ -246,12 +341,12 @@ def test_get_or_build_store_non_database_error_not_poisoning(
         mock.patch.object(SymbolStore, "close", autospec=True) as close_mock,
         pytest.raises(TypeError),
     ):
-        _cache.get_or_build_store(root, fake_module.__name__)
+        _cache.get_or_build_store(root, fake_module.__name__, ())
     close_mock.assert_called_once()
 
     # On partial build (PACKAGE node) rollback, MUST rebuild
     with mock.patch(f"{CACHE}._installed_version", return_value="1.0.0"):
-        store = _cache.get_or_build_store(root, fake_module.__name__)
+        store = _cache.get_or_build_store(root, fake_module.__name__, ())
     try:
         assert _cache.is_cache_valid(store, fake_module.__name__, "1.0.0")
         children = store.get_children(fake_module.__name__)
@@ -274,7 +369,7 @@ def test_get_or_build_store_import_failure_closes_store(
         mock.patch.object(SymbolStore, "close", autospec=True) as close_mock,
         pytest.raises(ModuleNotFoundError),
     ):
-        _cache.get_or_build_store(root, "definitely_not_a_real_module")
+        _cache.get_or_build_store(root, "definitely_not_a_real_module", ())
     close_mock.assert_called_once()
 
 

@@ -163,20 +163,34 @@ def read_cache_state(root: Path) -> CacheState:
     )
 
 
-def _installed_version(package_name: str) -> str:
-    """Resolve an installed distribution version.
+def _installed_version(distributions: tuple[str, ...]) -> str:
+    """Resolve the recorded build version from claiming distribution(s).
+
+    NOTE: `distributions` is sourced from `packages_distributions()`'s
+    own mapping - the same index `metadata.version` reads - so a
+    `PackageNotFoundError` here would indicate a corrupted or
+    concurrently-modified environment, not an expected miss. No
+    defensive `try`/`except` is added; letting it propagate surfaces
+    that fault rather than masking it as `(no distribution)`, which
+    would misreport a real distribution as untracked (#89).
 
     Args:
-        package_name: The import (or distribution) name to resolve.
+        distributions: The distribution name(s) claiming the import
+            name being built, from
+            `_introspect.resolve_import_and_distributions`.
 
     Returns:
-        The installed version string, or `""` if it cannot be
-        determined (e.g. not an installed distribution).
+        The bare version string for a single claiming distribution; a
+        `name=version` composite, sorted by distribution name and
+        comma-joined, for two or more; the literal `"(no distribution)"`
+        marker for none.
     """
-    try:
-        return metadata.version(package_name)
-    except metadata.PackageNotFoundError:
-        return ""
+    if not distributions:
+        return "(no distribution)"
+    if len(distributions) == 1:
+        return metadata.version(distributions[0])
+    ordered = sorted(distributions)
+    return ",".join(f"{dist}={metadata.version(dist)}" for dist in ordered)
 
 
 def is_cache_valid(
@@ -219,6 +233,7 @@ def _discard_store(store: SymbolStore) -> None:
 def get_or_build_store(
     root: Path,
     package_name: str,
+    distributions: tuple[str, ...],
     *,
     max_depth: int = _introspect.DEFAULT_MAX_DEPTH,
     force_refresh: bool = False,
@@ -228,6 +243,9 @@ def get_or_build_store(
     Args:
         root: The consuming project's root directory.
         package_name: The import name of the package to introspect.
+        distributions: The distribution name(s) claiming
+            `package_name`, from
+            `_introspect.resolve_import_and_distributions`.
         max_depth: The maximum submodule recursion depth.
         force_refresh: Rebuild even if the cache is still valid.
 
@@ -237,7 +255,7 @@ def get_or_build_store(
         calling `.close()` (or using it as a context manager).
     """
     store = SymbolStore(get_cache_db_path(root))
-    installed_version = _installed_version(package_name)
+    installed_version = _installed_version(distributions)
     if not force_refresh and is_cache_valid(
         store, package_name, installed_version, max_depth
     ):

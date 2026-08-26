@@ -26,7 +26,7 @@ from typing import Self
 
 logger = logging.getLogger(__package__)
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 """The cache schema version, stored as SQLite's `PRAGMA user_version`.
 
 NOTE: Tracks *what a walk records*, not only the table shape - node
@@ -43,6 +43,13 @@ NOTE: 7 - `_doc_of` now keeps an `attribute`'s docstring when it is the
 same as its type's, unless that type is standard-library (#82); a
 version-6 cache serves `(no docstring)` for a package-defined singleton
 (`pytest.fail`) indefinitely.
+
+NOTE: 8 - the recorded build `version` is now resolved from the
+distribution(s) claiming a package's import name, not from the import
+name treated as a distribution name (#89); a version-7 cache may hold
+`""` for any package whose import name differs from its distribution
+name, which compared equal to itself forever and made version-based
+invalidation never fire for that class.
 """
 
 
