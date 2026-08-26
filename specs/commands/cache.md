@@ -40,10 +40,14 @@ ordered by `package`.
   stands - never venvaxi's currently-running schema version, and never upgraded to it by this read.
 - `db_path` and `db_size_bytes` are the cache database's path and its size in bytes, `~/`-prefixed
   when under the home directory, else absolute, matching [the home view](home.md).
-- Each `builds` row reports one package's recorded build: `version` is the distribution version it
-  was built against, which is not necessarily the version installed now - `show <package>` answers
-  that separately, per [Out of scope](#out-of-scope) - `depth` is the recorded build depth, and
-  `symbols` is the number of graph nodes currently recorded for it.
+- Each `builds` row reports one package's recorded build: `version` is the version of the
+  distribution(s) claiming the package's import name, resolved as
+  [Cache and refresh](../behaviors/cache-refresh.md#version-resolution) specifies - a bare version
+  string for the common single-distribution case, a `name=version` composite for an import name two
+  or more distributions claim, and `(no distribution)` for one no distribution claims. It is not
+  necessarily the version installed now - `show <package>` answers that separately, per
+  [Out of scope](#out-of-scope) - `depth` is the recorded build depth, and `symbols` is the number
+  of graph nodes currently recorded for it.
 
 Two situations both report no builds, and they are different facts an agent might act on
 differently, so they stay distinguishable rather than collapsing into one empty answer, per

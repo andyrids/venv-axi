@@ -660,6 +660,34 @@ def test_schema_version_mismatch_rebuilds_tables(
         assert version == SCHEMA_VERSION
 
 
+def test_schema_version_7_empty_version_row_evicted_on_open(
+    tmp_path: Path,
+) -> None:
+    """A cache database recorded at schema version 7, holding a
+    `package_builds` row with `version = ""` - the exact stale shape
+    issue #89 reports, produced by resolving an import name as if it
+    were a distribution name - is dropped and rebuilt on next open,
+    regardless of its recorded build version (Validation criterion 9)."""
+    db_path = tmp_path / "store.db"
+    SymbolStore(db_path).close()
+
+    connection = sqlite3.connect(db_path)
+    connection.execute("PRAGMA user_version = 7")
+    connection.execute(
+        "INSERT INTO package_builds (package, version, max_depth)"
+        " VALUES ('dns', '', 2)"
+    )
+    connection.commit()
+    connection.close()
+
+    with SymbolStore(db_path) as store:
+        assert store.get_build("dns") is None
+        (version,) = store._connection.execute(
+            "PRAGMA user_version"
+        ).fetchone()
+        assert version == SCHEMA_VERSION
+
+
 def test_corrupt_database_raises_and_releases_file(tmp_path: Path) -> None:
     """A corrupt database file raises `sqlite3.DatabaseError` and the
     connection is closed (the file is deletable afterwards on Windows)."""

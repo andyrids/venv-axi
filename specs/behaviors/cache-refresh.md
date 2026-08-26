@@ -41,7 +41,8 @@ then the command shall raise `ProjectRootNotFoundError`.
 The store shall treat a cached graph as valid only when **all three** hold:
 
 1. The store's schema version equals the current one.
-2. The recorded build version equals the currently installed distribution version.
+2. The recorded build version equals the version currently resolved for the distribution(s)
+   claiming the package's import name, per [Version resolution](#version-resolution).
 3. The recorded build depth is **at least** the depth the current query requires.
 
 Depth is part of the check by necessity: if a graph was built at `--max-depth 1`, then it shall
@@ -50,6 +51,33 @@ as a definitive empty answer.
 
 If a package has no recorded build, then the store shall treat it as invalid and build it on
 first query.
+
+### Version resolution
+
+The version compared under [Validity](#validity) item 2 is resolved from the distribution(s)
+claiming the built package's *import* name, never from the import name treated as a distribution
+name in its own right. `importlib.metadata` indexes installed distributions by distribution name,
+and an import name coincides with its distribution name only by convention (`requests`), not by
+rule (`dns` imports from the `dnspython` distribution). Resolving the import name as if it were a
+distribution name fails silently for every package where the two differ, and a failed resolution
+that degrades to an empty string compares equal to itself forever - the version check can then
+never observe a real version change.
+
+- If exactly one distribution claims an import name, then the store shall record that
+  distribution's bare version string.
+- If two or more distributions claim the same import name, then the store shall record a
+  composite of every claiming distribution's full name and version, `name=version` pairs joined by
+  a comma and sorted by distribution name, so that any one of them moving changes the composite and
+  is observed as a version change:
+  `jaraco.classes=3.4.0,jaraco.context=6.0.1,jaraco.functools=4.4.0`.
+- If no distribution claims an import name, then the store shall record `(no distribution)`.
+  Version-based invalidation is **inapplicable** for such an import name, not broken - a
+  standard-library module and a local module importable on `sys.path` are both queryable by design
+  and carry no distribution version to track. `SCHEMA_VERSION` and an explicit `--refresh` remain
+  the invalidation path for this class, exactly as they already are for the editable-install case
+  below ([When a rebuild is needed](#when-a-rebuild-is-needed)). Failing closed instead - rebuilding
+  on every query for an undistributed import name - was considered and declined: it would rebuild
+  `json` on every `venvaxi show json --api`.
 
 ### Schema version covers the builder, not just the shape
 
@@ -125,6 +153,15 @@ edited in place; only a reinstall moves it, and a dynamic version derived from V
 is no exception, because the value in the metadata was frozen at that build. For an ordinary
 edit-and-verify loop against an editable-installed project, version-based invalidation never
 fires at all, and an explicit rebuild is the only thing that will.
+
+This is a different gap from [an import name with no distribution](#version-resolution). There, no
+distribution version exists to move in the first place, and the check is declared inapplicable by
+design; here, a real distribution version exists and genuinely has not moved, and the check is
+blind to the only thing that *did* change - the source on disk. Both end in the identical remedy,
+an explicit rebuild, but for different reasons -
+[#89](https://github.com/andyrids/venv-axi/issues/89) is explicit that conflating them is the
+mistake to avoid: a package resolving to `(no distribution)` is declared out of the version check's
+reach, not silently broken the way a stale-cache package recording `""` for both sides was.
 
 Every rebuild request names the package to rebuild, per
 [Rebuild scope and depth](#rebuild-scope-and-depth). Most commands take that from the query they

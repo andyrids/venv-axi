@@ -30,6 +30,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ICM/_config/reference-toolchain-pytest.md` records the pytest fd-capture trap that defeats a
   `mock.patch` of `sys.stdout`.
 
+### Fixed
+
+- The recorded build `version` is now resolved from the distribution(s) claiming a package's
+  import name, not the import name itself. A package whose import name differs from its
+  distribution name (`dns`/`dnspython`, `yaml`/PyYAML, `bs4`/beautifulsoup4, ...) recorded `""`
+  and could never invalidate on a version change; it now records the real version, a sorted
+  `name=version` composite where two or more distributions claim the same import name, or
+  `(no distribution)` where none do (issue #89). The cache schema version moves to 8, so any
+  cache holding a `""`-recorded row rebuilds once on first query after upgrading.
+
 ## [0.4.0] - 2026-08-23
 
 ### Added
