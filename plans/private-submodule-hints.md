@@ -2,7 +2,7 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs:
   - specs/commands/tree.md
@@ -13,7 +13,7 @@ specs:
   - specs/behaviors/skill-content.md
 authors: []
 issues: [104, 105]
-pr:
+pr: 107
 ---
 
 # Plan: Private submodule hints
