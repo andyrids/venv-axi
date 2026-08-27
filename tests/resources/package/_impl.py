@@ -15,3 +15,7 @@ class Base:
 
 class Sub(Base):
     """A subclass implemented in a private module."""
+
+
+class Hidden:
+    """A class implemented in a private module and re-exported nowhere."""
