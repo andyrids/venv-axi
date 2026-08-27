@@ -46,6 +46,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `name=version` composite where two or more distributions claim the same import name, or
   `(no distribution)` where none do (issue #89). The cache schema version moves to 8, so any
   cache holding a `""`-recorded row rebuilds once on first query after upgrading.
+- A private submodule's answer gave no sign it was private. On `tree` and `inspect` it read
+  identically to a name that does not exist; on `show --api` the two were already distinct - a
+  nonexistent name raises there - but the hint named `tree <package>`, which answers `count: 0`
+  for that identical name, so the offered recovery confirmed the empty answer a second time.
+  Every surface now states the module is private and never indexed: `tree` and
+  `getModuleTreeTool` before naming the root's own tree (issue #104), `show --api` and
+  `showPackageApiTool` while retargeting to the root's own public API (issue #105), and
+  `inspect`'s module-mode miss - shared unaltered with `showModuleTool` - in place of merely
+  "not found". A top-level package whose own name starts with `_` (`_pytest`) is unaffected;
+  only a non-root segment counts.
+- The packaged skill's "Private submodules are not indexed" gotcha is corrected to match: it no
+  longer claims `tree`'s and `inspect`'s private-submodule answers read the same as a name that
+  does not exist, both false the moment the fix above lands.
 
 ## [0.4.0] - 2026-08-23
 

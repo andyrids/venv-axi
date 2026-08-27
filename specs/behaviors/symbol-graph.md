@@ -99,13 +99,19 @@ A package's private implementation modules are not its API surface, so no **modu
 recorded for one. Nodes homed there are a separate question, answered case by case below.
 
 - If a caller names a private submodule as the target of `inspect`, `tree`, or an MCP module
-  lookup, then the graph shall answer as it does for a module that does not exist - no module
-  node is recorded for it.
+  lookup, then no module node is recorded for it, identically to a module that does not exist.
+  The graph fact is the same in both cases; what the caller is told is not - each surface states
+  plainly that the name is private and never indexed, rather than leaving the two causes
+  indistinguishable. See [`tree`](../commands/tree.md#outputs),
+  [`inspect`](../commands/inspect.md#failure-modes) and
+  [MCP tools](../mcp/tools.md#hint-wording) for the surface-specific wording.
 - If a caller asks for a private submodule's own public API, then the answer shall be `count: 0`
   at `EX_OK`, not the failure a submodule that does not exist raises. The module imports, so it
-  resolves; only its absence from the graph empties the API. The equivalence above therefore
-  holds for `inspect`, `tree` and MCP module lookups but not for `show --api`, where the empty
-  answer is the least distinguishable from a module that genuinely exposes nothing at this level.
+  resolves; only its absence from the graph empties the API. This is the one surface where the
+  node-level equivalence above never held observably - a raise and a `count: 0` were never
+  confusable - and its hint carries the same private-and-never-indexed fact as the other
+  surfaces, naming the root package's own public API rather than a tree walk of the identical,
+  equally-empty name. See [`show --api`](../commands/show.md#outputs).
 - If a module the walk visits re-exports a class or function whose home is a private submodule,
   then the graph shall still record it, keyed at the re-exporting facade, with its
   `home_qualified_name` pointing into the unwalked private module and its member rows (for a

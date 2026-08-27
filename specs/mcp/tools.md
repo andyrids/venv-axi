@@ -431,6 +431,17 @@ surfaces to differently-scoped answers for the same recovery, which is the harde
 the caller gets a plausible result and no signal that it was narrower than the one the CLI would
 have given.
 
+The [private-submodule](../behaviors/symbol-graph.md#private-submodules) hints on
+`getModuleTreeTool` and `showPackageApiTool` are where this is easiest to get half right.
+`getModuleTreeTool`'s empty-state hint already names itself scoped to the query root, so
+mirroring [`tree`](../commands/tree.md#outputs)'s private case changes only the sentence, not the
+target. `showPackageApiTool`'s does not: today it names `getModuleTreeTool` scoped to the *given*
+name, and the private case shall instead name `showPackageApiTool` itself, scoped to the *root* -
+matching [`show --api`](../commands/show.md#outputs)'s hint exactly. Keeping the old target with
+the new sentence, or the new target at the old (private) scope, both leave the recovery
+confirming the same empty answer a second time - naming the right tool with the wrong parameter
+is a plausible-looking hint that still fails.
+
 Truncation suffixes carry the same obligation as footers, and are specified with the truncation
 rule in [Output contract](../behaviors/output-contract.md#truncation).
 

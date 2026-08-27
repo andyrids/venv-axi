@@ -24,6 +24,7 @@ from venvaxi._introspect import (
     get_module_tree,
     get_public_api,
     get_symbol,
+    is_private_submodule,
     show_module,
     summarize_doc,
 )
@@ -206,18 +207,25 @@ def _command_show_api(ctx: CLIContext) -> int:
         # so `tree` is not the next step
         # (`specs/behaviors/output-contract.md`, Bounded collections).
         _emit("count: 0")
-        _emit(
-            format_help(
-                [
-                    capped_hint
-                    if result.capped
-                    else (
-                        f"Run `venvaxi tree {ctx.args.package}`"
-                        " for the nested module tree"
-                    )
-                ]
+        if result.capped:
+            hint = capped_hint
+        elif is_private_submodule(ctx.args.package):
+            # NOTE: Retargets, not merely rewords - `venvaxi tree
+            # <package>` answers `count: 0` for this identical name, so
+            # pointing there would confirm the empty answer a second
+            # time rather than resolve it (`specs/commands/show.md`,
+            # Outputs).
+            root = ctx.args.package.split(".", 1)[0]
+            hint = (
+                f"`{ctx.args.package}` is private and never indexed - run"
+                f" `venvaxi show {root} --api` for the public surface"
             )
-        )
+        else:
+            hint = (
+                f"Run `venvaxi tree {ctx.args.package}`"
+                " for the nested module tree"
+            )
+        _emit(format_help([hint]))
         return ExitCode.EX_OK
 
     rows = [asdict(symbol) for symbol in symbols]
@@ -359,12 +367,15 @@ def command_tree(ctx: CLIContext) -> int:
         # *package* raises upstream, so the root's own tree is the hint
         # that shows what exists. See `specs/commands/tree.md`.
         root = ctx.args.package.split(".", 1)[0]
-        _emit("count: 0")
-        _emit(
-            format_help(
-                [f"Run `venvaxi tree {root}` for the submodules that exist"]
+        if is_private_submodule(ctx.args.package):
+            hint = (
+                f"`{ctx.args.package}` is private and never indexed - run"
+                f" `venvaxi tree {root}` for the modules that are indexed"
             )
-        )
+        else:
+            hint = f"Run `venvaxi tree {root}` for the submodules that exist"
+        _emit("count: 0")
+        _emit(format_help([hint]))
         return ExitCode.EX_OK
 
     rows = [{"depth": depth, **node.as_row()} for depth, node in pairs]

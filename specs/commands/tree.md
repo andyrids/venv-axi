@@ -36,11 +36,17 @@ a uniform TOON table. Rendering a visual tree is the caller's business.
 The `tree` command shall end output with a footer naming `venvaxi inspect <module>`.
 
 When the named submodule has no node in the graph, the `tree` command shall emit `count: 0` plus
-a hint naming the root package's own tree (`venvaxi tree <root>`), which shows the submodules
-that do exist. Only a dotted module name reaches this state - the root package resolved and
-imported, but the named submodule has no node in the graph: it does not exist, is
+a hint naming the root package's own tree (`venvaxi tree <root>`). Only a dotted module name
+reaches this state - the root package resolved and imported, but the named submodule has no node
+in the graph: it does not exist, is
 [private](../behaviors/symbol-graph.md#private-submodules), or failed to import during the walk.
 A mistyped or uninstalled package never reaches it; that raises and exits `EX_FAILURE`.
+
+If the named submodule is private - any non-root segment of its dotted name starts with `_` -
+then the hint shall say so before naming the root's own tree, so the caller learns the module is
+deliberately unwalked rather than genuinely missing. A private submodule and a nonexistent or
+failed-import one otherwise share the identical `count: 0` at `EX_OK`; the hint is the only
+place the two are told apart.
 
 ## Failure modes
 

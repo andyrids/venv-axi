@@ -80,6 +80,15 @@ Rules binding both modes:
 - If the qualified name does not resolve in the store, then the `inspect` command shall raise
   `SymbolNotFoundError`, emit the TOON error block and exit `EX_FAILURE`. This is distinct from
   a zero-children answer, which is a definitive success.
+- If the qualified name is a **module** name (no `::`) naming a
+  [private submodule](../behaviors/symbol-graph.md#private-submodules) - any non-root segment of
+  its dotted name starts with `_` - then the `inspect` command shall still raise
+  `SymbolNotFoundError` and exit `EX_FAILURE`, but the message shall state that the module is
+  private and never indexed, rather than merely not found, distinguishing this definitive
+  "private, not absent" answer from a name that is mistyped or genuinely does not exist. A
+  **symbol**-mode miss (`::` present) for a symbol homed in a private submodule and re-exported
+  nowhere is unaffected by this bullet; it is governed by
+  [Private submodules](../behaviors/symbol-graph.md#private-submodules) already.
 - If the name's top-level component is not a possible package name, then the `inspect` command
   shall raise `InvalidArgumentError`, emit the TOON error block and exit `EX_FAILURE`.
 - If the owning package is not installed in the venv, then the `inspect` command shall raise

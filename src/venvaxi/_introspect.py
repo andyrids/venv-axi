@@ -604,6 +604,28 @@ def _record_symbol(
     return kind
 
 
+def is_private_submodule(name: str) -> bool:
+    """Whether a dotted module name is unreachable through the walk.
+
+    Mirrors `_walk_submodules`'s own per-level skip
+    (`subname.rsplit(".", 1)[-1].startswith("_")`), applied to every
+    non-root segment of an already-fully-qualified name rather than to
+    the one segment discovered during recursion - the walk skips at
+    every level, so a private ancestor makes every name beneath it
+    unreachable regardless of that name's own spelling. The root
+    segment is excluded: the top-level package is walked directly, not
+    discovered as its own submodule (`specs/behaviors/symbol-graph.md`,
+    Private submodules).
+
+    Args:
+        name: A bare or dotted module name.
+
+    Returns:
+        True if any segment after the first starts with `_`.
+    """
+    return any(segment.startswith("_") for segment in name.split(".")[1:])
+
+
 def _walk_submodules(
     module: ModuleType,
     *,
@@ -886,7 +908,13 @@ def show_module(
     with _build_store_for(name, max_depth=max_depth, refresh=refresh) as store:
         node = store.get_node(resolved)
         if node is None:
-            msg = f"Module `{name}` not found"
+            if is_private_submodule(resolved):
+                msg = (
+                    f"Module `{name}` is private and never indexed -"
+                    f" `{resolved.split('.', 1)[0]}` is the reachable root"
+                )
+            else:
+                msg = f"Module `{name}` not found"
             raise SymbolNotFoundError(msg)
         return node, store.get_children(resolved)
 

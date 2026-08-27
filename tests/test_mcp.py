@@ -897,6 +897,22 @@ def test_show_package_api_tool_zero_limit_returns_count_zero() -> None:
     assert "getModuleTreeTool" not in result
 
 
+def test_show_package_api_tool_private_submodule_hint_names_root_api(
+    fake_package: str,
+) -> None:
+    """A private submodule's empty API hint names `showPackageApiTool`
+    itself, scoped to the root - not `getModuleTreeTool`, which answers
+    `count: 0` for the identical name (#105)."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("show_package_api_tool")))
+    result = tool.fn(name=f"{fake_package}._impl")
+    assert "count: 0" in result
+    assert f"`{fake_package}._impl` is private and never indexed" in result
+    assert "showPackageApiTool" in result
+    assert f"name={fake_package}" in result
+    assert "getModuleTreeTool" not in result
+
+
 def test_show_package_api_tool_negative_limit_returns_error_block() -> None:
     """A negative `limit` returns the domain-error TOON block through
     the shared rejection - one rejection site, so this surface inherits
@@ -989,6 +1005,23 @@ def test_show_module_tool_truncation_names_mcp_escape_hatch(
         result = tool.fn(name="rich")
     assert "re-call with docstring=true for the complete body" in result
     assert "--docstring" not in result
+
+
+def test_show_module_tool_private_submodule_returns_toon_error(
+    fake_package: str,
+) -> None:
+    """`showModuleTool` shares `show_module`'s message unaltered - the
+    same private-and-never-indexed wording `inspect` raises on the CLI
+    (#104)."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("show_module_tool")))
+    result = tool.fn(name=f"{fake_package}._impl")
+    assert "error: true" in result
+    assert (
+        f"`{fake_package}._impl` is private and never indexed"
+        f" - `{fake_package}` is the reachable root"
+    ) in result
+    assert "help[" not in result
 
 
 def test_get_symbol_tool_returns_toon(make_symbol_node: NodeFactory) -> None:
@@ -1324,6 +1357,21 @@ def test_get_module_tree_tool_empty_hint_names_root_tree(
     assert f"name={fake_package}" in result
     assert "listPackagesTool" not in result
     assert "get_module_tree_tool" not in result
+    assert "private" not in result
+
+
+def test_get_module_tree_tool_empty_hint_names_private_submodule(
+    fake_package: str,
+) -> None:
+    """A private submodule's hint says so before naming the root's own
+    tree, distinguishing it from the nonexistent case above (#104)."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("get_module_tree_tool")))
+    result = tool.fn(name=f"{fake_package}._impl")
+    assert result.startswith("count: 0")
+    assert f"`{fake_package}._impl` is private and never indexed" in result
+    assert "getModuleTreeTool" in result
+    assert f"name={fake_package}" in result
 
 
 REFRESH_TOOL = "refresh_package_graph_tool"

@@ -33,6 +33,7 @@ from venvaxi._introspect import (
     get_module_tree,
     get_public_api,
     get_symbol,
+    is_private_submodule,
     refresh_package_graph,
     resolve_import_and_distributions,
     show_module,
@@ -714,14 +715,60 @@ def test_get_symbol_resolves_facade_spelled_method(fake_package: str) -> None:
     assert node.module == f"{fake_package}._impl"
 
 
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("package._impl", True),
+        ("package._impl.sub", True),
+        ("package.sub._impl", True),
+        ("_pytest._code", True),
+        ("_pytest", False),
+        ("_pytest.outcomes", False),
+        ("package.api", False),
+        ("rich.console", False),
+    ],
+)
+def test_is_private_submodule_checks_every_non_root_segment(
+    name: str, expected: bool
+) -> None:
+    """Reachability is any non-root segment starting with `_` - the walk
+    skips at every recursion level, so a private ancestor makes every
+    name beneath it unreachable regardless of that name's own spelling.
+    The root segment is excluded: `_pytest` named as the query root is
+    walked in full (`specs/behaviors/symbol-graph.md`, Private
+    submodules)."""
+    assert is_private_submodule(name) is expected
+
+
 def test_show_module_raises_for_private_submodule_named_directly(
     fake_package: str,
 ) -> None:
-    """A private submodule named directly answers absent, same as a
-    module that does not exist - no module node is ever recorded for
-    it, adjacent to the facade resolution above into the same home."""
-    with pytest.raises(SymbolNotFoundError):
+    """A private submodule named directly still raises - no module node
+    is ever recorded for it, adjacent to the facade resolution above
+    into the same home - but the message states it is private and never
+    indexed rather than merely not found (#104)."""
+    with pytest.raises(
+        SymbolNotFoundError,
+        match=(
+            rf"`{fake_package}\._impl` is private and never indexed -"
+            rf" `{fake_package}` is the reachable root"
+        ),
+    ):
         show_module(f"{fake_package}._impl")
+
+
+def test_show_module_raises_not_found_for_nonexistent_submodule(
+    fake_package: str,
+) -> None:
+    """A genuinely nonexistent dotted submodule keeps the unchanged
+    generic message, textually distinct from the private-case wording
+    above (#104)."""
+    with pytest.raises(
+        SymbolNotFoundError,
+        match=rf"Module `{fake_package}\.nosuchmodule` not found",
+    ) as exc_info:
+        show_module(f"{fake_package}.nosuchmodule")
+    assert "private" not in str(exc_info.value)
 
 
 def test_private_submodule_miss_identical_after_refresh(
