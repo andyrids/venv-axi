@@ -2,7 +2,7 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs:
   - specs/behaviors/skill-content.md
@@ -10,7 +10,7 @@ authors:
   - specs/behaviors/symbol-graph.md
   - specs/behaviors/qualified-name-semantics.md
 issues: [87]
-pr:
+pr: 103
 ---
 
 # Plan: Private submodule contract
@@ -296,23 +296,25 @@ left implicit.
 
 ## Follow-ups
 
-- **Issue** - `venvaxi tree pkg._impl` currently emits the same `count: 0` plus `venvaxi tree pkg`
-  hint that a mistyped/nonexistent submodule name gets, so the two cases read identically even
+- **Issue [#104](https://github.com/andyrids/venv-axi/issues/104)** - `venvaxi tree pkg._impl`
+  currently emits the same `count: 0` plus `venvaxi tree pkg` hint that a mistyped or nonexistent
+  submodule name gets, so the two cases read identically even
   though one is a definitive "private, not absent" answer and the other is a plain miss. A hint
   that told the two apart is a real improvement this plan does not make (declaring the existing
   behaviour, not changing it, is #87's whole scope). Named in this plan's Scope as "Its own issue,
-  filed at closeout"; not filed by this stage - left for review.
-- **Issue** - `venvaxi show pkg._impl --api` emits `count: 0` plus a hint naming
-  `venvaxi tree pkg._impl`, which itself answers `count: 0` - the offered recovery confirms the
+  filed at closeout".
+- **Issue [#105](https://github.com/andyrids/venv-axi/issues/105)** - `venvaxi show pkg._impl
+  --api` emits `count: 0` plus a hint naming `venvaxi tree pkg._impl`, which itself answers
+  `count: 0` - the offered recovery confirms the
   empty answer a second time rather than resolving it. `specs/commands/show.md` justifies that
   hint on the grounds that an empty API "usually means the symbols are one level down rather than
   absent," which this plan's new criterion 5 shows is false in exactly the private-submodule case.
   A behaviour change, so out of scope by #87's framing (declare, do not reconsider). Named in this
-  plan's Scope as "Its own issue, filed at closeout"; not filed by this stage - left for review.
-- **Issue** - `_walk_module`'s cross-module re-export filter drops any re-export when the exporting
-  module declares no `__all__`; this plan's `### Private submodules` subsection declares only the
+  plan's Scope as "Its own issue, filed at closeout".
+- **Issue [#106](https://github.com/andyrids/venv-axi/issues/106)** - `_walk_module`'s
+  cross-module re-export filter drops any re-export when the exporting module declares no
+  `__all__`; this plan's `### Private submodules` subsection declares only the
   private-home carve-out inside that filter, not the filter's general behaviour, which is a
-  separate and larger unit. Named in this plan's Scope as "Its own issue, filed at closeout"; not
-  filed by this stage - left for review.
+  separate and larger unit. Named in this plan's Scope as "Its own issue, filed at closeout".
 - **Deferred to** - none.
 - **Tracked as** - none.
