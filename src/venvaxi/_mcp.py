@@ -22,6 +22,7 @@ from venvaxi._introspect import (
     get_module_tree,
     get_public_api,
     get_symbol,
+    is_private_submodule,
     refresh_package_graph,
     show_module,
     summarize_doc,
@@ -328,12 +329,21 @@ def show_package_api_tool(
         # NOTE: An empty listing under a bound of `0` is capped, not
         # empty - the module tree is not the next step for it
         # (`specs/behaviors/output-contract.md`, Bounded collections).
-        cname = camel_case(get_module_tree_tool.__name__)
-        hint = (
-            capped_hint
-            if result.capped
-            else f"Call `{cname}` with name={name}"
-        )
+        if result.capped:
+            hint = capped_hint
+        elif is_private_submodule(name):
+            # NOTE: Retargets to itself, scoped to the root - not
+            # `getModuleTreeTool`, which answers `count: 0` for this
+            # identical name (`specs/mcp/tools.md`, Hint wording).
+            root = name.split(".", 1)[0]
+            cname = camel_case(show_package_api_tool.__name__)
+            hint = (
+                f"`{name}` is private and never indexed - call `{cname}`"
+                f" with name={root} for the public surface"
+            )
+        else:
+            cname = camel_case(get_module_tree_tool.__name__)
+            hint = f"Call `{cname}` with name={name}"
         return _with_help("count: 0", [hint])
     rows = [asdict(symbol) for symbol in symbols]
     table = encode_table("symbols", rows, SYMBOL_INFO_FIELDS)
@@ -492,15 +502,17 @@ def get_module_tree_tool(name: str, max_depth: int = 2) -> str:
         # is the hint that shows what exists. See `specs/commands/tree.md`.
         root = name.split(".", 1)[0]
         cname = camel_case(get_module_tree_tool.__name__)
-        return _with_help(
-            "count: 0",
-            [
-                (
-                    f"Call `{cname}` with name={root} for the"
-                    " submodules that exist"
-                )
-            ],
-        )
+        if is_private_submodule(name):
+            hint = (
+                f"`{name}` is private and never indexed - call `{cname}`"
+                f" with name={root} for the modules that are indexed"
+            )
+        else:
+            hint = (
+                f"Call `{cname}` with name={root} for the"
+                " submodules that exist"
+            )
+        return _with_help("count: 0", [hint])
     rows = [{"depth": depth, **node.as_row()} for depth, node in pairs]
     table = encode_table("tree", rows, ["depth", "qualified_name", "kind"])
 

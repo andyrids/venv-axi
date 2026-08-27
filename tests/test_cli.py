@@ -457,6 +457,27 @@ def test_command_show_api_empty(
     assert "help[1]:" in out
 
 
+def test_command_show_api_private_submodule_hint_names_root_api(
+    capsys: pytest.CaptureFixture, make_cli_context: ContextFactory
+) -> None:
+    """A private submodule's empty API hint names `show <root> --api`,
+    not `tree` - the identical name is itself `count: 0` (#105)."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(
+            package="package._impl", api=True, docstring=False
+        )
+    )
+    empty = PublicAPI(symbols=[], max_rows=20)
+    with mock.patch(f"{CLI}.get_public_api", return_value=empty):
+        exit_code = _cli.command_show(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "count: 0" in out
+    assert "package._impl` is private and never indexed" in out
+    assert "venvaxi show package --api` for the public surface" in out
+    assert "tree" not in out
+
+
 def test_command_show_api_docstring_suppresses_footer(
     capsys: pytest.CaptureFixture, make_cli_context: ContextFactory
 ) -> None:
@@ -816,30 +837,49 @@ def test_command_tree_completes_over_broken_submodules(
     assert "subpkg" in out
 
 
-@pytest.mark.parametrize("submodule", ["nosuchmodule", "_impl"])
 def test_command_tree_empty_hint_names_root_tree(
     capsys: pytest.CaptureFixture,
     make_cli_context: ContextFactory,
     fake_package: str,
-    submodule: str,
 ) -> None:
-    """A dotted name with no graph node hints at the root's own tree.
+    """A nonexistent dotted name hints at the root's own tree, unchanged.
 
     NOTE: Driven by a real input, not a mock on `get_module_tree` - the
     branch is reached by a dotted name whose root imports but whose tail
-    has no node (nonexistent or private submodule). See issue #16.
+    has no node. See issue #16.
     """
     ctx = make_cli_context(
         args=argparse.Namespace(
-            package=f"{fake_package}.{submodule}", max_depth=2
+            package=f"{fake_package}.nosuchmodule", max_depth=2
         )
     )
     exit_code = _cli.command_tree(ctx)
     out = capsys.readouterr().out
     assert exit_code == 0
     assert "count: 0" in out
-    assert f"Run `venvaxi tree {fake_package}`" in out
+    assert f"Run `venvaxi tree {fake_package}` for the submodules" in out
+    assert "private" not in out
     assert "venvaxi list" not in out
+
+
+def test_command_tree_empty_hint_names_private_submodule(
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+    fake_package: str,
+) -> None:
+    """A private submodule's hint says so before naming the root's tree,
+    distinguishing it from the nonexistent case above (#104)."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(package=f"{fake_package}._impl", max_depth=2)
+    )
+    exit_code = _cli.command_tree(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "count: 0" in out
+    assert f"`{fake_package}._impl` is private and never indexed" in out
+    assert (
+        f"venvaxi tree {fake_package}` for the modules that are indexed" in out
+    )
 
 
 def test_command_inspect_prints_symbol_detail(

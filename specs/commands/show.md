@@ -96,6 +96,15 @@ opposite things: one says the package exposes nothing at this level, the other s
 asked for nothing. Naming `tree` for a deliberate `--limit 0` would answer a question nobody
 asked, and would read as a claim about the package rather than about the bound.
 
+A third zero carries a third meaning. If the named module is
+[private](../behaviors/symbol-graph.md#private-submodules) - any non-root segment of its dotted
+name starts with `_` - then the `show` command shall emit a hint naming the root package's own
+public API (`venvaxi show <root> --api`) in place of `tree`. `venvaxi tree <package>` answers
+`count: 0` for that identical name, so pointing there would confirm the empty answer a second
+time rather than resolve it. The module imports cleanly and is genuinely never indexed; the
+symbols it, or a facade re-exporting from it, expose are reached through the root's public
+surface, not through a tree walk rooted at the unwalked module itself.
+
 ## Failure modes
 
 - If a `--fields` entry is unknown, then the `show` command shall raise `InvalidArgumentError`,
