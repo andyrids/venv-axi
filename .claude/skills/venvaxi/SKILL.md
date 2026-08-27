@@ -233,6 +233,13 @@ Notable CLI differences:
   instead - `inspect rich.logging::RichHandler` returns the full `__init__` signature. That
   route covers `__init__` only: no non-constructor dunder (`__getitem__`, `__eq__`, and the
   like) has any AXI path today, so a `count: 0` there is not a gap to work around.
+- **Private submodules are not indexed.** A submodule whose name starts with `_` is never
+  walked, so `show pkg._impl --api` answers `count: 0` at exit `0` - indistinguishable from a
+  module that genuinely exposes nothing - and its hint routes to `tree pkg._impl`, which is
+  `count: 0` as well. `inspect pkg._impl` raises instead, exactly as a module that does not
+  exist would. Symbols a public module re-exports from a private one *are* indexed, so query
+  the facade (`inspect pkg.api`); a class member keeps its home spelling
+  (`pkg._impl::Client.connect`) and resolves under it even though that module has no node.
 - **Docstrings are truncated to a first line by default.** Add `--docstring` to `inspect` or
   to `show --api` when the parameter semantics matter, not just the signature.
 - **`doc: (no docstring)` is a definitive answer.** It means the symbol defines no docstring of

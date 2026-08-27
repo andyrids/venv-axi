@@ -714,6 +714,28 @@ def test_get_symbol_resolves_facade_spelled_method(fake_package: str) -> None:
     assert node.module == f"{fake_package}._impl"
 
 
+def test_show_module_raises_for_private_submodule_named_directly(
+    fake_package: str,
+) -> None:
+    """A private submodule named directly answers absent, same as a
+    module that does not exist - no module node is ever recorded for
+    it, adjacent to the facade resolution above into the same home."""
+    with pytest.raises(SymbolNotFoundError):
+        show_module(f"{fake_package}._impl")
+
+
+def test_private_submodule_miss_identical_after_refresh(
+    fake_package: str,
+) -> None:
+    """The private-submodule miss is not a cache-staleness signal - a
+    freshly built graph and a `--refresh` rebuild report the identical
+    absence."""
+    with pytest.raises(SymbolNotFoundError):
+        show_module(f"{fake_package}._impl")
+    with pytest.raises(SymbolNotFoundError):
+        show_module(f"{fake_package}._impl", refresh=True)
+
+
 def test_get_symbol_facade_member_miss_raises(fake_package: str) -> None:
     """A facade-spelled member absent from the home row is a genuine
     miss, keyed to the caller's spelling in the message."""
@@ -823,6 +845,43 @@ def test_home_qualified_name_records_private_home(fake_package: str) -> None:
     its canonical `home_qualified_name`."""
     node = get_symbol(f"{fake_package}.api::Client")
     assert node.home_qualified_name == f"{fake_package}._impl::Client"
+
+
+def test_find_symbol_excludes_symbol_homed_in_private_submodule(
+    fake_package: str,
+) -> None:
+    """A symbol homed in a private submodule and re-exported nowhere
+    never surfaces in search - absent from the graph entirely."""
+    assert find_symbol("Hidden", package=fake_package) == []
+
+
+def test_get_public_api_empty_for_private_submodule(
+    fake_package: str,
+) -> None:
+    """A private submodule's own public API is empty - the module
+    imports and so resolves, and only its absence from the graph
+    empties it."""
+    assert get_public_api(f"{fake_package}._impl").symbols == []
+
+
+def test_get_public_api_raises_for_nonexistent_submodule(
+    fake_package: str,
+) -> None:
+    """A submodule that does not exist fails outright, so the empty API
+    above is a distinct answer rather than the same miss reached twice."""
+    with pytest.raises(PackageNotFoundError):
+        get_public_api(f"{fake_package}.nosuchmodule")
+
+
+def test_get_symbol_raises_for_symbol_homed_in_private_submodule(
+    fake_package: str,
+) -> None:
+    """A symbol re-exported nowhere is a genuine miss under the facade
+    and the home spelling alike."""
+    with pytest.raises(SymbolNotFoundError):
+        get_symbol(f"{fake_package}.api::Hidden")
+    with pytest.raises(SymbolNotFoundError):
+        get_symbol(f"{fake_package}._impl::Hidden")
 
 
 def test_home_qualified_name_self_for_instance_constants(

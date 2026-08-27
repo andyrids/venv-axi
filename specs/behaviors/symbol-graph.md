@@ -82,6 +82,43 @@ or be removed under YAGNI.
 Keying differs between `CONTAINS` and `INHERITS` - see
 [Qualified name semantics](qualified-name-semantics.md).
 
+### Private submodules
+
+The walk shall not descend into a submodule whose own final name segment starts with `_`. The
+skip is unconditional - independent of cache state, build depth and `--refresh`. This is a rule
+about the segment discovered during recursion, not a filter on the query root: the top-level
+package name is walked directly rather than discovered as one of its own submodules, so a package
+whose own name starts with `_` is walked in full when named as the query root, and only its own
+underscore-prefixed children are skipped, by the identical rule, once the walk recurses into
+them. `_pytest` demonstrates both halves at once: named as the query root it resolves, imports
+and populates the graph like any other package, while its own underscore-prefixed submodules
+(`_pytest._code` among them) do not appear, skipped by the same segment rule that skips
+`pkg._impl` inside any package.
+
+A package's private implementation modules are not its API surface, so no **module** node is
+recorded for one. Nodes homed there are a separate question, answered case by case below.
+
+- If a caller names a private submodule as the target of `inspect`, `tree`, or an MCP module
+  lookup, then the graph shall answer as it does for a module that does not exist - no module
+  node is recorded for it.
+- If a caller asks for a private submodule's own public API, then the answer shall be `count: 0`
+  at `EX_OK`, not the failure a submodule that does not exist raises. The module imports, so it
+  resolves; only its absence from the graph empties the API. The equivalence above therefore
+  holds for `inspect`, `tree` and MCP module lookups but not for `show --api`, where the empty
+  answer is the least distinguishable from a module that genuinely exposes nothing at this level.
+- If a module the walk visits re-exports a class or function whose home is a private submodule,
+  then the graph shall still record it, keyed at the re-exporting facade, with its
+  `home_qualified_name` pointing into the unwalked private module and its member rows (for a
+  class) keyed at that home - see [Qualified name semantics](qualified-name-semantics.md).
+- If a symbol is homed in a private submodule and re-exported nowhere, then it shall be absent
+  from the graph entirely, and a command's `count: 0` or `SymbolNotFoundError` for it is a
+  definitive negative about the graph, not about the installed package, per
+  [Definitive empty states](output-contract.md#definitive-empty-states).
+
+An underscore submodule's absence is not a cache-staleness signal: `--refresh` and a
+schema-version bump both reproduce it identically, because the skip is applied on every walk
+regardless of when or why it ran.
+
 ### FTS5 constraint
 
 The `nodes` table backs an external-content FTS5 index, which constrains how it may be rewritten:
@@ -95,6 +132,10 @@ the rowid mapping must stay stable, per
   exactly the drift live introspection exists to eliminate.
 - **Re-export provenance queries** - the `EXPORTS`/`IMPORTS_FROM` edges are written but unread.
   Deferred to a future feature; no spec exists for it yet.
+- **Opting private submodules into the walk** - no flag exposes them, and none is planned here.
+  [#87](https://github.com/andyrids/venv-axi/issues/87) asks that the skip be declared, not
+  reconsidered; exposing it would be its own unit, and would have to answer what a private
+  module's presence means for `show --api`'s public-surface claim.
 
 ## Principles
 

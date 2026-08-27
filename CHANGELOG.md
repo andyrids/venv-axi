@@ -29,6 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `ICM/_config/reference-toolchain-pytest.md` records the pytest fd-capture trap that defeats a
   `mock.patch` of `sys.stdout`.
+- The private-submodule skip - a submodule whose own final name segment starts with `_` is never
+  walked - is now declared in `specs/behaviors/symbol-graph.md` and cross-referenced from
+  `specs/behaviors/qualified-name-semantics.md` and `specs/commands/tree.md`. The behaviour is
+  unchanged; only the contract is newly declared (issue #87).
+- The packaged skill gains a gotcha for that rule. It was previously unwritable: the skill may
+  restate no claim `specs/**` does not declare, so declaring the behaviour is what allowed
+  documenting it where an agent meets it (issue #87).
 
 ### Fixed
 

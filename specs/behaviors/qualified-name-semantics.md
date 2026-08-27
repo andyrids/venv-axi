@@ -27,6 +27,10 @@ The symbol graph keys nodes and edges in two different frames. Respect this inva
   modules and packages, the node's own `qualified_name`. An instance constant resolves
   `__module__` via its *class* (`re.compile(...)` -> `re`), so claiming a home there would record
   a false fact - hence the class/function kind guard in `_record_symbol`.
+- A node's home can itself be a private submodule the walk never records a module node for; the
+  symbol still surfaces through whichever facade re-exports it, keyed there. See
+  [Private submodules](symbol-graph.md#private-submodules) for the full rule, including the case
+  where no facade exists and the symbol is unreachable entirely.
 - `SymbolStore.canonical_name` is the single facade -> home resolution point. It is applied by
   `get_inheritors`, and by `get_symbol` for **class members only**: if a member spelled through a
   facade (`fastmcp::Client.call_tool`) has no node under that spelling, then it shall resolve
