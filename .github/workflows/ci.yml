@@ -33,7 +33,11 @@ jobs:
       - run: uv run pkgdx-format-hook
 
   pytest:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -43,7 +47,8 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
-          cache-suffix: pytest
+          cache-suffix: pytest-${{ matrix.os }}
+          python-version: "3.13"
 
       - run: uv sync
 
