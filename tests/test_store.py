@@ -302,6 +302,33 @@ def test_search_symbols_like_fallback_when_fts_disabled(
     assert [node.name for node in results] == ["Dog"]
 
 
+def test_search_symbols_underscore_matches_literal_like_fallback(
+    tmp_path: Path, make_symbol_node: NodeFactory
+) -> None:
+    """The `LIKE` fallback matches a `_` in the query literally:
+    `print_json` does not return `printXjson`, which matches only by
+    reading the `_` as a single-character wildcard
+    ([#108](https://github.com/andyrids/venv-axi/issues/108))."""
+    with SymbolStore(tmp_path / "store.db") as store:
+        store._fts_enabled = False
+        store.upsert_node(
+            make_symbol_node(
+                qualified_name="pkg::print_json",
+                kind=NodeKind.FUNCTION,
+                name="print_json",
+            )
+        )
+        store.upsert_node(
+            make_symbol_node(
+                qualified_name="pkg::printXjson",
+                kind=NodeKind.FUNCTION,
+                name="printXjson",
+            )
+        )
+        results = store.search_symbols("print_json")
+    assert [node.name for node in results] == ["print_json"]
+
+
 def test_search_symbols_docstring_only_match_like_fallback(
     tmp_path: Path, make_symbol_node: NodeFactory
 ) -> None:

@@ -88,6 +88,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `print_json`, `print_exception`) instead of `count: 9` with three unrelated classes ranked first
   through docstring prose. A bare query is unaffected and still matches docstring text as before
   (issue #94).
+- `find` now matches `_`, `%` and `\` in a query as the literal characters they are. The `LIKE`
+  fallback's match pattern and both backends' name-prefix ranking key take the escaped query with
+  an `ESCAPE` clause, so `find print_json` no longer returns `printXjson` for any `X`, nor ranks
+  a wildcard-substituted name as a prefix match (issue #108).
 
 ## [0.4.0] - 2026-08-23
 

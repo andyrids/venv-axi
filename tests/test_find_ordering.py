@@ -20,7 +20,19 @@ before MATCH is evaluated. Key 3's copy in `search_fts.sql` is mirrored
 so the two files state one ordering contract rather than two, but it is
 unexercised: deleting it from that file leaves every assertion here
 passing (verified at the stage 02 review gate). Do not read a `[fts]`
-parameter on a path-shaped test as proof that clause works.
+parameter on a path-shaped test as proof that clause works. The
+literal-matching tests (#108) sit under the same convention: key 2's
+escaped copy in `search_fts.sql` is likewise mirrored but unexercised,
+and each such test states which parameter proves what. A `_`-query
+membership assertion is meaningful on `[like]` only - unicode61 splits
+`print_json` into `print` and `json`, so the single-token competitor
+`printXjson` never enters the FTS candidate set and that parameter
+passes with or without escaping. A `%` or `\\` query reaches
+`search_like.sql` under either parameter - FTS5 rejects both with a
+syntax error, routing them to the fallback. The `_`-query ranking test
+runs on the fallback only: `bm25` sits in the deliberately unspecified
+gap between keys 4 and 5 on the FTS path and would own the tie that
+test pins on key 5.
 """
 
 from collections.abc import Callable, Sequence
@@ -59,28 +71,37 @@ def _seed_and_find(
     return find_symbol(query)
 
 
+@pytest.fixture
+def like_only(isolated_cache: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Disable the FTS path after schema creation, mirroring how
+    `SymbolStore` degrades when FTS5 is unavailable.
+
+    Both the `search_backend` `like` parameter and the tests that run
+    on `search_like.sql` alone consume this, so the degradation is
+    described in one place rather than restated per caller.
+    """
+    original_init = SymbolStore.__init__
+
+    def _init_without_fts(self: SymbolStore, db_path: Path) -> None:
+        original_init(self, db_path)
+        self._fts_enabled = False
+
+    monkeypatch.setattr(SymbolStore, "__init__", _init_without_fts)
+
+
 @pytest.fixture(params=["fts", "like"])
 def search_backend(
-    request: pytest.FixtureRequest,
-    isolated_cache: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest, isolated_cache: Path
 ) -> str:
     """Run the dependent test once per search backend.
 
-    The `like` variant disables the FTS path after schema creation,
-    mirroring how `SymbolStore` degrades when FTS5 is unavailable, so
-    every assertion holds on both ORDER BY clauses - except for a
-    path-shaped query, which reaches `search_like.sql` under either
-    parameter. See this module's docstring.
+    The `like` variant takes `like_only`, so every assertion holds on
+    both ORDER BY clauses - except for a path-shaped query, which
+    reaches `search_like.sql` under either parameter. See this module's
+    docstring.
     """
     if request.param == "like":
-        original_init = SymbolStore.__init__
-
-        def _init_without_fts(self: SymbolStore, db_path: Path) -> None:
-            original_init(self, db_path)
-            self._fts_enabled = False
-
-        monkeypatch.setattr(SymbolStore, "__init__", _init_without_fts)
+        request.getfixturevalue("like_only")
     return request.param
 
 
@@ -325,3 +346,130 @@ def test_find_repeats_identical_rows_in_identical_order(
     second = find_symbol("Widget")
     assert first
     assert first == second
+
+
+def test_find_underscore_query_matches_literal_substring_only(
+    search_backend: str, make_symbol_node: NodeFactory
+) -> None:
+    """A `_` in the query matches only itself: `print_json` does not
+    return `printXjson`, which matches only by substituting `X` for
+    the `_` (`specs/commands/find.md`, Literal matching;
+    [#108](https://github.com/andyrids/venv-axi/issues/108)).
+
+    NOTE: Meaningful on `[like]` only - the competitor never enters
+    the FTS candidate set, so that parameter passes with or without
+    escaping. See the module docstring.
+    """
+    nodes = [
+        make_symbol_node(
+            qualified_name="pkg.mod::print_json",
+            kind=NodeKind.FUNCTION,
+            name="print_json",
+        ),
+        make_symbol_node(
+            qualified_name="pkg.mod::printXjson",
+            kind=NodeKind.FUNCTION,
+            name="printXjson",
+        ),
+    ]
+    results = _seed_and_find(nodes, "print_json")
+    assert [node.name for node in results] == ["print_json"]
+
+
+def test_find_percent_query_matches_literal_substring_only(
+    search_backend: str, make_symbol_node: NodeFactory
+) -> None:
+    """A `%` in the query matches only itself: `print%json` returns
+    the row whose docstring carries `print%json` literally, and not
+    `print_json`, which matches only by reading the `%` as a wildcard.
+
+    Meaningful on both fixture parameters: FTS5 rejects `%` with
+    `fts5: syntax error near "%"`, so `search_symbols` routes the
+    query to the `LIKE` fallback under `[fts]` too (re-confirmed at
+    stage 02 against this venv's SQLite 3.50.4).
+    """
+    nodes = [
+        make_symbol_node(
+            qualified_name="pkg.mod::print_json",
+            kind=NodeKind.FUNCTION,
+            name="print_json",
+        ),
+        make_symbol_node(
+            qualified_name="pkg.mod::emit_markers",
+            kind=NodeKind.FUNCTION,
+            name="emit_markers",
+            doc="Writes print%json markers.",
+        ),
+    ]
+    results = _seed_and_find(nodes, "print%json")
+    assert [node.name for node in results] == ["emit_markers"]
+
+
+def test_find_underscore_query_does_not_rank_wildcard_prefix(
+    like_only: None, make_symbol_node: NodeFactory
+) -> None:
+    """Key 2 compares a `_` literally: `printXjson` begins with
+    `print_json` only under wildcard substitution, so it must not rank
+    above `use_print_json`, whose name does not begin with the query
+    at all. Both rows stay in the result set either way - the wildcard
+    row matches through its docstring - so this asserts ranking, not
+    membership (the fixture trap `plans/find-path-shaped-query.md`
+    records in its Notes). Post-fix, key 2 is false for both rows and
+    key 5 puts the shorter `qualified_name` first.
+
+    NOTE: Asserted on `search_like.sql` only - `bm25` would own this
+    tie on the FTS path. See the module docstring.
+    """
+    nodes = [
+        make_symbol_node(
+            qualified_name="pkg.deep.impl::printXjson",
+            kind=NodeKind.FUNCTION,
+            name="printXjson",
+            doc="Formats print_json output.",
+        ),
+        make_symbol_node(
+            qualified_name="pkg::use_print_json",
+            kind=NodeKind.FUNCTION,
+            name="use_print_json",
+        ),
+    ]
+    results = _seed_and_find(nodes, "print_json")
+    assert [node.name for node in results] == [
+        "use_print_json",
+        "printXjson",
+    ]
+
+
+def test_find_backslash_query_matches_literal_backslash(
+    search_backend: str, make_symbol_node: NodeFactory
+) -> None:
+    r"""A `\` in the query matches only itself, without raising:
+    `a\b` returns the row whose docstring carries `a\b` literally, and
+    not the row carrying plain `ab`. Meaningful on both fixture
+    parameters - FTS5 rejects `\` with a syntax error, so both route
+    to the `LIKE` fallback.
+
+    Regression guard for `_escape_like`'s step order, and expected to
+    pass pre-fix too: with no `ESCAPE` clause a `\` was already
+    literal. The failure this pins is a helper that escapes `%` and
+    `_` but not the escape character itself - its pattern reads `\b`
+    as an escaped `b`, so this fixture returns the `ab` row and drops
+    the `a\b` row, silently (plan Risks; shown failing by mutation at
+    stage 02).
+    """
+    nodes = [
+        make_symbol_node(
+            qualified_name="pkg.mod::parse_escape",
+            kind=NodeKind.FUNCTION,
+            name="parse_escape",
+            doc="Parses the a\\b escape form.",
+        ),
+        make_symbol_node(
+            qualified_name="pkg.mod::parse_plain",
+            kind=NodeKind.FUNCTION,
+            name="parse_plain",
+            doc="Parses the ab plain form.",
+        ),
+    ]
+    results = _seed_and_find(nodes, "a\\b")
+    assert [node.name for node in results] == ["parse_escape"]
