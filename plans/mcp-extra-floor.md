@@ -2,13 +2,13 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs:
   - specs/commands/serve.md
 authors: []
 issues: [96]
-pr:
+pr: 119
 ---
 
 # Plan: Bound the `mcp` extra's `fastmcp` range
@@ -77,17 +77,27 @@ changed.
 
 ## Validation
 
-- [ ] Every declaration of `fastmcp` in the repository's own configuration shall state
+- [x] Every declaration of `fastmcp` in the repository's own configuration shall state
       `fastmcp>=3.4,<4` - the `mcp` extra, the `dev` dependency group, and the type-check hook's
-      `additional_dependencies`.
-- [ ] If a resolver is constrained to a `fastmcp` below the declared floor, then resolving
-      `venv-axi[mcp]` shall fail rather than install a version `build_server` cannot call.
-- [ ] When the lock is re-resolved, it shall record a `fastmcp` version inside the declared range,
-      and shall not move packages the constraint change does not force.
-- [ ] When `build_server` runs against the locked `fastmcp`, it shall register every tool without
-      raising.
-- [ ] The floor stated in `specs/commands/serve.md` and in `docs/architecture.md` shall be the same
-      range `pyproject.toml` declares.
+      `additional_dependencies`. — `pyproject.toml:28`, `pyproject.toml:33` and `prek.toml:22`
+      all read `fastmcp>=3.4,<4`; a sweep for `fastmcp>=0.1.0` across `pyproject.toml`,
+      `prek.toml`, `specs/` and `docs/` returns nothing
+- [x] If a resolver is constrained to a `fastmcp` below the declared floor, then resolving
+      `venv-axi[mcp]` shall fail rather than install a version `build_server` cannot call. —
+      `uv pip install --dry-run "venv-axi[mcp] @ ." "fastmcp==2.0.0"` resolved 44 packages with
+      `+ fastmcp==2.0.0` at exit 0 before the change, and after it exits 1 with
+      `No solution found ... your requirements are unsatisfiable`
+- [x] When the lock is re-resolved, it shall record a `fastmcp` version inside the declared range,
+      and shall not move packages the constraint change does not force. —
+      `git diff --stat uv.lock` reports `1 file changed, 2 insertions(+), 2 deletions(-)`, both the
+      recorded specifier strings; `fastmcp` stays `3.4.6` and its `mcp` dependency `1.29.0`
+- [x] When `build_server` runs against the locked `fastmcp`, it shall register every tool without
+      raising. — `_TOOLS declared: 10   registered on server: 10` via
+      `build_server()` then `list_tools()`, and `tests/test_mcp.py` `90 passed`
+- [x] The floor stated in `specs/commands/serve.md` and in `docs/architecture.md` shall be the same
+      range `pyproject.toml` declares. — `specs/commands/serve.md:27` and
+      `docs/architecture.md:17` both state `fastmcp>=3.4,<4`, matching both `pyproject.toml`
+      declarations
 
 ## Risks / unknowns
 
@@ -141,4 +151,41 @@ response, because it disclaims scope rather than requiring behaviour. It was a s
 wearing the unwanted-behaviour grammar, and would have read to a future drift audit as a criterion
 that cannot fail. Reworded to plain prose, with the content unchanged.
 
+**Why `3.4` and not the measured `2.11.3`.** Stage 01 probed all three `fastmcp` call shapes
+`build_server` depends on - `FastMCP(..., instructions=)`, `server.tool(fn, name=)` and `run` - in
+isolated environments across 13 releases. `1.0`, `2.0.0` and `2.3.0` raise `TypeError` on the
+registration call; `2.4.0` through `2.11.2` cannot be imported at all in a current resolve, so the
+`name_or_fn` boundary inside that band was not measurable; `2.11.3` and everything above it works.
+`3.4` was declared anyway, because the lock, CI and the conformance tier only ever exercise 3.4.6 -
+declaring `>=2.11.3` would claim support across roughly sixty releases nothing here runs, which is
+the same shape of unverified published claim issues #111, #112 and #113 closed earlier in this
+milestone. The gap between measured and declared is a decision, not an oversight.
+
+**The issue's own analysis had one error worth recording.** #96 speculated that 2.0 might be where
+`name_or_fn` support begins. It is not - `2.0.0` and `2.3.0` both fail the registration call. The
+issue was explicit that it had not built against intermediate releases, so this is the measurement
+it asked for rather than a contradiction of it.
+
+**Every `fastmcp` release back to `0.1.0` declares `requires-python >=3.10`.** A modern interpreter
+therefore never screened the old ones out, which is what made the unbounded floor a live exposure
+rather than a theoretical one.
+
+**`uv lock` moved nothing.** `3.4.6` already satisfied both the old and the new range, so the
+constraint change forced no resolution move and the lock diff is the two recorded specifier strings.
+That is the cleanest possible outcome for the third Validation criterion - there was no second
+change riding along to disentangle.
+
+**The cap carries an ongoing cost, accepted knowingly.** When `fastmcp` 4 ships, `venv-axi[mcp]`
+refuses it until someone widens the range, including in the case where the code would have run
+fine. That is the trade for not learning about an incompatible major from a bug report.
+
 ## Follow-ups
+
+- **Issue** [#120](https://github.com/andyrids/venv-axi/issues/120) - nothing exercises the declared
+  floor. CI resolves through the lock, so it runs `3.4.6` and only `3.4.6`; `3.4.0`, the version the
+  floor actually admits, has never been run against this code. This unit replaced a false
+  declaration with a true one and did not make it self-checking. Named as out of scope in this
+  plan's Scope and filed rather than folded in, since a floor-resolution job
+  (`uv --resolution lowest-direct`) is real scope of its own.
+- **Deferred to** - none.
+- **Tracked as** - none.
