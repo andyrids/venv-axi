@@ -231,13 +231,11 @@ Notable CLI differences:
   `inherits rich.logging::RichHandler --bases` returns `logging::Handler` - rather than guessing
   the likely base and probing it. The two directions do not have equal reach: a base is reported
   even when its own package was never indexed, while a subclass stays invisible until its own
-  package is indexed. A `count: 0` under `--bases` has two causes: the class derives directly
-  from `object` (never indexed), or a base's package was refreshed since this class was indexed,
-  which strips the recorded edge while the class itself survives. The recovery for the second is
-  a rebuild of *this class's own* package - re-run with `--refresh` (over MCP,
-  `refreshPackageGraphTool` with this class's package) - never indexing another package, which
-  can add a subclass but never a base (over MCP the split is two tools, `getInheritorsTool` and
-  `getBasesTool`).
+  package is indexed. A `count: 0` under `--bases` has one cause and no recovery: the class
+  derives directly from `object`, which is never indexed. Every other base is recorded by the
+  walk of this class's own package and no refresh removes it, so there is nothing further to
+  find - indexing or rebuilding another package can add a subclass but never a base (over MCP
+  the split is two tools, `getInheritorsTool` and `getBasesTool`).
 - **Dunders are not indexed.** `find RichHandler.__init__ --package rich` returns `count: 0`
   even though the constructor exists; the constructor signature lives on the class symbol
   instead - `inspect rich.logging::RichHandler` returns the full `__init__` signature. That

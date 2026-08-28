@@ -23,11 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `venvaxi inherits <qualified_name> --bases` reports the classes a class directly subclasses,
   reading the same `INHERITS` edges in the opposite direction. A base is reported even when its
   own package was never indexed - the edge is written from the subclass's side. A zero count
-  names both of its causes - the class derives directly from `object` (never indexed), or a
-  base's package was refreshed since this class was indexed - and offers `--refresh` on the
-  named class's own package as the recovery for the second, never an index-another-package
-  recovery, which can never add a base. Over MCP the direction is a separate `getBasesTool`,
-  taking the server to eleven tools (issue #48).
+  is definitive and names its one cause: the class derives directly from `object`, which is
+  never indexed. Over MCP the direction is a separate `getBasesTool`, taking the server to
+  eleven tools (issue #48).
 - `--version` reports the installed version as a single `version: <version>` TOON line and exits
   (issue #81).
 - `describeBindingTool` gains a `version` field, reported first, so an MCP-only caller can also
@@ -38,6 +36,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The `inherits` empty-state hint for zero *bases* returns to a single cause and offers no
+  recovery: the class derives directly from `object`, which is not indexed. It was widened to
+  two causes, naming `--refresh` on the class's own package as a recovery, only because a
+  refresh could delete a base edge another walk had recorded; that defect is fixed above, so
+  the second cause is now false and the recovery could not change the answer.
+  `getBasesTool` mirrors the change. The definitiveness is conditional and the condition is
+  recorded in `specs/commands/inherits.md`: any change widening what a refresh deletes returns
+  there first (issue #124).
+- `SCHEMA_VERSION` 8 to 9. No table shape moved - the bump evicts caches holding the result of
+  the old deletion scope, which no rebuild of the package a caller happens to refresh can
+  repair, and without which the single-cause hint above could assert `object` over an ancestry
+  a previous clear had removed. Every cache rebuilds once on first use after upgrade
+  (issue #124).
 - The `inherits` empty-state hint for zero subclasses now names three causes instead of two -
   subclasses in an unindexed package, subclasses below the built depth, and the query having
   been pointed the wrong way - naming `venvaxi inherits <qualified_name> --bases`
@@ -74,6 +85,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Refreshing one package no longer deletes another package's recorded inheritance.
+  `clear_package` deleted every edge with the cleared package's node at *either* end, but an
+  `INHERITS` edge is recorded by the walk of the **subclass's** package - so refreshing a
+  *base's* package removed an edge the cleared package never owned and its own rebuild could
+  not restore, leaving the subclass in the graph with its node intact and its ancestry silently
+  gone. A clear now deletes an edge by its origin endpoint only, which is the endpoint
+  ownership rides. An edge can therefore outlive the node at either end; every read either
+  joins a symbol record at the endpoint it reports or reports that endpoint's name, so this is
+  harmless by construction and now declared as such (issue #124).
 - The recorded build `version` is now resolved from the distribution(s) claiming a package's
   import name, not the import name itself. A package whose import name differs from its
   distribution name (`dns`/`dnspython`, `yaml`/PyYAML, `bs4`/beautifulsoup4, ...) recorded `""`

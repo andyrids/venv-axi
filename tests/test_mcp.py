@@ -1323,22 +1323,21 @@ def test_get_bases_tool_returns_toon(
     assert "getSymbolTool" in result
 
 
-def test_get_bases_tool_empty_hint_names_both_causes() -> None:
-    """Zero bases names both causes - derivation from `object`, or a
-    base's package refreshed since this class was indexed - offering
-    `refreshPackageGraphTool` scoped to the named class's own package
-    root and never an index-another-package recovery
-    (`specs/commands/inherits.md`, Empty states)."""
+def test_get_bases_tool_empty_hint_names_one_cause() -> None:
+    """Zero bases names the one cause - derivation from `object` - and
+    offers no recovery, mirroring the CLI hint exactly. No rebuild tool
+    is named, because a refresh can no longer have removed a base edge
+    (`specs/commands/inherits.md`, Empty states;
+    `specs/behaviors/cache-refresh.md`, Refresh scope: edges)."""
     server = build_server()
     with mock.patch(f"{MCP}.get_bases", return_value=[]):
         tool = asyncio.run(server.get_tool(camel_case("get_bases_tool")))
         result = tool.fn(qualified_name="rich.logging::RichHandler")
     assert result.startswith("count: 0")
     assert "derives directly from `object`" in result
-    assert "base's package was refreshed" in result
-    assert "refreshPackageGraphTool" in result
+    assert "refreshed" not in result
+    assert "refreshPackageGraphTool" not in result
     assert "refresh_package_graph_tool" not in result
-    assert "name=rich" in result
     assert "unindexed" not in result
     assert "built depth" not in result
     assert "findSymbolTool" not in result

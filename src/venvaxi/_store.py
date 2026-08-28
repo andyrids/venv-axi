@@ -26,14 +26,21 @@ from typing import Self
 
 logger = logging.getLogger(__package__)
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 """The cache schema version, stored as SQLite's `PRAGMA user_version`.
 
-NOTE: Tracks *what a walk records*, not only the table shape - node
+NOTE: Tracks *what the store ends up holding*, not only the table
+shape, and two triggers sit under that. **What a walk records** - node
 fields are computed at walk time and frozen into the store, so a change
 to how a docstring, signature or home name is derived leaves every
-existing cache serving the old value. Bump on either kind of change; see
-`specs/behaviors/cache-refresh.md`.
+existing cache serving the old value. **What a clear removes** - a
+change to which edges `clear_package` deletes reaches the same place by
+the opposite route: the walk is unchanged, so a rebuild writes what it
+always wrote, but an existing cache still holds the result of the old
+deletion scope and no rebuild of the package a caller happens to
+refresh restores what a previous clear took from a package they do not.
+Bump on either kind of change; see `specs/behaviors/cache-refresh.md`,
+Schema version covers the builder, not just the shape.
 
 NOTE: 6 - signatures are now recorded for every callable symbol
 whatever its kind (#66); a version-5 cache serves `""` for callable
@@ -50,6 +57,13 @@ name treated as a distribution name (#89); a version-7 cache may hold
 `""` for any package whose import name differs from its distribution
 name, which compared equal to itself forever and made version-based
 invalidation never fire for that class.
+
+NOTE: 9 - `clear_package` now deletes an edge only by its `src`
+endpoint, so a refresh no longer removes an `INHERITS` edge another
+package's walk recorded (#124); a version-8 cache can hold a subclass
+whose ancestry a previous clear removed, which no rebuild of the
+refreshed package can restore and which would falsify the definitive
+`--bases` empty state (`specs/commands/inherits.md`, Empty states).
 """
 
 
@@ -541,15 +555,27 @@ class SymbolStore:
         NOTE: Avoids Python-to-C context switching and N+1 query problem with
         sub-queries.
 
+        NOTE: Edges are deleted by `src` alone, never by `dst`. An edge
+        is owned by the walk that recorded it, and a walk records an
+        edge only where the relationship's origin is a symbol it is
+        walking - so ownership rides the origin endpoint and a clear
+        deletes only what it owns (`specs/behaviors/cache-refresh.md`,
+        Refresh scope: edges). A `dst` arm would delete another
+        package's recorded facts: an `INHERITS` edge is written from
+        the *subclass's* side, so clearing the base's package once
+        stripped ancestry the cleared package never owned and its own
+        rebuild could not restore (#124). An edge can therefore outlive
+        the node at either endpoint, which is harmless by construction
+        and declared as such in the same spec.
+
         Args:
             package: The package (distribution|import) name to clear.
         """
         # Clear the Edges (FTS5 index cleared via `nodes` delete trigger)
         self._connection.execute(
             "DELETE FROM edges WHERE "
-            "src IN (SELECT qualified_name FROM nodes WHERE package = ?) OR "
-            "dst IN (SELECT qualified_name FROM nodes WHERE package = ?)",
-            (package, package),
+            "src IN (SELECT qualified_name FROM nodes WHERE package = ?)",
+            (package,),
         )
 
         self._connection.execute(

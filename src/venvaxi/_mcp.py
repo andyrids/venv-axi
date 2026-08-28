@@ -27,7 +27,6 @@ from venvaxi._introspect import (
     refresh_package_graph,
     show_module,
     summarize_doc,
-    top_level_root,
 )
 from venvaxi._packages import installed_count, list_packages, resolve_package
 from venvaxi._toon import (
@@ -502,25 +501,24 @@ def get_bases_tool(qualified_name: str) -> str:
     """Show the classes a class directly inherits from (TOON format)."""
     nodes = get_bases(qualified_name)
     if not nodes:
-        # NOTE: Two causes, both named - every base was `object` (the
-        # walk skips it), or a base's package was refreshed since this
-        # class was indexed (`clear_package` strips the edge the
-        # subclass's walk wrote). The recovery is a rebuild of the
-        # named class's *own* package - never indexing another
-        # package, which can never add a base
-        # (`specs/commands/inherits.md`, Empty states).
-        rname = camel_case(refresh_package_graph_tool.__name__)
-        root = top_level_root(qualified_name)
+        # NOTE: One cause, named, and no recovery offered - every
+        # base was `object`, which the walk skips. Definitive
+        # *conditionally*: it holds only while a refresh deletes
+        # solely the edges its own package's walk recorded, never
+        # another walk's (`specs/behaviors/cache-refresh.md`, Refresh
+        # scope: edges). Before #124 that was false and this hint
+        # named a second cause and offered `refreshPackageGraphTool`
+        # as its recovery. Any change widening what a refresh deletes
+        # returns to `specs/commands/inherits.md`, Empty states,
+        # before it lands.
         return _with_help(
             "count: 0",
             [
                 (
                     f"`{qualified_name}` derives directly from"
-                    " `object`, which is not indexed - or a base's"
-                    " package was refreshed since this class was"
-                    f" indexed: call `{rname}` with name={root} to"
-                    " rebuild this class's own package, then re-call"
-                    " this tool"
+                    " `object`, which is not indexed - the walk"
+                    " records every other base and nothing removes"
+                    " one, so there is nothing further to find"
                 )
             ],
         )

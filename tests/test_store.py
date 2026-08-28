@@ -291,15 +291,17 @@ def test_get_bases_ordered_by_qualified_name(
 def test_get_bases_after_base_package_cleared(
     tmp_path: Path, make_symbol_node: NodeFactory
 ) -> None:
-    """`clear_package` on a base's package strips the subclass's edge.
+    """`clear_package` on a base's package keeps the subclass's edge.
 
-    NOTE: Pins the limitation behind the two-cause empty state (plan
-    Validation criterion 4; `specs/commands/inherits.md`, Empty
-    states): the edge was written by the *subclass's* walk, but
-    `clear_package` deletes every edge with the cleared package's node
-    at either end - so the base vanishes from `get_bases` while the
-    subclass's own node survives, and the surface must not read the
-    resulting zero as a derivation from `object`.
+    NOTE: Pins what makes the `--bases` empty state definitive (plan
+    Validation criterion 3; `specs/behaviors/cache-refresh.md`,
+    Refresh scope: edges): the edge was written by the *subclass's*
+    walk, so clearing the *base's* package must not reach it. The
+    fixture clears `alib` and deliberately does not rebuild it - with
+    both packages present either deletion scope passes. The base's
+    node is gone and the edge survives, which is the
+    edge-outliving-its-endpoint case the same spec declares harmless:
+    `get_bases` reads `edges` alone and reports the endpoint's name.
     """
     with SymbolStore(tmp_path / "store.db") as store:
         store.upsert_node(
@@ -332,8 +334,166 @@ def test_get_bases_after_base_package_cleared(
 
         store.clear_package("alib")
 
-        assert store.get_bases("blib.impl::Sub") == []
+        assert [
+            node.qualified_name for node in store.get_bases("blib.impl::Sub")
+        ] == ["alib.core::Base"]
         assert store.get_node("blib.impl::Sub") is not None
+        assert store.get_node("alib.core::Base") is None
+
+
+def test_get_inheritors_after_base_package_cleared(
+    tmp_path: Path, make_symbol_node: NodeFactory
+) -> None:
+    """`clear_package` on a base's package keeps its inheritors.
+
+    NOTE: Validation criterion 4 - the same surviving edge read from
+    the other direction. `get_inheritors` JOINs `nodes` on the edge's
+    `src`, which is the subclass's own node in the uncleared package,
+    so the row is still reportable. The fixture clears `alib` and does
+    not rebuild it.
+    """
+    with SymbolStore(tmp_path / "store.db") as store:
+        store.upsert_node(
+            make_symbol_node(
+                qualified_name="alib.core::Base",
+                name="Base",
+                module="alib.core",
+                package="alib",
+            )
+        )
+        store.upsert_node(
+            make_symbol_node(
+                qualified_name="blib.impl::Sub",
+                name="Sub",
+                module="blib.impl",
+                package="blib",
+            )
+        )
+        store.upsert_edge(
+            SymbolEdge(
+                src="blib.impl::Sub",
+                dst="alib.core::Base",
+                kind=EdgeKind.INHERITS,
+            )
+        )
+        store.flush()
+
+        store.clear_package("alib")
+
+        assert [
+            node.qualified_name
+            for node in store.get_inheritors("alib.core::Base")
+        ] == ["blib.impl::Sub"]
+
+
+def test_clear_package_removes_edges_it_owns(
+    tmp_path: Path, make_symbol_node: NodeFactory
+) -> None:
+    """`clear_package` deletes every edge the package's walk recorded.
+
+    NOTE: Validation criterion 1 - the half the narrowed `DELETE` must
+    keep doing. The `blib` walk recorded both edges (an `INHERITS` to a
+    base in another package and a `CONTAINS` to its own member), so
+    clearing `blib` removes both, while the untouched `alib` node
+    stays.
+    """
+    with SymbolStore(tmp_path / "store.db") as store:
+        store.upsert_node(
+            make_symbol_node(
+                qualified_name="alib.core::Base",
+                name="Base",
+                module="alib.core",
+                package="alib",
+            )
+        )
+        store.upsert_node(
+            make_symbol_node(
+                qualified_name="blib.impl::Sub",
+                name="Sub",
+                module="blib.impl",
+                package="blib",
+            )
+        )
+        store.upsert_node(
+            make_symbol_node(
+                qualified_name="blib.impl::Sub.run",
+                kind=NodeKind.METHOD,
+                name="run",
+                module="blib.impl",
+                package="blib",
+            )
+        )
+        store.upsert_edge(
+            SymbolEdge(
+                src="blib.impl::Sub",
+                dst="alib.core::Base",
+                kind=EdgeKind.INHERITS,
+            )
+        )
+        store.upsert_edge(
+            SymbolEdge(
+                src="blib.impl::Sub",
+                dst="blib.impl::Sub.run",
+                kind=EdgeKind.CONTAINS,
+            )
+        )
+        store.flush()
+
+        store.clear_package("blib")
+
+        remaining = store._connection.execute(
+            "SELECT src, dst, kind FROM edges"
+        ).fetchall()
+        assert [tuple(row) for row in remaining] == []
+        assert store.get_node("alib.core::Base") is not None
+
+
+def test_clear_package_keeps_a_foreign_walks_inherits_edge(
+    tmp_path: Path, make_symbol_node: NodeFactory
+) -> None:
+    """`clear_package` keeps an edge another package's walk recorded.
+
+    NOTE: Validation criterion 2, asserted on the `edges` table rather
+    than through a reader, so it pins the deletion scope itself. An
+    `INHERITS` edge is written from the *subclass's* side, so clearing
+    the base's package must leave the row exactly as the `blib` walk
+    wrote it - and the fixture never rebuilds `alib`, because a graph
+    holding both packages passes either deletion scope.
+    """
+    with SymbolStore(tmp_path / "store.db") as store:
+        store.upsert_node(
+            make_symbol_node(
+                qualified_name="alib.core::Base",
+                name="Base",
+                module="alib.core",
+                package="alib",
+            )
+        )
+        store.upsert_node(
+            make_symbol_node(
+                qualified_name="blib.impl::Sub",
+                name="Sub",
+                module="blib.impl",
+                package="blib",
+            )
+        )
+        store.upsert_edge(
+            SymbolEdge(
+                src="blib.impl::Sub",
+                dst="alib.core::Base",
+                kind=EdgeKind.INHERITS,
+            )
+        )
+        store.flush()
+
+        store.clear_package("alib")
+
+        remaining = store._connection.execute(
+            "SELECT src, dst, kind FROM edges"
+        ).fetchall()
+        assert [tuple(row) for row in remaining] == [
+            ("blib.impl::Sub", "alib.core::Base", str(EdgeKind.INHERITS))
+        ]
 
 
 def test_get_module_tree(
@@ -864,6 +1024,42 @@ def test_schema_version_7_empty_version_row_evicted_on_open(
 
     with SymbolStore(db_path) as store:
         assert store.get_build("dns") is None
+        (version,) = store._connection.execute(
+            "PRAGMA user_version"
+        ).fetchone()
+        assert version == SCHEMA_VERSION
+
+
+def test_schema_version_8_wider_deletion_scope_evicted_on_open(
+    tmp_path: Path,
+) -> None:
+    """A cache recorded at schema version 8 is dropped on next open.
+
+    NOTE: Validation criterion 8. Version 8 is the *previous* version,
+    written before `clear_package` narrowed to the `src` arm, so such
+    a cache can hold a subclass whose ancestry an unrelated refresh
+    removed (#124) - a gap no rebuild of the refreshed package
+    restores, and which would falsify the definitive `--bases` empty
+    state. The bump is what evicts it
+    (`specs/behaviors/cache-refresh.md`, Schema version covers the
+    builder, not just the shape).
+    """
+    db_path = tmp_path / "store.db"
+    SymbolStore(db_path).close()
+
+    connection = sqlite3.connect(db_path)
+    connection.execute("PRAGMA user_version = 8")
+    connection.execute(
+        "INSERT INTO nodes (qualified_name, kind, name, module, signature,"
+        " doc, package, version, home_qualified_name) VALUES"
+        " ('blib.impl::Sub', 'class', 'Sub', 'blib.impl', '', '', 'blib',"
+        " '1.0.0', 'blib.impl::Sub')"
+    )
+    connection.commit()
+    connection.close()
+
+    with SymbolStore(db_path) as store:
+        assert store.get_node("blib.impl::Sub") is None
         (version,) = store._connection.execute(
             "PRAGMA user_version"
         ).fetchone()
