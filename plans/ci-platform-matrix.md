@@ -2,12 +2,12 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs: []
 authors: []
 issues: [111]
-pr:
+pr: 114
 ---
 
 # Plan: CI platform matrix
@@ -78,15 +78,21 @@ platform claim is unchanged by this unit - the unit makes the claim true, it doe
 
 ## Validation
 
-- [ ] When a pull request targets `main` or `develop`, the CI workflow shall run the `pytest` job
-      once on `ubuntu-latest` and once on `windows-latest`.
-- [ ] While the OS matrix runs, each leg shall resolve the same pinned Python interpreter version,
-      so a leg's result identifies the operating system and nothing else.
-- [ ] When the `pytest` job runs on `windows-latest`, it shall complete with zero test failures.
+- [x] When a pull request targets `main` or `develop`, the CI workflow shall run the `pytest` job
+      once on `ubuntu-latest` and once on `windows-latest`. — PR #114 reports check runs
+      `pytest (ubuntu-latest)` and `pytest (windows-latest)`, where `develop` reports one `pytest`
+- [x] While the OS matrix runs, each leg shall resolve the same pinned Python interpreter version,
+      so a leg's result identifies the operating system and nothing else. — run 33159569557,
+      both legs log `Using CPython 3.13.15` at the `uv sync` step
+- [x] When the `pytest` job runs on `windows-latest`, it shall complete with zero test failures.
+      — run 33159569557 `pytest (windows-latest)`:
+      `522 passed, 21 deselected in 107.77s (0:01:47)`, coverage `TOTAL 1329 20 98%`
 - [ ] If a test fails on `windows-latest` only, then the workflow shall report the check run as
       failed rather than succeeded.
-- [ ] When `uv build` produces a wheel, its metadata shall carry an `Operating System ::`
-      classifier for each platform `docs/architecture.md` claims support for.
+- [x] When `uv build` produces a wheel, its metadata shall carry an `Operating System ::`
+      classifier for each platform `docs/architecture.md` claims support for. —
+      `uv build` then reading the wheel's `METADATA`: `Classifier: Operating System :: Microsoft ::
+      Windows` and `Classifier: Operating System :: POSIX :: Linux`
 - [ ] When the Windows leg fails and is fixed, the fix shall keep the test running on Windows
       rather than skipping it there.
 
@@ -108,4 +114,59 @@ platform claim is unchanged by this unit - the unit makes the claim true, it doe
 
 ## Notes
 
+**Two boxes are left unticked, deliberately, and for the same reason: their trigger never fired.**
+Criterion 4 is an `If <trigger>, then` and criterion 6 is conditional on a Windows failure. The
+Windows leg passed on its first run, so neither was observed. They are un-triggered, not satisfied,
+and ticking them would misstate that. A structural argument exists for criterion 4 - the job
+carries no `continue-on-error` and `fail-fast: false` lets a failing leg report independently - but
+that is a reading of the YAML, not a run, and the evidence convention cites what a future reader
+can re-run. The first genuinely red Windows leg on any later PR evidences both.
+
+**The first run did not go red, and the issue predicted it would.** #111 says "expect this to go
+red on the first run", and the 0.5.0 triage sequenced this unit first partly to surface existing
+Windows failures early. It surfaced none: 522 passed on both legs, coverage identical at 98%. Two
+things this does and does not mean. It does mean the Windows-specific defences already in the
+tree - `_atomic_write_bytes`, `.gitattributes` pinning `* text=auto eol=lf`, the #64 SQLite
+handle closes, the #56 fd-capture convention - hold on a runner image nobody had tested them
+against. It
+does not mean the gap was harmless: every one of those defences exists because a defect shipped
+first, and the value of this unit is that the next such regression is caught by CI rather than by a
+person on Windows after release.
+
+**The interpreter pin is a judgement, not a measurement.** `python-version: "3.13"` was added
+because without it `uv sync` resolves whatever each runner image offers, and across two images a
+red leg is ambiguous between the operating system and the Python version - which would defeat the
+point of an OS matrix. It narrows nothing: the single job before this unit already ran an arbitrary
+version. Both legs logged `Using CPython 3.13.15`, so the matrix now varies exactly one thing.
+
+**The pin covers the `pytest` job only.** `ruff-lint` resolved `CPython 3.12.3` from
+`/usr/bin/python3` on the same run. That is correct and intended - the job is platform-independent
+and stays single-runner - but it is worth recording that "CI pins 3.13" is true of the matrix, not
+of the workflow.
+
+**Windows is roughly 2x slower per leg** - 107.77s against 52.61s - which is the honest cost of
+this unit. The repository is public, so runner minutes are free; the doubling matters only if that
+changes.
+
+**A review check caught a green-that-had-not-looked.** During the stage gate, `prek run
+--all-files` was reported passing while `plans/ci-platform-matrix.md` was still untracked - and
+prek operates on git-tracked files, so PyMarkdown never saw it. With `git add -N` it failed MD018:
+the 100-column wrap had put `#112` at column 1, where the tokenizer reads it as a malformed ATX
+heading. Rewrapped to `issue #112`. Recorded because it is the same shape as the defect this unit
+closes, one level down: a gate reporting success over something it never examined. Any future run
+that opens an untracked plan file should stage it before trusting a hook result.
+
 ## Follow-ups
+
+- **Issue** [#112](https://github.com/andyrids/venv-axi/issues/112) - the conformance tier never
+  runs in CI. This unit runs 522 of 543 tests on both operating systems and the 21 conformance
+  tests on neither, so a green matrix here is not the coverage it may read as. Sequenced
+  immediately after this unit in the 0.5.0 triage.
+- **Issue** [#110](https://github.com/andyrids/venv-axi/issues/110) - the publish gate. Matrixing
+  renamed the check run to `pytest (ubuntu-latest)` / `pytest (windows-latest)`; no ruleset
+  requires status checks today, so nothing broke, but the gate that issue adds must name the new
+  spellings rather than `pytest`.
+- **Tracked as** - resolution 2 of [#111](https://github.com/andyrids/venv-axi/issues/111), the
+  Python version matrix. The declared 3.11-3.14 range is unexercised - this unit pins 3.13 on both
+  legs, which makes the OS matrix honest and leaves the version range exactly as untested as it
+  was. The issue itself says it "belongs in its own issue if wanted"; no issue is filed yet.
