@@ -71,3 +71,20 @@ def test_no_bases_of_query_denial() -> None:
         assert "There is no bases-of query" not in text
         assert "--bases" in text
         assert "getBasesTool" in text
+
+
+def test_no_bases_two_cause_claim() -> None:
+    """Neither copy claims a `--bases` `count: 0` has two causes.
+
+    NOTE: Validation criterion 7. The two-cause gotcha described a real
+    defect - a refresh deleted an edge another package's walk recorded
+    (#124) - which is now fixed, so the claim is false and the skill
+    must not teach a rebuild as a recovery for an empty `--bases`
+    answer (`specs/commands/inherits.md`, Empty states).
+    """
+    for text in (
+        skill_markdown.read_text(encoding="utf-8"),
+        INSTALLED.read_text(encoding="utf-8"),
+    ):
+        assert "under `--bases` has two causes" not in text
+        assert "under `--bases` has one cause and no recovery" in text

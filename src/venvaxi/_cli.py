@@ -391,14 +391,19 @@ def command_tree(ctx: CLIContext) -> int:
 def _command_inherits_bases(ctx: CLIContext) -> int:
     """Show the classes a class directly inherits from.
 
-    NOTE: Zero rows has two causes, and the hint names both: every
-    base was `object` (the walk skips it), or a base's package was
-    refreshed since this class was indexed - `clear_package` strips
-    the edge the subclass's walk wrote while the subclass's node
-    survives. The recovery is `--refresh` on the named class's own
-    package - the walk that wrote the edge - never indexing another
-    package, which can never add a base
-    (`specs/commands/inherits.md`, Empty states).
+    NOTE: Zero rows has one cause and the hint names it - every base
+    was `object`, which the walk skips - and offers no recovery,
+    because there is none to offer. That is definitive *conditionally*,
+    and the condition is what to check before touching this hint: it
+    holds only while a refresh deletes solely the edges its own
+    package's walk recorded, never another walk's
+    (`specs/behaviors/cache-refresh.md`, Refresh scope: edges). Before
+    #124 that was false - `clear_package` deleted every edge touching
+    the refreshed package at either end, stripping a base edge the
+    subclass's walk had written - so this hint named a second cause and
+    offered `--refresh` on the named class's own package as its
+    recovery. Any change widening what a refresh deletes returns to
+    `specs/commands/inherits.md`, Empty states, before it lands.
 
     Args:
         ctx: The CLI context.
@@ -414,12 +419,10 @@ def _command_inherits_bases(ctx: CLIContext) -> int:
                 [
                     (
                         f"`{ctx.args.qualified_name}` derives directly"
-                        " from `object`, which is not indexed - or a"
-                        " base's package was refreshed since this class"
-                        " was indexed: run `venvaxi inherits"
-                        f" {ctx.args.qualified_name} --bases --refresh`"
-                        " to rebuild this class's own package and"
-                        " restore its base edges"
+                        " from `object`, which is not indexed - the"
+                        " walk records every other base and nothing"
+                        " removes one, so there is nothing further to"
+                        " find"
                     )
                 ]
             )

@@ -1102,15 +1102,16 @@ def test_command_inherits_bases_with_results(
     assert "venvaxi inspect" in out
 
 
-def test_command_inherits_bases_empty_hint_names_both_causes(
+def test_command_inherits_bases_empty_hint_names_one_cause(
     capsys: pytest.CaptureFixture,
     make_cli_context: ContextFactory,
 ) -> None:
-    """Zero bases names both causes - derivation from `object`, or a
-    base's package refreshed since this class was indexed - offering
-    `--refresh` on the named class's own package and never an
-    index-another-package recovery
-    (`specs/commands/inherits.md`, Empty states)."""
+    """Zero bases names the one cause - derivation from `object` - and
+    offers no recovery at all, neither a rebuild of this class's own
+    package nor an index-another-package move. Definitive because a
+    refresh no longer deletes another walk's edge
+    (`specs/commands/inherits.md`, Empty states;
+    `specs/behaviors/cache-refresh.md`, Refresh scope: edges)."""
     ctx = make_cli_context(
         args=argparse.Namespace(qualified_name="pkg::Sub", bases=True)
     )
@@ -1120,8 +1121,8 @@ def test_command_inherits_bases_empty_hint_names_both_causes(
     assert exit_code == 0
     assert "count: 0" in out
     assert "derives directly from `object`" in out
-    assert "base's package was refreshed" in out
-    assert "venvaxi inherits pkg::Sub --bases --refresh" in out
+    assert "refreshed" not in out
+    assert "--refresh" not in out
     assert "unindexed" not in out
     assert "built depth" not in out
     assert "--package" not in out
