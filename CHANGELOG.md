@@ -59,6 +59,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The packaged skill's "Private submodules are not indexed" gotcha is corrected to match: it no
   longer claims `tree`'s and `inspect`'s private-submodule answers read the same as a name that
   does not exist, both false the moment the fix above lands.
+- `find` no longer misranks a path-shaped query (`Class.method`, `mod::Class`) below symbols it
+  only resembles in docstring prose. A `qualified_name` ending with the query, preceded by `.` or
+  `::`, now ranks above the kind tier, and a path-shaped query no longer matches a symbol only in
+  its docstring - `venvaxi find Console.print --package rich` now emits `count: 3` (`print`,
+  `print_json`, `print_exception`) instead of `count: 9` with three unrelated classes ranked first
+  through docstring prose. A bare query is unaffected and still matches docstring text as before
+  (issue #94).
 
 ## [0.4.0] - 2026-08-23
 

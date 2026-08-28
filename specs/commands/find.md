@@ -15,12 +15,12 @@ Converts a bare symbol name scanned out of a codebase into a qualified name.
 venvaxi find <query> [--limit N] [--package <package>] [--refresh]
 ```
 
-| Argument    | Default  | Meaning                                       |
-| ----------- | -------- | --------------------------------------------- |
-| `query`     | required | Free-text search over symbol names and docs   |
-| `--limit`   | `20`     | Maximum results                               |
-| `--package` | none     | Package to index and scope the search to      |
-| `--refresh` | off      | Rebuild the cached graph before querying      |
+| Argument    | Default  | Meaning                                                           |
+| ----------- | -------- | ----------------------------------------------------------------- |
+| `query`     | required | Free-text search over names and docs; names only when path-shaped |
+| `--limit`   | `20`     | Maximum results                                                   |
+| `--package` | none     | Package to index and scope the search to                          |
+| `--refresh` | off      | Rebuild the cached graph before querying                          |
 
 `--package` does double duty: it **indexes** that package if needed and **scopes** the search to
 it. This is what lets a symbol found by scanning a codebase resolve to its qualified name without
@@ -33,6 +33,18 @@ a separate `show --api` or `tree` warm-up step.
 The cached symbol graph, searched over name and docstring text. Without `--package`, only
 already-indexed packages are searched - so a first-ever `find` with no `--package` legitimately
 returns nothing.
+
+A **path-shaped query** - one containing `.` or `::` - is a spelling of a qualified name, not free
+text. The `find` command shall match a path-shaped query against `name` and `qualified_name` only,
+and shall not match it against docstring text.
+
+A docstring that mentions `Console.print` in a usage example is prose *about* the symbol, not a
+spelling *of* it, and can never be the qualified name the caller asked to resolve. Three `rich`
+classes matched `Console.print` on exactly that basis, out-ranking the method itself
+([#94](https://github.com/andyrids/venv-axi/issues/94)). The narrowing is scoped to the
+path-shaped case: a bare query still searches docstring text on both backends, which is the
+surface [#79](https://github.com/andyrids/venv-axi/issues/79) brought the fallback into
+conformance with.
 
 ## Outputs
 
@@ -73,23 +85,31 @@ ties left by the one above it:
 1. A symbol whose `name` equals the query, ignoring case, shall sort before one whose does not.
 2. A symbol whose `name` begins with the query, ignoring case, shall sort before one whose does
    not.
-3. A symbol of kind `class` or `function` shall sort before a symbol of any other kind.
-4. A symbol with the shorter `qualified_name` shall sort before one with a longer
+3. A symbol whose `qualified_name` equals the query, or ends with the query preceded by `.` or
+   `::`, ignoring case, shall sort before one whose does not.
+4. A symbol of kind `class` or `function` shall sort before a symbol of any other kind.
+5. A symbol with the shorter `qualified_name` shall sort before one with a longer
    `qualified_name`.
-5. Remaining ties shall be broken by `qualified_name`, ascending.
+6. Remaining ties shall be broken by `qualified_name`, ascending.
 
-Key 4 is what prefers **short facade paths over home paths** - the correct public spelling for an
+Key 3 is what makes `Class.method` - the spelling an agent reads straight off a call site -
+resolve to the method itself. Keys 1 and 2 are defined against `name`, and no row's `name` is
+dotted, so without key 3 a path-shaped query silently disables the two highest-priority keys for
+every row in the graph, and ranking falls through to kind - promoting every class above the method
+asked for ([#94](https://github.com/andyrids/venv-axi/issues/94)).
+
+Key 5 is what prefers **short facade paths over home paths** - the correct public spelling for an
 agent to import. It MUST NOT be 'fixed' to prefer home paths; see
 [Qualified name semantics](../behaviors/qualified-name-semantics.md).
 
-Key 5 makes the order **total**. Two runs of the same query against the same graph shall return
+Key 6 makes the order **total**. Two runs of the same query against the same graph shall return
 the same rows in the same order, so an agent can cite a result position, cache an answer, or diff
 two runs without the order shifting underneath it.
 
-One gap between key 3 and key 4 is **deliberately unspecified**: a full-text backend may interpose
-a relevance score there, and a substring backend has none to offer. Both satisfy keys 1 to 3 and
-key 5, and both are deterministic run to run. A caller shall not rely on the relative order of two
-results that keys 1 to 3 leave tied and that differ in relevance but not in `qualified_name`
+One gap between key 4 and key 5 is **deliberately unspecified**: a full-text backend may interpose
+a relevance score there, and a substring backend has none to offer. Both satisfy keys 1 to 4 and
+key 6, and both are deterministic run to run. A caller shall not rely on the relative order of two
+results that keys 1 to 4 leave tied and that differ in relevance but not in `qualified_name`
 length - it is the one place the two backends legitimately disagree.
 
 Writing the gap down is the point. v0.1.0 freezes `specs/` as the public contract, and
@@ -118,13 +138,20 @@ failure - `count: 0` exits `EX_OK`, per the
 
 ## Out of scope
 
-- **Fuzzy or approximate matching** - the query is matched against name and docstring text as
-  supplied; there is no edit-distance recovery of a misspelled symbol. Never - a miss is answered
+- **Fuzzy or approximate matching** - the query is matched as supplied, against the surface
+  [Data requirements](#data-requirements) declares for its shape; there is no edit-distance
+  recovery of a misspelled symbol. Never - a miss is answered
   by the situational empty-state hints above, and a guessed match would be an answer the caller
   cannot trust.
 - **Cross-package relevance ranking** - ranking orders spellings (facade before home); it does
   not weigh one package's results against another's. No future spec is planned; `--package` is
   the supported way to narrow a search.
+- **Query decomposition** - a path-shaped query is matched and ranked whole; its head is not split
+  off and matched against the owning class or module. `Console.print` ranks the method first
+  because the row's `qualified_name` ends with it, not because `Console` was resolved to a class,
+  and a query carrying more than one dot behaves identically. No future spec is planned; head
+  filtering would change what the query *means* rather than how results are ranked, and would be
+  filed on its own if a need for it appears.
 
 ## Principles
 
