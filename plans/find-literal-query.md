@@ -2,13 +2,13 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs:
   - specs/commands/find.md
 authors: []
 issues: [108]
-pr:
+pr: 121
 ---
 
 # Plan: Find literal query
@@ -123,26 +123,61 @@ reader of the new rule would reasonably ask about, which is what
 
 ## Validation
 
-- [ ] When `find` is invoked with a query containing `_`, the `find` command shall return only
+- [x] When `find` is invoked with a query containing `_`, the `find` command shall return only
       symbols carrying that query as a literal substring, and shall not return one that matches it
-      only by substituting another character for the `_`.
-- [ ] When `find` is invoked with a query containing `%`, the `find` command shall return only
+      only by substituting another character for the `_`. —
+      `tests/test_find_ordering.py::test_find_underscore_query_matches_literal_substring_only[like]`
+      and `tests/test_store.py::test_search_symbols_underscore_matches_literal_like_fallback`, both
+      passed, and both shown failing under an identity mutation of `_escape_like` with
+      `assert ['print_json', 'printXjson'] == ['print_json']`. The `[like]` parameter is the
+      evidence; `[fts]` passes either way and is not (stage 03 report)
+- [x] When `find` is invoked with a query containing `%`, the `find` command shall return only
       symbols carrying that query as a literal substring, and shall emit `count: 0` with the
-      situational hint its `--package` argument selects where no symbol does.
-- [ ] When `find` is invoked with a query containing `_`, the `find` command shall not rank a
+      situational hint its `--package` argument selects where no symbol does. —
+      `tests/test_find_ordering.py::test_find_percent_query_matches_literal_substring_only[fts]`
+      and `[like]`, both passed and both shown failing under mutation; and evidenced live against
+      the real `rich` package, where the pre-fix `venvaxi find 'print%json' --package rich`
+      returned `count: 3` including `rich.json::JSON` - a symbol carrying no `print%json` in any
+      form - against `count: 0` post-fix. Both situational hints and `EX_OK` evidenced live, with
+      and without `--package` (stage 03 report)
+- [x] When `find` is invoked with a query containing `_`, the `find` command shall not rank a
       symbol whose `name` begins with that query only under wildcard substitution above one whose
-      `name` does not begin with it at all.
-- [ ] When `find` is invoked with a query containing a backslash, the `find` command shall match
-      the backslash as a literal character and shall not raise.
-- [ ] When `find` is invoked with a query containing no `_`, no `%` and no backslash, the `find`
-      command shall return the same symbols in the same order as it did before this change.
-- [ ] When `findSymbolTool` is called with a `query` containing `_` or `%`, it shall return the
-      same symbols in the same order as the `find` command invoked with that query.
-- [ ] When `venvaxi find Console.print --package rich` is run against this repository's own venv,
+      `name` does not begin with it at all. —
+      `tests/test_find_ordering.py::test_find_underscore_query_does_not_rank_wildcard_prefix`,
+      passed, and shown failing under mutation with
+      `assert ['printXjson', 'use_print_json'] == ['use_print_json', 'printXjson']` - both rows
+      present, order reversed, so a ranking failure and not a membership one (stage 03 report)
+- [x] When `find` is invoked with a query containing a backslash, the `find` command shall match
+      the backslash as a literal character and shall not raise. —
+      `tests/test_find_ordering.py::test_find_backslash_query_matches_literal_backslash[fts]` and
+      `[like]`, both passed, and both shown failing under mutation with
+      `assert ['parse_plain'] == ['parse_escape']`; also evidenced live by
+      `uv run venvaxi -v find 'a\b' --package rich` (`count: 0`, exit `0`, no raise). The failing
+      run is by mutation, not pre-fix, because with no `ESCAPE` clause a backslash was already
+      literal - this criterion guards the fix's own failure mode (stage 03 report)
+- [x] When `find` is invoked with a query containing no `_`, no `%` and no backslash, the `find`
+      command shall return the same symbols in the same order as it did before this change. — all
+      522 pre-existing tests passed unchanged, including the full six-key ordering suite; the
+      opt-in conformance tier passed `21 passed, 531 deselected`; and criterion 7's live run is
+      byte-identical to its pre-change documented output (stage 03 report)
+- [x] When `findSymbolTool` is called with a `query` containing `_` or `%`, it shall return the
+      same symbols in the same order as the `find` command invoked with that query. —
+      `tests/test_mcp.py::test_find_symbol_tool_wildcard_char_query_matches_find_symbol`, passed.
+      Ticked as a **guard, not a discriminator**: both sides call the same `find_symbol`, so it
+      passes with and without the fix by construction. It evidences that the MCP surface inherits
+      the fix with no per-surface branch, and would catch a future divergence between the two
+      surfaces; it is not evidence that escaping works (stage 03 report, Finding 2)
+- [x] When `venvaxi find Console.print --package rich` is run against this repository's own venv,
       it shall emit `count: 3` and the rows `rich.console::Console.print`,
       `rich.console::Console.print_json`, `rich.console::Console.print_exception`, in that order,
-      matching the worked example at `src/venvaxi/SKILL.md:66-74`.
-- [ ] The test suite shall pass.
+      matching the worked example at `src/venvaxi/SKILL.md:66-74`. — not a test: evidenced by the
+      live command `uv run venvaxi find Console.print --package rich`, output confirmed identical
+      line for line to a direct re-read of `src/venvaxi/SKILL.md:66-74`, `help[1]` footer included
+      (stage 03 report)
+- [x] The test suite shall pass. — `uv run coverage run -m pytest` → `531 passed, 21 deselected in
+      65.97s (0:01:05)`, coverage `98%` (1332 statements, 20 missed); `uv run pytest -m
+      conformance` → `21 passed, 531 deselected`; `pkgdx-lint-hook`, `pkgdx-format-hook`,
+      `pkgdx-typing-hook -p venvaxi` and `pkgdx-markdown-hook` all clean (stage 03 report)
 
 ## Risks / unknowns
 
@@ -181,4 +216,104 @@ reader of the new rule would reasonably ask about, which is what
 
 ## Notes
 
+**Why `ESCAPE` rather than `instr` or `GLOB`.** SQLite offers three ways to make a substring match
+literal. `instr(haystack, needle) > 0` compares literal text and needs no escaping at all, but it
+is case-*sensitive*, and `find` has matched case-insensitively since it existed - switching would
+have been an unasked-for behaviour change wearing a bug fix's clothes. `GLOB` is case-sensitive
+too, and swaps one metacharacter set (`_`, `%`) for a larger one (`*`, `?`, `[`). `LIKE ... ESCAPE`
+keeps the existing case-insensitive ASCII semantics exactly and changes only which characters are
+special. It was the only option that fixed the defect without moving anything else.
+
+**Why the escape character is a backslash.** It needs no SQL-literal escaping in SQLite - a
+backslash is not special inside a string literal - it is the conventional choice, and it cannot
+appear in a Python identifier, so no query carrying one was ever going to match a symbol *name*.
+Step 1 of the helper exists to make that miss honest rather than to rescue a match.
+
+**Escape order is load-bearing, and getting it wrong fails silently.** `_escape_like` replaces the
+backslash first, then `%`, then `_`. Reversing that double-escapes the escapes just introduced.
+Verified against this venv's SQLite 3.50.4, and re-verified by mutation at stages 02 and 03:
+
+| Helper | query | matches |
+| ------ | ----- | ------- |
+| correct | `a\b` | `a\b` |
+| correct | `print_json` | `print_json`, `print_jsonx` |
+| forgets step 1 | `a\b` | `ab` - **wrong** |
+| none (pre-fix) | `print_json` | `print_json`, `printXjson`, `print_jsonx` |
+
+Row 3 is the one that matters: SQLite raises nothing when the escape character precedes an ordinary
+character - it simply treats that character as literal - so a mis-ordered helper returns a wrong
+answer with no signal at all. That is the same failure shape this whole unit exists to remove,
+reintroduced by the fix for it, which is why Validation criterion 4 exists and pins it.
+
+**Why key 2 needed its own binding and keys 1 and 3 did not.** Key 1 is `=` and key 3 is
+`substr(...) IN (...)`; both compare literal text already, and escaping their operand would have
+broken them. Only key 2 is a `LIKE`. So `:query` stays bound raw and `:query_escaped` was added
+alongside it, rather than escaping one parameter that three keys share.
+
+**Why the `search_fts.sql` mirror was kept though it is inert.** No FTS candidate row can have a
+`name` where the unescaped prefix pattern is true and the escaped one false - `name` is a Python
+identifier, and the unicode61 tokenizer has already restricted the candidate set. Proven, not
+argued: at stage 02 the mirrored line was reverted and the three test modules re-run, `159 passed`
+with the clause gone. It is kept so the two files state one ordering contract rather than two, and
+so a future change to the FTS/`LIKE` routing does not silently un-fix half the behaviour. This is
+the same decision, for the same reason, that [find-path-shaped-query](find-path-shaped-query.md)
+made for key 3 - the convention now covers two keys.
+
+**The defect was more reachable than stage 01 claimed.** Stage 01's evidence table said a `_` query
+reaches the `LIKE` path "only when FTS5 is unavailable". That holds for a *bare* query and is false
+for a path-shaped one: `uv run venvaxi -v find 'Console.print_json' --package rich` logs
+`DEBUG: FTS5 query failed`, because FTS5's grammar rejects the unquoted `.` before `MATCH` is
+evaluated - so the query lands on the unescaped `WHERE` with its `_` intact, on every install.
+`Console.print_json` is the spelling `src/venvaxi/SKILL.md` teaches an agent to type. Found at
+stage 03 while verifying criterion 1, rather than inherited from the upstream evidence; it changes
+no decision, but a stage that only re-confirms its own inputs is not verifying anything.
+
+**The `[fts]` parameter passes vacuously for a `_` query**, and the tests say so rather than
+implying both backends were proved. unicode61 splits `print_json` into `print` and `json`, so the
+single-token competitor `printXjson` never enters the candidate set. A `%` or backslash query is
+the shape that reaches `search_like.sql` under either parameter, because FTS5 rejects both with a
+syntax error. This is the fixture trap [find-path-shaped-query](find-path-shaped-query.md) records
+in its Notes, arriving by a second route - there the competitor was missing from the result set,
+here the whole backend is the wrong one to assert against.
+
+**`like_only` was extracted at the stage 02 review gate.** The key-2 ranking test disabled FTS with
+a verbatim copy of the `search_backend` fixture's `like` branch - two copies of one degradation, in
+a module whose docstring makes a point of stating one contract once. Both consumers now take a
+`like_only` fixture, `search_backend` reaching it through `request.getfixturevalue`. The mutation
+run was repeated after the extraction and produced an identical `7 failed, 2 passed` split, which
+is what proves the extracted fixture still disables FTS rather than quietly making that test
+vacuous.
+
+**Gotcha, which cost this run twice: writing files by script on Windows.** `Path.write_text`
+translates the newline to `os.linesep`, so it emits CRLF - the defect `.gitattributes` names and
+`_atomic_write_bytes` exists to prevent, arriving by a third route. Stage 01 introduced CRLF into
+`specs/commands/find.md` and normalised it before commit; every later write used `write_bytes`, and
+every touched file was byte-checked. Separately, a shell heredoc mangled backslash escapes in a
+mutation script at stage 02, and the `git checkout --` used to clean up after it reverted the
+in-flight fix; the fix was re-applied and everything downstream re-run against the restored file.
+Both are recorded because the next run on a Windows tree will meet them again.
+
 ## Follow-ups
+
+- **Issue [#122](https://github.com/andyrids/venv-axi/issues/122)** - filed at this closeout.
+  `_store.py` builds the FTS query as `f"{query}*"`, so a `"`, `%`, `:`, `*` or backslash in a
+  query can break the MATCH grammar and route it to `LIKE`. It degrades *safely* - the existing
+  `except sqlite3.OperationalError` catches it, and after this unit the fallback answers literally
+  - so it reaches a correct answer by a longer path rather than a wrong one silently. What it
+  costs is that an entire class of query, defined by punctuation, never receives `bm25`, and that
+  the routing is undeclared. Named out of scope in this plan's Scope from stage 01 and
+  deliberately not widened into: escaping the MATCH operand would change *which backend answers*
+  for those queries, and with it the result set rather than only its order. Owned by no current
+  plan.
+- **Validation criterion 6 is a guard, not a discriminator.** The `findSymbolTool` parity test
+  passes with and without the fix by construction. It is ticked above with that stated plainly, so
+  a later reader does not mistake it for evidence that escaping works. No separate follow-up: the
+  MCP surface genuinely has no per-surface search branch to test, and inventing one would be worse
+  than the guard.
+- **The `[fts]` literal-matching parameters have nothing to regress against**, because the
+  tokenizer prevents the defect there. If FTS5's tokenizer configuration ever changed, those
+  parameters would begin to discriminate and nothing announces the transition. Not filed: the
+  tokenizer is SQLite's default and this project pins no FTS5 configuration, so there is no change
+  to watch for on this side.
+- **Deferred to** - none.
+- **Tracked as** - none.
