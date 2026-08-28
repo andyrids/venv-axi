@@ -24,11 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (issue #81).
 - `describeBindingTool` gains a `version` field, reported first, so an MCP-only caller can also
   identify the server's build.
+- `pyproject.toml` `classifiers` gain `Operating System :: Microsoft :: Windows` and
+  `Operating System :: POSIX :: Linux`, matching the platforms `docs/architecture.md` claims
+  support for (issue #111).
 
 ### Changed
 
 - `ICM/_config/reference-toolchain-pytest.md` records the pytest fd-capture trap that defeats a
   `mock.patch` of `sys.stdout`.
+- The `pytest` job in `.github/workflows/ci.yml` now runs on a `ubuntu-latest` / `windows-latest`
+  matrix with a pinned Python interpreter, so CI exercises the Windows platform the docs claim to
+  support (issue #111).
 - The private-submodule skip - a submodule whose own final name segment starts with `_` is never
   walked - is now declared in `specs/behaviors/symbol-graph.md` and cross-referenced from
   `specs/behaviors/qualified-name-semantics.md` and `specs/commands/tree.md`. The behaviour is
