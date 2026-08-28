@@ -2,7 +2,7 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs:
   - specs/commands/inherits.md
@@ -11,7 +11,7 @@ specs:
   - specs/behaviors/skill-content.md
 authors: []
 issues: [48]
-pr:
+pr: 123
 ---
 
 # Plan: Inherits bases direction
@@ -149,32 +149,74 @@ brings the skill back into conformance with an unchanged rule.
 
 ## Validation
 
-- [ ] When `inherits` is invoked with `--bases` on a class with at least one recorded base, the
+- [x] When `inherits` is invoked with `--bases` on a class with at least one recorded base, the
       `inherits` command shall emit `count: <n>` and a `bases` table of `name`, `kind` and
-      `qualified_name` listing each direct base.
-- [ ] Where `--bases` is given, the `inherits` command shall report a base class whose own package
-      has never been indexed.
-- [ ] Where `--bases` is given and the named class has no recorded base, the `inherits` command
+      `qualified_name` listing each direct base. —
+      `tests/test_store.py::test_get_bases_indexed_base` and
+      `tests/test_cli.py::test_command_inherits_bases_with_results`, both passed; also evidenced
+      live by `uv run venvaxi inherits rich.table::Table --bases`, emitting exactly the three
+      declared fields (stage 03 report)
+- [x] Where `--bases` is given, the `inherits` command shall report a base class whose own package
+      has never been indexed. —
+      `tests/test_store.py::test_get_bases_unindexed_base_package`, whose fixture asserts
+      `store.get_node("logging::Handler") is None` before querying; shown failing under a mutation
+      of `get_bases.sql` to the naive `nodes` JOIN. Evidenced live by `uv run venvaxi inherits
+      rich.logging::RichHandler --bases` returning `logging::Handler` against a cache whose build
+      list has no `logging`, re-checked after the run (stage 03 report)
+- [x] Where `--bases` is given and the named class has no recorded base, the `inherits` command
       shall emit `count: 0` with a hint naming **both** causes - derivation from `object`, and a
       base's package refreshed since this class was indexed - naming `--refresh` on the named
-      class's own package as the recovery for the second, and shall exit `EX_OK`.
-- [ ] When a base's package is cleared after the named class was indexed, the `inherits` command
+      class's own package as the recovery for the second, and shall exit `EX_OK`. —
+      `tests/test_cli.py::test_command_inherits_bases_empty_hint_names_both_causes` and
+      `tests/test_mcp.py::test_get_bases_tool_empty_hint_names_both_causes`; evidenced live by
+      `uv run venvaxi inherits rich.console::Console --bases` (exit `0`). The recovery was traced
+      to `_build_store_for(qualified_name, refresh=refresh)`, which rebuilds the named class's own
+      package - the walk that wrote the edge (stage 03 report)
+- [x] When a base's package is cleared after the named class was indexed, the `inherits` command
       with `--bases` shall emit `count: 0`, and shall not assert that the class derives from
-      `object`.
-- [ ] When `inherits` is invoked without `--bases` and the named class has zero indexed subclasses,
+      `object`. — `tests/test_store.py::test_get_bases_after_base_package_cleared`. **This pins a
+      limitation, not a fix**: it passes against unchanged store code because `clear_package`'s
+      over-deletion is still present; what changed is that the surface no longer mis-describes its
+      effect. Read as 'the edge survives a refresh' this tick would be exactly backwards. The
+      surface half is satisfied by the hint being a disjunction rather than an assertion (stage 03
+      report, Finding 2)
+- [x] When `inherits` is invoked without `--bases` and the named class has zero indexed subclasses,
       the `inherits` command shall emit a hint naming three causes, one of which names
-      `inherits <qualified_name> --bases`.
-- [ ] The `inherits` command shall order both tables by `qualified_name` ascending, and two runs
-      against the same graph shall return the same rows in the same order.
-- [ ] If the named class does not resolve, then the `inherits` command shall raise
-      `SymbolNotFoundError` and exit `EX_FAILURE`, whether or not `--bases` was given.
-- [ ] When `getBasesTool` is called with a `qualified_name`, it shall return the same rows in the
-      same order as the `inherits` command invoked with that name and `--bases`.
-- [ ] The MCP server shall register eleven tools, including `getBasesTool`.
-- [ ] When `inherits` is invoked without `--bases` on a class with indexed subclasses, the
+      `inherits <qualified_name> --bases`. — evidenced live by `uv run venvaxi inherits
+      rich.logging::RichHandler`, the exact command #48 reports, which now prints the
+      wrong-direction cause and its recovery; running that recovery is criterion 2 (stage 03
+      report)
+- [x] The `inherits` command shall order both tables by `qualified_name` ascending, and two runs
+      against the same graph shall return the same rows in the same order. —
+      `tests/test_store.py::test_get_bases_ordered_by_qualified_name`, which seeds edges
+      non-alphabetically (`zpkg`, `apkg`, `mpkg`) so a rowid or insertion-order implementation
+      fails, and asserts two successive calls are identical (stage 03 report)
+- [x] If the named class does not resolve, then the `inherits` command shall raise
+      `SymbolNotFoundError` and exit `EX_FAILURE`, whether or not `--bases` was given. —
+      `tests/test_cli.py::test_command_inherits_bases_propagates_not_found`; evidenced live by
+      `uv run venvaxi inherits rich.console::Nonexistent --bases`, emitting the TOON error block
+      and exiting `1` (stage 03 report)
+- [x] When `getBasesTool` is called with a `qualified_name`, it shall return the same rows in the
+      same order as the `inherits` command invoked with that name and `--bases`. —
+      `tests/test_mcp.py::test_get_bases_tool_returns_toon`, plus an in-process run against the
+      real `build_server` (no mock) comparing `get_bases` output with the tool's, confirming the
+      same rows in the same order (stage 03 report)
+- [x] The MCP server shall register eleven tools, including `getBasesTool`. —
+      `build_server().list_tools()` returns exactly eleven, `getBasesTool` among them, enumerated
+      in full in the stage 03 report
+- [x] When `inherits` is invoked without `--bases` on a class with indexed subclasses, the
       `inherits` command shall return the same rows in the same order as it did before this change.
-- [ ] The packaged skill shall not claim that no bases-of query exists.
-- [ ] The test suite shall pass.
+      — all 531 pre-existing tests pass unchanged and the conformance tier passes `21 passed`; also
+      evidenced live by `uv run venvaxi inherits rich.progress::ProgressColumn` still emitting
+      `count: 11`, the figure `src/venvaxi/SKILL.md` documents (stage 03 report)
+- [x] The packaged skill shall not claim that no bases-of query exists. —
+      `tests/test_skill_parity.py::test_no_bases_of_query_denial`; `grep -c "no bases-of query"
+      src/venvaxi/SKILL.md` returns `0`, the replacement states the two causes, and both copies are
+      `cmp`-identical (stage 03 report)
+- [x] The test suite shall pass. — `uv run coverage run -m pytest` → `545 passed, 21 deselected in
+      70.41s (0:01:10)`, coverage `98%` (1377 statements, 24 missed); `uv run pytest -m
+      conformance` → `21 passed, 545 deselected`; `pkgdx-lint-hook`, `pkgdx-format-hook`,
+      `pkgdx-typing-hook -p venvaxi` and `pkgdx-markdown-hook` all exit `0` (stage 03 report)
 
 ## Risks / unknowns
 
@@ -213,4 +255,116 @@ brings the skill back into conformance with an unchanged rule.
 
 ## Notes
 
+**The data was already there, and is more complete in the new direction than the old one.** This is
+the finding that made the unit small. `_walk_class_members` records inheritance from the
+*subclass's* side, iterating `cls.__bases__` during the walk of the subclass's own package, so the
+two directions have different reach:
+
+| Direction | Reads | Depends on |
+| --- | --- | --- |
+| subclasses | `edges.dst = X` | the *subclass's* package having been indexed |
+| bases | `edges.src = X` | only X's own package, indexed by definition |
+
+If `inherits X` resolves `X` at all, its bases are already stored. No schema change, no rebuild, no
+new index - `edges` is keyed `(src, dst, kind)`, so a `src` lookup rides the primary key.
+`SCHEMA_VERSION` stays 8: nothing about what is *stored* moved, only what is read back.
+
+**Why `get_bases.sql` does not JOIN `nodes`, which is the whole unit in one decision.**
+`get_inheritors.sql` joins `nodes` on the edge endpoint. The walk writes the `INHERITS` edge for
+every base but **no node row** for a base homed in a package it is not walking - deliberately, since
+claiming that node's `package` field would let `clear_package` for one package delete another's row.
+A bases query mirroring that JOIN would therefore drop exactly the cross-package cases this unit
+exists to serve, including the issue's own `RichHandler` to `logging::Handler`, and drop them
+silently as a plausible `count: 0`. So the query reads `edges` alone and derives each row: `kind` is
+`class` - a fact about the edge, not a guess about a missing row - and `name` is the tail after
+`::`. Verified by mutation at the stage 02 gate: swapping in the naive JOIN fails three tests,
+`test_get_bases_unindexed_base_package` among them, while `test_get_bases_indexed_base` still
+passes. That last part is the point - a both-nodes fixture would have passed the wrong
+implementation and proved nothing.
+
+**Why the ordering is `qualified_name` and explicitly not declaration order.** The walk iterates
+`cls.__bases__` in order, but `edges` has no ordinal column, so MRO order is lost at write time.
+Ordering on rowid or insertion order would *resemble* declaration order on a fresh cache and diverge
+after a refresh - a claim the stored data cannot support. The spec says so, and
+`test_get_bases_ordered_by_qualified_name` seeds edges non-alphabetically so that implementation
+fails rather than passing by luck.
+
+**Why a CLI flag but a separate MCP tool.** Not a new decision: `specs/mcp/tools.md` already records
+that `show --api` is a CLI boolean while MCP splits it into `showPackageTool` /
+`showPackageApiTool`, "because a typed tool schema should not hide two different return shapes
+behind one parameter". `inherits --bases` and `getBasesTool` apply the same rule. The extra reason
+here is the asymmetric reach above: a boolean on one schema would hide it behind a parameter a
+caller sets without reading, and the wrong default is the silent dead end #48 reports.
+
+**`top_level_root` was promoted rather than imported.** `get_bases_tool`'s hint needed a package
+root, and hand-rolled the two splits - on `::` then on the first dot - character-for-character what
+`_introspect._top_level_root` already did, with a docstring covering that exact input shape.
+The obvious fix was the wrong one: importing it under its private name would have been the first
+cross-module private import in `src/` (checked - only `tests/test_introspect.py` reaches for
+underscore-prefixed names, which is ordinary for testing internals). So the helper was made public.
+Six occurrences, all in `_introspect.py`, none in tests, and the module declares no `__all__` - the
+`__all__` matches in that file are `getattr(module, "__all__", ...)` reading the *walked* module's
+exports. Equivalence proven over five input shapes before the substitution; the suite is 545 either
+side.
+
+**Stage 01 re-entry, from stage 02.** Recorded here as `ICM/process-plan/CONTEXT.md` requires: a
+decision that changes observable behaviour returns to the earliest stage whose output it
+invalidates, and only the delta is re-run.
+
+Stage 01 declared the `--bases` empty state **definitive** - "a resolved class was walked, and a
+walk records every base except `object`, so zero base edges means there is nothing further to
+find" - and required its hint to offer no recovery. Stage 02 found that false and, correctly, did
+not patch it: `SymbolStore.clear_package(A)` deletes every edge whose `src` *or* `dst` is one of
+A's nodes, and a base edge is written from the subclass's side. Refreshing a base's package
+therefore deletes an edge another package's walk recorded, while that package's class node
+survives. Until the subclass is itself rebuilt, `--bases` answers `count: 0` and the hint asserted
+a derivation from `object` that is false.
+
+Reproduced directly against `SymbolStore` at the stage 02 review gate, on a temporary database:
+
+```text
+before clear_package('alib'):  bases of blib.impl::Sub -> ['alib.core::Base']
+after  clear_package('alib'):  bases of blib.impl::Sub -> []
+                               blib.impl::Sub node still present -> True
+```
+
+The distinction that makes this worth a re-entry rather than a note: the subclasses direction loses
+the same edges today and merely **under-reports**, which its hint already covers by naming causes it
+cannot rule out. The bases hint **mis-asserted** - a confident wrong answer, which is the one
+failure shape this project exists to eliminate. A spec that requires a false statement is not a
+spec the code can conform to.
+
+The delta re-run: `specs/commands/inherits.md` (`### Empty states` names both causes and states the
+counter-example; `### Direction` no longer implies the answer is beyond recovery), this plan's
+Validation criterion 3 and its new criterion 4, this plan's Risks, and the stage 02 code and tests
+that carried the claim - the CLI branch, the MCP tool, and the packaged skill.
+
+Not taken: changing `clear_package` to stop deleting by `dst`. It is arguably the principled fix -
+the edge is the subclass package's recorded fact, and the code already guards this exact hazard for
+*nodes* (`_walk_class_members` refuses to claim a cross-package node so `clear_package` cannot
+delete another package's row) while leaving the edge case unguarded. But it changes shared refresh
+machinery every command depends on, and it earns its own unit with its own verification, on the same
+reasoning that kept the bases direction out of #48's resolution 1. Filed as a follow-up.
+
 ## Follow-ups
+
+- **Issue [#124](https://github.com/andyrids/venv-axi/issues/124)** - filed at this closeout.
+  `SymbolStore.clear_package(A)` deletes every edge whose `src` **or `dst`** is one of A's nodes, so
+  refreshing package A deletes package B's `INHERITS` edge into A - a fact B's walk recorded - while
+  B's class node survives. Until B is rebuilt, `--bases` under-reports. The code already guards this
+  exact hazard for *nodes*, and leaves it unguarded for edges. Not taken here: it changes shared
+  refresh machinery every command depends on and deserves its own unit with its own verification,
+  on the same reasoning that kept the bases direction out of #48's resolution 1. This unit's
+  response was to stop the surface mis-describing the state, not to fix the state.
+- **Validation criterion 4 pins a limitation, not a fix**, and its tick says so. It passes against
+  unchanged store code; what this unit changed is that the hint no longer asserts `object` when the
+  cause may be the deletion above. A future reader who takes the green tick as evidence that the
+  edge survives a refresh would have it backwards, and would then 'simplify' the two-cause hint back
+  to the wrong one-cause version - which is exactly the path stage 01 had to be re-entered to
+  correct.
+- **MRO order** - named out of scope in `specs/commands/inherits.md`. `--bases` reports which
+  classes are direct bases, not the order Python resolves them in; recording it needs an ordinal on
+  the edge and a `SCHEMA_VERSION` bump. Not filed: no caller has asked, and a caller needing the
+  true MRO reads it from the class.
+- **Deferred to** - none.
+- **Tracked as** - none.
