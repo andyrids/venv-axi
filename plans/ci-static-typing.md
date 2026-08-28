@@ -2,12 +2,12 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs: []
 authors: []
 issues: [113]
-pr:
+pr: 118
 ---
 
 # Plan: CI static typing
@@ -74,12 +74,21 @@ preceding units in the sequence. `specs:` and `authors:` are both empty for that
 
 ## Validation
 
-- [ ] When a pull request targets `main` or `develop`, the CI workflow shall type-check the
-      `venvaxi` package.
-- [ ] If a type error is present in `src/venvaxi/`, then the type check shall fail the job.
-- [ ] While the renamed job runs, it shall continue to perform the lint and format checks it
-      performed as `ruff-lint`.
-- [ ] When the workflow runs, no check run named `ruff-lint` shall remain.
+- [x] When a pull request targets `main` or `develop`, the CI workflow shall type-check the
+      `venvaxi` package. — PR #118, run 33169206929, `static` job:
+      `[uv run pkgdx-typing-hook -p venvaxi] Success: no issues found in 14 source files`
+- [x] If a type error is present in `src/venvaxi/`, then the type check shall fail the job. —
+      with `_verify_type_error: int = "not an int"` appended to `src/venvaxi/_constants.py`,
+      `uv run pkgdx-typing-hook -p venvaxi` reports
+      `Incompatible types in assignment (expression has type "str", variable has type "int")`
+      and exits 1, against exit 0 on the reverted tree
+- [x] While the renamed job runs, it shall continue to perform the lint and format checks it
+      performed as `ruff-lint`. — run 33169206929 `static` job:
+      `[uv run pkgdx-lint-hook] All checks passed!` and
+      `[uv run pkgdx-format-hook] 140 files left unchanged`
+- [x] When the workflow runs, no check run named `ruff-lint` shall remain. — PR #118 reports
+      five check runs: `static`, `pytest (ubuntu-latest)`, `pytest (windows-latest)`,
+      `conformance (ubuntu-latest)`, `conformance (windows-latest)`
 
 ## Risks / unknowns
 
@@ -94,4 +103,58 @@ preceding units in the sequence. `specs:` and `authors:` are both empty for that
 
 ## Notes
 
+**All four criteria ticked, and criterion 2 only because it was deliberately triggered.** It is an
+`If <trigger>, then` about a type error that does not exist, so it would have sat un-triggered like
+the two boxes [ci-platform-matrix](ci-platform-matrix.md) left unticked. Appending a deliberate
+error, capturing the non-zero exit, and reverting is what converted it from a plausible claim into
+an evidenced one. This is now the third unit in the CI sequence, and the pattern is worth stating
+plainly: a criterion asserting on a failure path is evidenced by causing the failure, not by
+reading the configuration and reasoning that it would fail.
+
+**Why the step joined the existing job rather than getting its own.** The issue offered both. A
+separate job buys cleaner failure attribution and costs a second checkout and `uv sync` for one
+command that takes 21 seconds end to end. The two sibling `pkgdx` hooks were already in this job,
+and the gap being closed was precisely that the third had been left out of the place the other two
+live - putting it anywhere else would have preserved the asymmetry in a different shape.
+
+**Why `-p venvaxi` is required rather than decorative.** The lint and format shims default to the
+tree; mypy does not. A bare `pkgdx-typing-hook` exits 2 with `Missing target module, package,
+files, or command` - loudly, which is worth recording, because the failure mode worth fearing here
+would have been a silent no-op passing CI. It also refuses `-p` and file paths together
+(`May only specify one of: module/package, files, or command`), so the coverage is the 14 files
+under `src/venvaxi/` and not `tests/`. The commit hook may check changed test files where CI does
+not; that asymmetry is real and is stated rather than papered over.
+
+**Why the rename, and why now.** A job running three tools from two families should not be named
+after one of them - the same stale-name problem [ci-conformance-tier](ci-conformance-tier.md) had
+to amend in a Layer 3 reference. Renaming churns a check run name, and this was the cheapest moment
+it will ever be: no ruleset requires status checks, and issue #110's publish gate does not exist
+yet, so it can name `static` from the start instead of being written against `ruff-lint` and
+corrected immediately. The `cache-suffix` moved with the job, matching how `pytest` and
+`conformance` already name theirs.
+
+**Two frozen plans mention `ruff-lint` and were deliberately left alone.**
+[ci-platform-matrix](ci-platform-matrix.md) and [ci-conformance-tier](ci-conformance-tier.md) are
+both at `status: done`. They record what was true when they were written, and a rename does not
+falsify a historical statement. `plans/README.md` allows editing a frozen plan only to correct the
+record, and there is nothing here to correct.
+
+**No Layer 3 reference needed amending, and that was checked rather than assumed.** The preceding
+unit found a reference its own issue had not listed, so the same sweep ran here:
+`reference-toolchain-mypy.md` already documents `uv run pkgdx-typing-hook -p venvaxi` and claims
+nothing about CI, and `reference-toolchain-prek.md` claims nothing about CI either. The only live
+reference to the job name was `ci.yml` itself.
+
 ## Follow-ups
+
+- **Issue** [#117](https://github.com/andyrids/venv-axi/issues/117) - resolution 3 of #113, running
+  the whole `prek` suite in CI. Four hook families still run only on a developer's machine:
+  PyMarkdown, `detect-secrets`, the TOML/YAML checks and the PEM check. `detect-secrets` makes that
+  partly a security-control gap rather than a tidiness one. Filed with no milestone because it is
+  blocked on #20, an open PyMarkdown tokenizer crash that would gate CI the moment the suite runs
+  there, and #20 was deliberately left out of 0.5.0.
+- **Issue** [#110](https://github.com/andyrids/venv-axi/issues/110) - the publish gate. It must name
+  `static` rather than `ruff-lint`, alongside the four `pytest` and `conformance` matrix legs. Five
+  check run names now, where before this sequence began there were two.
+- **Deferred to** - none.
+- **Tracked as** - none.
