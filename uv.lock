@@ -2347,13 +2347,13 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "fastmcp", marker = "extra == 'mcp'", specifier = ">=0.1.0" }]
+requires-dist = [{ name = "fastmcp", marker = "extra == 'mcp'", specifier = ">=3.4,<4" }]
 provides-extras = ["mcp"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "coverage", specifier = ">=7.14.1" },
-    { name = "fastmcp", specifier = ">=0.1.0" },
+    { name = "fastmcp", specifier = ">=3.4,<4" },
     { name = "numpy" },
     { name = "pkgdx", index = "https://gitlab.com/api/v4/projects/82928123/packages/pypi/simple" },
     { name = "polars" },

@@ -19,7 +19,7 @@ name = "Check Markdown [PyMarkdown]"
 [[repos.hooks]]
 id = "pkgdx-typing"
 name = "Typing [Mypy]"
-additional_dependencies = ["fastmcp>=0.1.0"]
+additional_dependencies = ["fastmcp>=3.4,<4"]
 
 [[repos.hooks]]
 id = "pkgdx-secrets"
