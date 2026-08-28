@@ -13,16 +13,17 @@ pytest.importorskip("fastmcp")
 import venvaxi
 from venvaxi._cache import CacheState, PackageBuild, get_cache_db_path
 from venvaxi._constants import NO_PROJECT_ROOT
-from venvaxi._core import resolve_binding
+from venvaxi._core import get_project_root, resolve_binding
 from venvaxi._introspect import (
     MCP_ESCAPE_HATCH,
     PublicAPI,
     RefreshReceipt,
     SymbolInfo,
+    find_symbol,
 )
 from venvaxi._mcp import build_server
 from venvaxi._packages import PackageInfo
-from venvaxi._store import NodeKind, SymbolNode
+from venvaxi._store import NodeKind, SymbolNode, SymbolStore
 from venvaxi._toon import encode_object
 from venvaxi.exceptions import (
     ProjectRootNotFoundError,
@@ -1177,6 +1178,49 @@ def test_find_symbol_tool_empty_with_package_names_list_tool() -> None:
     assert "listPackagesTool" in result
     assert "include_dev=true" in result
     assert "list_packages_tool" not in result
+
+
+def test_find_symbol_tool_path_shaped_query_matches_find_symbol(
+    isolated_cache: Path, make_symbol_node: NodeFactory
+) -> None:
+    """`findSymbolTool` returns the same rows, in the same order, as
+    `find_symbol` for a path-shaped query - no mock, so parity is
+    `find_symbol_tool`'s call path, not the test's:
+    `find_symbol_tool` (`_mcp.py:436`) calls `find_symbol` with `query`
+    unmodified (`specs/mcp/tools.md:65`; plan `## Implements`).
+
+    Regression guard: the two calls are structurally identical whether
+    or not the path-shaped fix is applied, so this assertion is
+    expected to pass both before and after the fix.
+    """
+    nodes = [
+        make_symbol_node(
+            qualified_name="pkg::AltOwner.method",
+            kind=NodeKind.CLASS,
+            name="AltOwner.method",
+        ),
+        make_symbol_node(
+            qualified_name="pkg.deep.impl::Owner.method",
+            kind=NodeKind.METHOD,
+            name="method",
+        ),
+    ]
+    with SymbolStore(get_cache_db_path(get_project_root())) as store:
+        for node in nodes:
+            store.upsert_node(node)
+        store.flush()
+
+    expected = find_symbol("Owner.method")
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("find_symbol_tool")))
+    result = tool.fn(query="Owner.method")
+
+    assert len(expected) == 2
+    expected_lines = [
+        f'{node.name}|{node.kind}|"{node.qualified_name}"' for node in expected
+    ]
+    positions = [result.index(line) for line in expected_lines]
+    assert positions == sorted(positions)
 
 
 def test_get_inheritors_tool_returns_toon(

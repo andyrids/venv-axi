@@ -372,9 +372,12 @@ class SymbolStore:
         """Search symbols by name|docstring via FTS5 with a `LIKE` fallback.
 
         NOTE: Both paths share one deterministic ordering contract;
-        exact name match, name-prefix match, class|function kind,
-        relevance (FTS5 `bm25`; omitted on the fallback), qualified
-        name length and then qualified name.
+        exact name match, name-prefix match, qualified-name suffix
+        match (path-shaped query only), class|function kind, relevance
+        (FTS5 `bm25`; omitted on the fallback), qualified name length
+        and then qualified name. A path-shaped query - one containing
+        `.` or `::` - matches `name`|`qualified_name` only; it is never
+        matched against docstring text.
 
         Args:
             query: The free-text search query.
@@ -385,11 +388,17 @@ class SymbolStore:
         Returns:
             Matching `SymbolNode` instance(s), best match first.
         """
+        path_shaped = "." in query or "::" in query
         if self._fts_enabled:
             try:
                 cursor = self._connection.execute(
                     _read_sql("search_fts.sql"),
-                    (f"{query}*", package, package, query, query, limit),
+                    {
+                        "match": f"{query}*",
+                        "package": package,
+                        "query": query,
+                        "limit": limit,
+                    },
                 )
                 return [self._row_to_node(row) for row in cursor.fetchall()]
             except sqlite3.OperationalError:
@@ -398,16 +407,13 @@ class SymbolStore:
         like_pattern = f"%{query}%"
         cursor = self._connection.execute(
             _read_sql("search_like.sql"),
-            (
-                like_pattern,
-                like_pattern,
-                like_pattern,
-                package,
-                package,
-                query,
-                query,
-                limit,
-            ),
+            {
+                "pattern": like_pattern,
+                "doc_pattern": None if path_shaped else like_pattern,
+                "package": package,
+                "query": query,
+                "limit": limit,
+            },
         )
         return [self._row_to_node(row) for row in cursor.fetchall()]
 
