@@ -2,12 +2,12 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs: []
 authors: []
 issues: [112]
-pr:
+pr: 116
 ---
 
 # Plan: CI conformance tier
@@ -81,16 +81,27 @@ the toolchain amendment `real-dependency-conformance.md` made when it created th
 
 ## Validation
 
-- [ ] When a pull request targets `main` or `develop`, the CI workflow shall run the conformance
-      tier once on `ubuntu-latest` and once on `windows-latest`.
-- [ ] When the conformance job runs, it shall execute all 21 conformance tests, with none skipped
-      for a missing specimen.
-- [ ] If a specimen named in `SPECIMENS` is absent from the environment, then the conformance job
-      shall fail at the specimen check before pytest runs, naming the missing module.
-- [ ] While the conformance job exists, the default `pytest` job shall continue to exclude the
-      tier, so a conformance failure and a unit failure are distinguishable at a glance.
-- [ ] The `conformance` entry in `ICM/_config/reference-toolchain-pytest.md` shall name the CI job
-      that runs the tier and shall no longer state that CI excludes it.
+- [x] When a pull request targets `main` or `develop`, the CI workflow shall run the conformance
+      tier once on `ubuntu-latest` and once on `windows-latest`. — PR #116 reports check runs
+      `conformance (ubuntu-latest)` and `conformance (windows-latest)`, run 33163831373
+- [x] When the conformance job runs, it shall execute all 21 conformance tests, with none skipped
+      for a missing specimen. — run 33163831373: ubuntu leg
+      `21 passed, 522 deselected in 46.37s`, windows leg
+      `21 passed, 522 deselected, 4677 warnings in 94.05s`; the passed count equals the collected
+      count on both legs, so nothing skipped
+- [x] If a specimen named in `SPECIMENS` is absent from the environment, then the conformance job
+      shall fail at the specimen check before pytest runs, naming the missing module. —
+      `uv run python -c "import numpy, polars, pydantic, fastmcp, definitely_not_installed"` exits
+      1 with `ModuleNotFoundError: No module named 'definitely_not_installed'`, against exit 0 for
+      the four real specimens
+- [x] While the conformance job exists, the default `pytest` job shall continue to exclude the
+      tier, so a conformance failure and a unit failure are distinguishable at a glance. — run
+      33163831373 `pytest` legs both report `522 passed, 21 deselected`, and `git diff` removes no
+      line from `.github/workflows/ci.yml`
+- [x] The `conformance` entry in `ICM/_config/reference-toolchain-pytest.md` shall name the CI job
+      that runs the tier and shall no longer state that CI excludes it. —
+      `grep -n "from CI" ICM/_config/reference-toolchain-pytest.md` returns nothing; the entry now
+      names the `conformance` job and its `-m conformance` invocation
 
 ## Risks / unknowns
 
@@ -110,8 +121,57 @@ the toolchain amendment `real-dependency-conformance.md` made when it created th
 
 ## Notes
 
-None yet - populated at closeout.
+**Every criterion ticked, and criterion 3 only because it was deliberately triggered.** It is an
+`If <trigger>, then` about a specimen that is never actually missing, so it would have sat
+un-triggered like the two unticked boxes the preceding unit
+([ci-platform-matrix](ci-platform-matrix.md)) left behind. Running the guard command against a name
+that is not installed, and capturing the non-zero exit, is what converted it from a plausible claim
+into an evidenced one. Worth repeating whenever a criterion asserts on a failure path: a guard
+never seen to fail is a guard nobody has checked.
+
+**The tier was green on its first CI run, on both platforms.** Nothing was filed and pinned,
+because nothing surfaced. That is a weaker result than it looks: the specimens are unpinned on
+purpose, so this says the walk survives the versions resolved on 2026-08-28 and nothing more. The
+value of the job is that the next `numpy` or `polars` release is now checked by CI rather than by
+whoever next remembers the heuristic.
+
+**Why the matrix rather than Ubuntu alone**, which is what the issue proposed.
+`test_tree_completes_over_numpy_f2py_base_exception_specimen` is the live #64 reproducer, and its
+own docstring records that the pathology is Windows-conditional: `numpy.f2py.tests.util` raises a
+bare `BaseException` there, and on any other platform the test is simply a deeper walk that also
+must not crash. An Ubuntu-only conformance job would run that test where the condition it was
+written for is absent. The cost is one extra leg at 94.05s against the Ubuntu leg's 46.37s -
+almost exactly the 2x Windows ratio the `pytest` legs already show, so nothing pathological.
+
+**Why a parallel job rather than a flag on `pytest`.** A conformance failure and a unit failure
+stay distinguishable at a glance, which is the issue's own stated preference. It also keeps the
+fast default job fast: an ordinary PR's feedback loop is unchanged.
+
+**Why `addopts` was left alone.** A command-line `-m` overrides it, so the job opts in without
+changing what a local `uv run pytest` does. Editing `addopts` would have switched the tier on for
+every contributor's default run, which is a different decision than the one this issue asks for.
+
+**Why no coverage step.** The tier asserts survival of arbitrary third-party code, not line
+coverage, and nothing consumes `coverage.xml` today. Measuring coverage over a survival check
+would produce a number with no consumer and no meaning.
+
+**The issue's stated Scope was one file short.** #112 lists only `.github/workflows/ci.yml`. But
+`ICM/_config/reference-toolchain-pytest.md` stated the tier was excluded "from the default run and
+from CI (`.github/workflows/ci.yml`) via `addopts`", and this change makes that false. It was
+amended in the same commit - a deliberate amendment to an `immutable: true` Layer 3 reference,
+following the precedent set by [real-dependency-conformance](real-dependency-conformance.md), which
+wrote that line when it created the tier. A change that silently leaves a reference lying is how
+the factory configuration stops being trustworthy.
 
 ## Follow-ups
 
-None yet - populated at closeout.
+- **Issue** [#97](https://github.com/andyrids/venv-axi/issues/97) - the MCP stdio transport has no
+  test coverage. Its resolution 1 is itself a conformance test, which had no teeth while the tier
+  ran nowhere. It does now, so that issue is unblocked and is the next MCP unit in the 0.5.0
+  sequence.
+- **Issue** [#110](https://github.com/andyrids/venv-axi/issues/110) - the publish gate. This unit
+  adds two more check runs; the gate must name `conformance (ubuntu-latest)` and
+  `conformance (windows-latest)` alongside `pytest (ubuntu-latest)` and `pytest (windows-latest)`.
+  Four names now, where before #111 there was one.
+- **Deferred to** - none.
+- **Tracked as** - none.
