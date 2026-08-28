@@ -166,7 +166,9 @@ that opens an untracked plan file should stage it before trusting a hook result.
   renamed the check run to `pytest (ubuntu-latest)` / `pytest (windows-latest)`; no ruleset
   requires status checks today, so nothing broke, but the gate that issue adds must name the new
   spellings rather than `pytest`.
-- **Tracked as** - resolution 2 of [#111](https://github.com/andyrids/venv-axi/issues/111), the
-  Python version matrix. The declared 3.11-3.14 range is unexercised - this unit pins 3.13 on both
-  legs, which makes the OS matrix honest and leaves the version range exactly as untested as it
-  was. The issue itself says it "belongs in its own issue if wanted"; no issue is filed yet.
+- **Issue** [#115](https://github.com/andyrids/venv-axi/issues/115) - resolution 2 of #111, the
+  Python version matrix, split out as that issue said it should be. The declared 3.11-3.14 range
+  is unexercised: this unit pins 3.13 on both legs, which makes the OS matrix honest and leaves
+  the version range exactly as untested as it was. Filed against 0.5.0 and sequenced after #112.
+- **Deferred to** - none.
+- **Tracked as** - none.
