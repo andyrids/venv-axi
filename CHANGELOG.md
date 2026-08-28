@@ -30,6 +30,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The `mcp` extra's `fastmcp` requirement narrows from `>=0.1.0` to `>=3.4,<4` in all three
+  places it was declared - `project.optional-dependencies`, the `dev` dependency group, and the
+  type-check hook's `additional_dependencies` in `prek.toml`. The old floor admitted every
+  `fastmcp` release ever published, including majors `build_server` cannot call - `TypeError` on
+  the exact tool-registration call shape it uses, confirmed against 1.0, 2.0.0 and 2.3.0. This is
+  a narrowing of a published requirement: an environment that previously resolved
+  `venv-axi[mcp]` to a `fastmcp` below 3.4 is now refused at install rather than handed a package
+  it cannot run (issue #96).
 - `ICM/_config/reference-toolchain-pytest.md` records the pytest fd-capture trap that defeats a
   `mock.patch` of `sys.stdout`.
 - The `pytest` job in `.github/workflows/ci.yml` now runs on a `ubuntu-latest` / `windows-latest`

@@ -14,7 +14,7 @@ judgements that resolve ambiguity live in [principles](../specs/principles.md).
 - **Build**: `hatchling` + `hatch-vcs` - the version is derived from git tags, never hand-edited
 - **Runtime dependencies**: none. See
   [Zero runtime dependencies](../specs/principles.md#zero-runtime-dependencies)
-- **Optional extras**: `mcp` (`fastmcp>=0.1.0`), imported lazily so the CLI works without it
+- **Optional extras**: `mcp` (`fastmcp>=3.4,<4`), imported lazily so the CLI works without it
 
 ## Module map
 

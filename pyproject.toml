@@ -25,12 +25,12 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-mcp = ["fastmcp>=0.1.0"]
+mcp = ["fastmcp>=3.4,<4"]
 
 [dependency-groups]
 dev = [
     "coverage>=7.14.1",
-    "fastmcp>=0.1.0",
+    "fastmcp>=3.4,<4",
     "numpy",
     "pkgdx",
     "polars",

@@ -24,7 +24,19 @@ private detail of the installer.
 
 ## Data requirements
 
-Requires the `venv-axi[mcp]` extra (`fastmcp>=0.1.0`).
+Requires the `venv-axi[mcp]` extra (`fastmcp>=3.4,<4`).
+
+The range is bounded at both ends, and both bounds are load-bearing. Tool registration passes the
+handler positionally alongside a `name` keyword, which requires `FastMCP.tool`'s first parameter to
+be `name_or_fn`; a release below the floor raises `TypeError` on that call, so a resolver that
+lands under it produces a `serve` command that cannot start. The upper bound exists because `mcp`
+is this project's only dependency surface
+([Zero runtime dependencies](../principles.md#zero-runtime-dependencies)) - a new `fastmcp` major
+shall be adopted by a deliberate change to this range, never by a resolver choosing one.
+
+An environment whose installed `fastmcp` falls outside this range is built against a requirement
+this project does not declare, and nothing below is guaranteed of it. This is a statement of scope,
+not a behaviour: the range is enforced by a resolver before any code here runs.
 
 The `serve` command shall check the extra's availability **up front**, before the server is
 constructed. This is not defensive padding - it is what keeps a genuine `ImportError` raised
