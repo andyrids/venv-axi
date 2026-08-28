@@ -2,7 +2,7 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs:
   - specs/behaviors/cache-refresh.md
@@ -10,7 +10,7 @@ specs:
   - specs/behaviors/skill-content.md
 authors: []
 issues: [124]
-pr:
+pr: 125
 ---
 
 # Plan: Refresh edge ownership
@@ -148,26 +148,57 @@ into conformance with an unchanged rule.
 
 ## Validation
 
-- [ ] When a package is cleared, the store shall delete every edge whose origin is one of that
-      package's symbols.
-- [ ] When a package is cleared, the store shall retain an `INHERITS` edge recorded by another
-      package's walk whose target is one of the cleared package's symbols.
-- [ ] When a base's package is cleared after the named class was indexed, the `inherits` command
-      with `--bases` shall still report that base.
-- [ ] When a base's package is cleared after a subclass was indexed, the `inherits` command without
-      `--bases` shall still report that subclass.
-- [ ] Where `--bases` is given and the named class has no recorded base, the `inherits` command
+- [x] When a package is cleared, the store shall delete every edge whose origin is one of that
+      package's symbols. — `tests/test_store.py::test_clear_package_removes_edges_it_owns`, which
+      asserts `SELECT src, dst, kind FROM edges` is empty after the clear rather than asserting
+      through a reader
+- [x] When a package is cleared, the store shall retain an `INHERITS` edge recorded by another
+      package's walk whose target is one of the cleared package's symbols. —
+      `tests/test_store.py::test_clear_package_keeps_a_foreign_walks_inherits_edge`; corroborated on
+      a copy of the real cache, where replaying the pre-#124 two-arm `DELETE` for `logging` emptied
+      `rich.logging::RichHandler`'s bases while its node survived
+- [x] When a base's package is cleared after the named class was indexed, the `inherits` command
+      with `--bases` shall still report that base. —
+      `tests/test_store.py::test_get_bases_after_base_package_cleared` (inverted this unit); live,
+      `uv run venvaxi show logging --api --refresh` then
+      `uv run venvaxi inherits rich.logging::RichHandler --bases` returns `count: 1`,
+      `logging::Handler`
+- [x] When a base's package is cleared after a subclass was indexed, the `inherits` command without
+      `--bases` shall still report that subclass. —
+      `tests/test_store.py::test_get_inheritors_after_base_package_cleared`; live, after the same
+      refresh `uv run venvaxi inherits logging::Handler` returns `count: 10` including
+      `rich.logging::RichHandler`
+- [x] Where `--bases` is given and the named class has no recorded base, the `inherits` command
       shall emit `count: 0` plus a hint naming exactly one cause - direct derivation from `object` -
-      offering no recovery, and shall exit `EX_OK`.
-- [ ] When `getBasesTool` is called on a class with no recorded base, it shall return the same
-      single-cause hint, naming no recovery.
-- [ ] The packaged skill shall not claim that a `--bases` `count: 0` has more than one cause, and
-      all copies of `SKILL.md` shall remain byte-identical.
-- [ ] When a store recorded at the previous schema version is opened, the store shall drop and
-      rebuild its tables and record the current schema version.
-- [ ] When a package graph is queried with no package having been cleared, `show --api`, `find`,
-      `tree`, `inspect` and `inherits` shall return the same results as before this change.
-- [ ] The test suite and the conformance tier shall pass.
+      offering no recovery, and shall exit `EX_OK`. —
+      `tests/test_cli.py::test_command_inherits_bases_empty_hint_names_one_cause`, which asserts the
+      widened form absent as well as the single-cause form present; live,
+      `uv run venvaxi inherits rich.console::Console --bases` returns `count: 0`, one help line and
+      `exit=0`
+- [x] When `getBasesTool` is called on a class with no recorded base, it shall return the same
+      single-cause hint, naming no recovery. —
+      `tests/test_mcp.py::test_get_bases_tool_empty_hint_names_one_cause`; checked as *same* rather
+      than similar, the help text being byte-identical to the CLI's apart from the qualified-name
+      substitution, with no rebuild tool named
+- [x] The packaged skill shall not claim that a `--bases` `count: 0` has more than one cause, and
+      all copies of `SKILL.md` shall remain byte-identical. —
+      `tests/test_skill_parity.py::test_no_bases_two_cause_claim`,
+      `tests/test_skill_parity.py::test_installed_skill_matches_packaged` and
+      `tests/test_skill_parity.py::test_install_skill_is_noop_against_repo_copy`; all three copies
+      22172 bytes, `sha 4ca411ee159637c6`, no CRLF
+- [x] When a store recorded at the previous schema version is opened, the store shall drop and
+      rebuild its tables and record the current schema version. —
+      `tests/test_store.py::test_schema_version_8_wider_deletion_scope_evicted_on_open`; observed
+      live in the criterion 9 A/B, after which `uv run venvaxi cache` reports `schema_version: 9`
+      with the pre-A/B builds gone
+- [x] When a package graph is queried with no package having been cleared, `show --api`, `find`,
+      `tree`, `inspect` and `inherits` shall return the same results as before this change. —
+      an A/B, not the suite: `git archive HEAD^ src` extracted and run against the same venv via
+      `PYTHONPATH`, then the same six invocations under each tree; `diff old.txt new.txt` is
+      byte-identical, 133 lines each
+- [x] The test suite and the conformance tier shall pass. — `uv run coverage run -m pytest` returns
+      `550 passed, 21 deselected`; `uv run pytest -m conformance` returns
+      `21 passed, 550 deselected`; the four `prek` hooks pass
 
 ## Risks / unknowns
 
@@ -206,4 +237,130 @@ into conformance with an unchanged rule.
 
 ## Notes
 
+**Why ownership rides the origin endpoint and never the target.** An edge is a fact some walk
+recorded, and the walk that recorded it is the only one that can record it again.
+`_walk_class_members` iterates `cls.__bases__` while walking the *subclass's* package, so the
+`INHERITS` edge `blib.impl::Sub -> alib.core::Base` is `blib`'s fact, keyed at `blib`'s end. The
+target is merely a name that fact points at; the package owning that name never wrote the row and
+cannot rewrite it. Deleting by `dst` therefore deleted what a clear had no standing to delete *and*
+no way to restore - the rebuild of `alib` never visits `Sub`. Origin is the only endpoint where
+'delete what this walk recorded' and 'delete rows keyed at this package' are the same set, which is
+why the rule in `specs/behaviors/cache-refresh.md` (Refresh scope: edges) is stated as a property of
+the origin rather than as a special case for `INHERITS`. The code already reasoned this way one
+level up and only for nodes: `_walk_class_members` refuses to claim a node for a cross-package home
+precisely so a clear for one package cannot delete another's row. This unit extends the same
+reasoning to edges.
+
+**The edge-ownership inventory, re-derived at stage 02 rather than inherited.**
+[#124](https://github.com/andyrids/venv-axi/issues/124) required that no read relied on the `dst`
+deletion be established, not assumed, and the plan made that Approach step 2. Six edge writes in
+`src/venvaxi/_introspect.py`, three readers, all in `.sql` and none inline:
+
+- Every `src` a walk writes is either the walked module (`CONTAINS` from `_record_symbol` and
+  `_walk_submodules`, plus `EXPORTS` and `IMPORTS_FROM`) or the class's home name (`CONTAINS` and
+  `INHERITS` from `_walk_class_members`), and in both cases the walk claims a `nodes` row at that
+  name carrying `package`. So the `src` arm alone removes everything a cleared package owns.
+- `get_children.sql` joins `nodes` on `dst` and cannot observe the difference; `get_inheritors.sql`
+  joins on `src`, whose node is intact by construction, so it cannot return a phantom;
+  `get_bases.sql` reads `edges` alone and reports the endpoint's *name*, which is the same mechanism
+  by which `--bases` already reports a base whose package was never indexed.
+- `EXPORTS` and `IMPORTS_FROM` are written and never read; `DEPENDS_ON` is defined and never
+  written. Nothing relied on the `dst` arm.
+
+The one exception is a class whose home is in another package: the walk deliberately claims no node
+there, so those edges were unreachable by *either* arm before this change and remain so. That is the
+re-exported cross-package home named out of scope - pre-existing and untouched. The inventory agreed
+with stage 01 row for row, so there was no stage 01 re-entry.
+
+**Why the `SCHEMA_VERSION` bump is what makes the hint reversal safe, and how a future reader tells
+this reversal from the wrong one.** [inherits-bases-direction](inherits-bases-direction.md)
+Follow-ups warns that a future reader might 'simplify' the two-cause hint back to the wrong
+one-cause version, and calls that exactly the path stage 01 had to be re-entered to correct. That
+warning is answered here rather than ignored, and the answer is that it was a warning against
+reverting *without fixing the state*. Two things make this reversal the legitimate one and both
+landed together: the deletion is fixed, and `SCHEMA_VERSION` went 8 to 9 so no cache written under
+the old deletion scope survives the upgrade. Without the bump the code would be correct and the
+installed data would not - a cache carrying a gap the old clear made would answer `count: 0`, and
+the new hint would assert derivation from `object` over an ancestry a previous clear had removed.
+That is a confident wrong answer, the one failure shape this project exists to eliminate. **A
+reversal without the bump is the warned-against change.** The diff is how they are told apart: this
+one moves `_store.py` as well as the hint. `specs/commands/inherits.md` states the definitiveness as
+conditional for the same reason, with a standing instruction that any change widening what a refresh
+deletes returns there first, and the `NOTE:` at each of the two code surfaces states that condition
+rather than only the conclusion.
+
+**The bump is a content bump, not a shape one.** `schema.sql` is untouched and no table moved. It is
+covered by the amended trigger in `specs/behaviors/cache-refresh.md` (Schema version covers the
+builder, not just the shape), which now reads on what the store ends up *holding* - so a change to
+what a clear removes counts alongside a change to what a walk records. That is what makes this a
+rule rather than a one-off call. The cost is real and accepted: every user's cache rebuilds once on
+first use after upgrade, against an installed base that would otherwise carry gaps the new code can
+neither produce nor detect.
+
+**The mutation check was run, and showed what the plan predicted.** Risks says the most likely wrong
+implementation passes every fixture that seeds both packages, so the `dst` arm was restored at the
+stage 02 gate and the suite re-run: `3 failed, 547 passed, 21 deselected`. The three failures are
+criteria 2, 3 and 4 - `test_clear_package_keeps_a_foreign_walks_inherits_edge`,
+`test_get_bases_after_base_package_cleared` and `test_get_inheritors_after_base_package_cleared`.
+Criterion 1's `test_clear_package_removes_edges_it_owns` passes under *both* implementations, which
+is correct: it pins what a clear must still remove, not what it must now keep. Criteria 5 to 8 pass
+under both too, since the hint, the skill and the schema bump are not what the deletion scope
+decides. Every fixture serving criteria 2, 3 and 4 clears `alib` and never rebuilds it.
+
+**Criterion 9 was discharged by an A/B against `HEAD^`, not by a green suite.** It claims equality
+with the previous implementation, and a green suite only says the assertions already written down
+still hold - it cannot see a behaviour nobody asserted. So stage 03 extracted the pre-change tree
+with `git archive HEAD^ src`, confirmed the old module was the one loading (`SCHEMA_VERSION = 8`,
+the `dst IN (...)` disjunct present), and ran the same six invocations under each tree from a cache
+the schema thrash had just evicted, so both built from scratch. `diff` reports the two 133-line
+transcripts byte-identical across `show --api`, `find`, `tree`, `inspect` and both `inherits`
+directions. The only place output differs is the `--bases` `count: 0` hint, which is the intended
+change under criterion 5 and not a same-results case.
+
+**One real side effect of the run, outside the working tree.** Stage 03 indexed `logging` into this
+repository's own cache (`~/.venvaxi/e549deaa9776dc38.db`) so that the criteria 3 and 4 live runs
+cleared a real indexed base package rather than one that was never there, and the criterion 9 A/B
+then evicted that build through the schema thrash. Cache contents are disposable derived data by
+`specs/behaviors/cache-refresh.md`, so nothing needs restoring - but it is a state change this run
+made, and it is recorded rather than left implicit.
+
+**`CHANGELOG.md` carries three entries, one of them a correction.** The defect is under `Fixed`; the
+hint reversal and the schema bump are two entries under `Changed`. The existing `Added` bullet for
+`--bases` described the two-cause hint, and since it is unreleased and that hint never reached a
+release in that form, it was corrected in place rather than left to be contradicted by the `Changed`
+entry below it.
+
+**`SKILL.md` is byte-identical in three locations** - `src/venvaxi/SKILL.md`, this repository's
+`.claude/skills/venvaxi/SKILL.md`, and the copy `venvaxi setup` writes. This is the third unit in a
+row to edit the same `--bases` gotcha. All three verified at 22172 bytes, `sha 4ca411ee159637c6`, LF
+throughout. No user-facing documentation needed a change: `README.md` and `docs/architecture.md`
+were checked for cache-refresh semantics, the graph's edges and the `--bases` empty state, and
+neither describes any of the three at a level this unit falsifies.
+
 ## Follow-ups
+
+- **Issue** - none filed. The three items the plan names as out of scope were re-checked at stage 03
+  and none is actionable-but-unowned. *Edges left without an endpoint* is now more reachable in the
+  target direction and is declared harmless and unbounded-by-design in
+  `specs/behaviors/cache-refresh.md`; an edge write is idempotent on its `(src, dst, kind)` identity,
+  so a rebuild reuses the row rather than adding one. *A stale edge from a re-exported cross-package
+  home* is unchanged by this unit - neither deletion arm reached those edges before it either - and
+  where the home package is itself indexed the `src` arm does reach them and that package's own walk
+  records the identical row back. *MRO order* is recorded as out of scope in
+  `specs/commands/inherits.md` and did not move.
+- **Deferred to** - none. Nothing this unit found needs a downstream plan to absorb it, so no
+  downstream plan was edited at this closeout.
+- **Tracked as** - none. No external dependency, upstream fix or release gates anything here.
+- **An observation, deliberately not a follow-up: `top_level_root` now has no cross-module
+  consumer.** It was made public in [inherits-bases-direction](inherits-bases-direction.md) (PR
+  [#123](https://github.com/andyrids/venv-axi/pull/123)) *for* `_mcp.py`, whose `get_bases_tool`
+  hint needed a package root. Dropping that hint's recovery clause removed the only call, and the
+  now-unused import went with it or `pkgdx-lint` would have failed. Recorded as an observation
+  rather than filed, on three grounds: the name is still defined and used at five call sites inside
+  `_introspect.py`, so it is public-with-no-external-caller and not dead code; `_introspect.py`
+  declares no `__all__`, so nothing advertises it as an entry point that would now mislead; and the
+  module is underscore-private, so no published surface moved and re-privatising it would be churn
+  the next caller reverses. Verified at stage 03: no module, test or fixture imports it from
+  `venvaxi._mcp`, and `venvaxi._introspect.top_level_root("rich.logging")` still returns `"rich"`.
+  If a later unit establishes that `_introspect.py` is its only caller for good, renaming it back is
+  a one-line change belonging to that unit rather than to a standing issue.
