@@ -29,10 +29,13 @@ Pytest is used for unit testing, with tests colocated in `tests/`.
 - `conformance` (`tests/test_conformance.py`) - walks real installed dependencies (`numpy`,
   `polars`, `pydantic`, `fastmcp`) instead of the hand-written `tests/resources/package/` fixture,
   so a pathology only third-party code exhibits can fail the suite (#71). Excluded from the default
-  run and from CI (`.github/workflows/ci.yml`) via `addopts`; a command-line `-m` overrides it, so
-  `uv run pytest -m conformance` opts in. Run it after touching `_introspect.py` or `_cli.py` - the
-  unit tests alone passed on every specimen behind issues #64, #65, #66, #67, #68 and #69. A
-  specimen not installed is skipped, not failed.
+  run via `addopts`; a command-line `-m` overrides it, so `uv run pytest -m conformance` opts in.
+  The `conformance` job in `.github/workflows/ci.yml` runs the tier with `-m conformance` on every
+  pull request, so CI no longer excludes it. Running it locally after touching `_introspect.py` or
+  `_cli.py` is still worth the faster feedback - the unit tests alone passed on every specimen
+  behind #64-#69 - but it is no longer the only gate. A specimen not installed is skipped, not
+  failed; the CI job guards against a silently skipped tier with a step that fails before pytest
+  runs, naming the missing specimen.
 
 ## Conventions
 

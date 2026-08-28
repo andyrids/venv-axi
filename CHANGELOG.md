@@ -35,6 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `pytest` job in `.github/workflows/ci.yml` now runs on a `ubuntu-latest` / `windows-latest`
   matrix with a pinned Python interpreter, so CI exercises the Windows platform the docs claim to
   support (issue #111).
+- `.github/workflows/ci.yml` gains a `conformance` job, parallel to `pytest`, running the same
+  `ubuntu-latest` / `windows-latest` matrix with `-m conformance`, so the 21-test tier that walks
+  real installed dependencies now runs on every pull request instead of never running in CI. A
+  specimen guard step fails the job before pytest runs if a specimen is missing, since every
+  conformance test skips rather than fails on that condition (issue #112).
 - The private-submodule skip - a submodule whose own final name segment starts with `_` is never
   walked - is now declared in `specs/behaviors/symbol-graph.md` and cross-referenced from
   `specs/behaviors/qualified-name-semantics.md` and `specs/commands/tree.md`. The behaviour is
