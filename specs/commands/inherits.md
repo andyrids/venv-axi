@@ -45,8 +45,8 @@ the named class's side. Therefore:
 `rich.logging::RichHandler` reports `logging::Handler` on a cache where `logging` was never walked,
 because the edge was written from `rich`'s side. The consequence is that the two directions have
 different empty states and different hints: indexing *another* package can add a subclass, but it
-can never add a base, so an empty `--bases` answer has no 'index more' recovery to offer. Its
-recovery, where it has one, is a rebuild of the named class's **own** package - see
+can never add a base, so an empty `--bases` answer has no 'index more' recovery to offer - and no
+recovery of any other kind either, because it is definitive. See
 [Empty states](#empty-states).
 
 `object` is not recorded. The walk skips it, so a class deriving directly from `object` has no base
@@ -98,26 +98,30 @@ different next moves:
 - Where `--bases` is given and the named class has at least one recorded base, `count` shall be the
   number of those bases.
 - Where `--bases` is given and the named class has no recorded base, the `inherits` command shall
-  emit `count: 0` plus a hint naming **both** causes - the class derives directly from `object`,
-  which is not indexed, or a base's package has been refreshed since this class was indexed - and
-  that hint shall name `--refresh` on the named class's own package as the recovery for the second.
+  emit `count: 0` plus a hint naming the one cause - the class derives directly from `object`,
+  which is not indexed - and that hint shall offer no recovery, because there is none to offer.
 
-The third empty state is **not** the wholly definitive answer it first appears to be, and saying so
-is load-bearing, because the first draft of this spec asserted that it was.
+The third empty state is definitive, and it is definitive **conditionally**. Recording the
+condition is load-bearing, because this spec once asserted the conclusion without it.
 
-A walk records every base except `object`, so a freshly walked class with no base edge does derive
-from `object` and there is nothing further to find. But that holds only while the graph is
-untouched since the walk. `clear_package` deletes every edge with the cleared package's node at
-*either* end, and a base edge is written from the **subclass's** side - so refreshing the base's
-package deletes an edge the subclass's walk recorded, while the subclass's own node survives. The
-subclass is then left in the graph with its ancestry silently removed, and a hint asserting
-`object` in that state would be a confident wrong answer. That is the one thing this command must
-never produce, which is why the hint names two causes rather than one.
+A walk records every base except `object`, so a class with no base edge derives from `object` and
+there is nothing further to find - but only while nothing has removed an edge that walk recorded.
+That precondition now holds and is declared: a refresh deletes only the edges its own package's
+walk recorded, and never an edge another package's walk recorded
+([Cache and refresh](../behaviors/cache-refresh.md#refresh-scope-edges)).
 
-The recovery for the second cause is `--refresh` on the **named class's** package, not the base's:
-the edge is restored by the walk that wrote it. Indexing some other package cannot help, and the
-hint must not suggest it - that is the mistake the subclasses hint made for the wrong-direction
-case, in reverse.
+It did not always hold. Before [#124](https://github.com/andyrids/venv-axi/issues/124) a refresh
+deleted every edge touching the refreshed package at *either* end, and a base edge is written from
+the **subclass's** side - so refreshing a *base's* package deleted an edge the subclass's walk had
+recorded, leaving the subclass resolvable with its ancestry silently removed. For as long as that
+was true this hint had to name a second cause and offer a rebuild of the named class's own package
+as its recovery, and it did.
+
+Any change that widens what a refresh deletes returns here before it lands. A hint asserting
+`object` while something has deleted an edge behind it is a confident wrong answer, which is the one
+thing this command must never produce - the hint was widened once for exactly that reason, and
+narrowed again only because the deletion was fixed rather than because the shorter sentence reads
+better.
 
 The first hint's third cause is the one this command existed without. Both original causes say
 *index more, or build deeper*, and neither can succeed when the caller wanted the parent - so an

@@ -85,17 +85,29 @@ The schema version is stored as SQLite's `PRAGMA user_version`. If the schema ve
 then the store shall drop and rebuild the tables from scratch - cache databases are disposable
 derived data, so there are no migrations.
 
-**It MUST be bumped whenever the *content* a walk records changes, not only when a table's
-columns change.** Node fields are computed at walk time and frozen into the store, so a change to
-how a docstring, signature or home name is derived leaves every existing cache serving the old
-value. The version checks above cannot catch this: the distribution version has not moved, and
-the depth is unchanged.
+**It MUST be bumped whenever the *content the store ends up holding* changes, not only when a
+table's columns change.** Two distinct triggers sit under that, and only the first is obvious.
 
-This is the subtle one, and the failure it prevents is silent. A user upgrading `venvaxi` to get
-a correctness fix would otherwise keep the incorrect data indefinitely - until an unrelated
+**What a walk records.** Node fields are computed at walk time and frozen into the store, so a
+change to how a docstring, signature or home name is derived leaves every existing cache serving
+the old value. The version checks above cannot catch this: the distribution version has not moved,
+and the depth is unchanged.
+
+**What a clear removes.** A change to
+[which edges a refresh deletes](#refresh-scope-edges) has the same consequence by the opposite
+route. The walk is unchanged, so a rebuild writes exactly what it wrote before - but an existing
+cache holds the *result* of the old deletion scope, and no rebuild of the package the caller
+happens to refresh will restore what a previous clear removed from a package they do not. Narrowing
+the deletion scope without a bump therefore leaves an installed base of caches carrying gaps the
+new code can no longer produce and cannot detect, which is the state a spec claiming a definitive
+empty answer must not be read against
+([`inherits`](../commands/inherits.md#empty-states) is the case that forced this).
+
+Both are subtle, and the failure each prevents is silent. A user upgrading `venvaxi` to get a
+correctness fix would otherwise keep the incorrect data indefinitely - until an unrelated
 dependency bump happened to evict it - with no signal that anything was wrong, because incorrect
-introspection output looks entirely plausible. Treat 'did I change what gets written?' as the
-trigger, not 'did I change the table?'
+introspection output looks entirely plausible. Treat 'did I change what the store ends up holding?'
+as the trigger - written or deleted - not 'did I change the table?'
 
 ### Rebuild
 
@@ -110,6 +122,61 @@ The clearing happens first and survives the failure, so a build that raises leav
 **unindexed** rather than stale. Under [Validity](#validity) it has no recorded build, so the next
 query for it rebuilds. A failed refresh therefore costs the cached graph, which is the safe
 direction to fail in: an absent graph is rebuilt on demand, and a half-built one would be served.
+
+### Refresh scope: edges
+
+A refresh clears one package. Which *edges* that clearing may remove is a promise about **other**
+packages, because an edge records a relationship between two symbols that need not belong to the
+same package. It is declared here because leaving it implicit is what allowed one package's
+ancestry to be silently truncated by an unrelated refresh
+([#124](https://github.com/andyrids/venv-axi/issues/124)).
+
+An edge is **owned by the walk that recorded it**, and a walk records an edge only where the
+relationship's origin is a symbol it is walking. Ownership is therefore carried by the edge's
+origin endpoint, never by its target.
+
+- When a package is cleared, then the store shall delete every edge that package's own walk
+  recorded.
+- When a package is cleared, then the store shall not delete an edge recorded by another package's
+  walk, whether or not that edge's target is one of the cleared package's symbols.
+
+The second is the load-bearing one, and what it protects is not symmetrical. An inheritance edge is
+recorded by the walk of the **subclass's** package, so deleting it because the *base's* package was
+cleared destroys a fact the cleared package never owned and its own rebuild cannot restore. The
+subclass is left in the graph with its node intact and its ancestry gone - a class that still
+resolves, still answers, and answers incompletely. Repairing it needs a rebuild of a package the
+caller had no reason to suspect, and nothing in the answer says so. That is the failure shape this
+project exists to eliminate, arrived at through a cache operation rather than through a walk.
+
+### Edges outliving their endpoints
+
+A consequence of the rule above, declared because it is observable and reads like corruption if it
+is not expected: clearing a package can leave an edge behind whose endpoint no longer has a node.
+
+Two shapes occur. An edge's **target** loses its node whenever the target's package is cleared and
+the package that recorded the edge is not - the case the rule above exists to allow. Separately, an
+edge can have no node at its **origin**, where a package re-exports a class homed in another
+package: the walk keys that class's edges at its home name but must not claim a node there, which
+[Qualified name semantics](qualified-name-semantics.md) forbids for exactly the reason above. Until
+the home package is itself indexed no node exists at that origin, and clearing the re-exporting
+package removes the symbols those edges point at while leaving the edges - a clear reaches an edge
+by its origin, and that origin is not one of its symbols.
+
+Such an edge is harmless by construction, and MUST remain so. Every read of the graph either joins
+a symbol record at the endpoint it reports, or reports that endpoint's qualified name as a name:
+
+- Where an answer's rows are symbol records, the store shall omit an edge whose reported endpoint
+  has no node.
+- Where an answer's rows are qualified names, the store shall report the endpoint name, which
+  remains a true statement about the symbol whether or not its package was ever indexed.
+
+The second is not a concession - it is the mechanism by which
+[`inherits --bases`](../commands/inherits.md#direction) reports a base whose package has never been
+walked, which is behaviour that spec requires.
+
+An edge left this way is restored, not lost, by a rebuild of the package that recorded it: an edge
+write is idempotent on its `(origin, target, kind)` identity, so the walk that wrote it writes it
+again.
 
 ### Rebuild scope and depth
 
@@ -177,9 +244,13 @@ same reason.
 - **Cache eviction** - no size cap or LRU policy. No future spec is planned. The databases are not
   reliably small - a single three-dependency project's cache has been measured at 102 MiB
   ([#49](https://github.com/andyrids/venv-axi/issues/49), second comment) - but they remain
-  per-project and safe to delete regardless of size. Growth is unbounded in two directions this
-  spec does not bound: per project root, with nothing pruning a root that no longer exists, and per
-  package within one cache, with nothing evicting a package no longer installed.
+  per-project and safe to delete regardless of size. Growth is unbounded in three directions this
+  spec does not bound: per project root, with nothing pruning a root that no longer exists; per
+  package within one cache, with nothing evicting a package no longer installed; and per edge, with
+  nothing collecting an edge [left without its endpoint](#edges-outliving-their-endpoints) by a
+  clear. The third is bounded in practice by the edge write being idempotent - a rebuild reuses the
+  row rather than adding one - and is named here so its absence is a decision rather than an
+  oversight.
   [`cache`](../commands/cache.md) and `describeBindingTool`'s cache summary make both directions
   observable; neither bounds them.
 - **A staleness signal carried by a read answer** - no command or tool annotates its answer with
