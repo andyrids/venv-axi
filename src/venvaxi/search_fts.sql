@@ -5,7 +5,7 @@ WHERE symbols_fts MATCH :match
 AND (:package IS NULL OR nodes.package = :package)
 ORDER BY
     (lower(nodes.name) = lower(:query)) DESC,
-    (lower(nodes.name) LIKE lower(:query) || '%') DESC,
+    (lower(nodes.name) LIKE lower(:query_escaped) || '%' ESCAPE '\') DESC,
     (lower(nodes.qualified_name) = lower(:query)
      OR substr(lower(nodes.qualified_name), -(length(:query) + 1))
         IN ('.' || lower(:query), ':' || lower(:query))) DESC,

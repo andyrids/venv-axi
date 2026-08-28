@@ -134,6 +134,24 @@ def _read_sql(filename: str) -> str:
     return (resources.files(__package__) / filename).read_text("UTF-8")
 
 
+def _escape_like(query: str) -> str:
+    r"""Escape SQLite `LIKE` wildcards so `query` matches literally.
+
+    NOTE: The escape character is replaced first - swapped steps
+    double-escape the escapes just introduced, and SQLite reads the
+    resulting pattern silently as the wrong literal (`a\b` matching
+    `ab`; `specs/commands/find.md`, Literal matching).
+
+    Args:
+        query: The free-text search query.
+
+    Returns:
+        The query with `\`, `%` and `_` each preceded by `\`, for a
+        `LIKE` pattern carrying an `ESCAPE '\'` clause.
+    """
+    return query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 class SymbolStore:
     """A SQLite-backed store for an introspected symbol graph."""
 
@@ -377,7 +395,11 @@ class SymbolStore:
         (FTS5 `bm25`; omitted on the fallback), qualified name length
         and then qualified name. A path-shaped query - one containing
         `.` or `::` - matches `name`|`qualified_name` only; it is never
-        matched against docstring text.
+        matched against docstring text. The query is matched literally
+        on every `LIKE` surface - the fallback's match pattern and both
+        paths' name-prefix key take the `_escape_like`d query with an
+        `ESCAPE` clause, so a `\\`, `%` or `_` in a query is a
+        character, never a wildcard.
 
         Args:
             query: The free-text search query.
@@ -389,6 +411,7 @@ class SymbolStore:
             Matching `SymbolNode` instance(s), best match first.
         """
         path_shaped = "." in query or "::" in query
+        escaped = _escape_like(query)
         if self._fts_enabled:
             try:
                 cursor = self._connection.execute(
@@ -397,6 +420,7 @@ class SymbolStore:
                         "match": f"{query}*",
                         "package": package,
                         "query": query,
+                        "query_escaped": escaped,
                         "limit": limit,
                     },
                 )
@@ -404,7 +428,7 @@ class SymbolStore:
             except sqlite3.OperationalError:
                 logger.debug("FTS5 query failed (`%s`), using LIKE", query)
 
-        like_pattern = f"%{query}%"
+        like_pattern = f"%{escaped}%"
         cursor = self._connection.execute(
             _read_sql("search_like.sql"),
             {
@@ -412,6 +436,7 @@ class SymbolStore:
                 "doc_pattern": None if path_shaped else like_pattern,
                 "package": package,
                 "query": query,
+                "query_escaped": escaped,
                 "limit": limit,
             },
         )

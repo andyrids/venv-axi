@@ -1223,6 +1223,57 @@ def test_find_symbol_tool_path_shaped_query_matches_find_symbol(
     assert positions == sorted(positions)
 
 
+def test_find_symbol_tool_wildcard_char_query_matches_find_symbol(
+    isolated_cache: Path, make_symbol_node: NodeFactory
+) -> None:
+    """`findSymbolTool` returns the same rows, in the same order, as
+    `find_symbol` for a query carrying `_` and for one carrying `%` -
+    no mock, so parity is `find_symbol_tool`'s call path, not the
+    test's, mirroring the path-shaped parity test above
+    (`specs/mcp/tools.md:65`; plan `## Implements`;
+    [#108](https://github.com/andyrids/venv-axi/issues/108)).
+
+    Regression guard: the two calls are structurally identical whether
+    or not the literal-matching fix is applied, so this assertion is
+    expected to pass both before and after the fix.
+    """
+    nodes = [
+        make_symbol_node(
+            qualified_name="pkg.mod::print_json",
+            kind=NodeKind.FUNCTION,
+            name="print_json",
+        ),
+        make_symbol_node(
+            qualified_name="pkg.mod::printXjson",
+            kind=NodeKind.FUNCTION,
+            name="printXjson",
+        ),
+        make_symbol_node(
+            qualified_name="pkg.mod::emit_markers",
+            kind=NodeKind.FUNCTION,
+            name="emit_markers",
+            doc="Writes print%json markers.",
+        ),
+    ]
+    with SymbolStore(get_cache_db_path(get_project_root())) as store:
+        for node in nodes:
+            store.upsert_node(node)
+        store.flush()
+
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("find_symbol_tool")))
+    for query in ("print_json", "print%json"):
+        expected = find_symbol(query)
+        result = tool.fn(query=query)
+        assert expected
+        expected_lines = [
+            f'{node.name}|{node.kind}|"{node.qualified_name}"'
+            for node in expected
+        ]
+        positions = [result.index(line) for line in expected_lines]
+        assert positions == sorted(positions)
+
+
 def test_get_inheritors_tool_returns_toon(
     make_symbol_node: NodeFactory,
 ) -> None:

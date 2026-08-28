@@ -46,6 +46,23 @@ path-shaped case: a bare query still searches docstring text on both backends, w
 surface [#79](https://github.com/andyrids/venv-axi/issues/79) brought the fallback into
 conformance with.
 
+### Literal matching
+
+The `find` command shall match `query` as a literal string: every character in it shall match only
+itself, both when selecting results and when applying the [ordering keys](#result-ordering)
+below.
+
+`_` and `%` are where this bites. Both are wildcards to the substring backend's matcher, and both
+are ordinary characters in a Python identifier - `print_json`, `get_module_tree`, `__init__`. Left
+uninsulated from the matcher, `find print_json` also returns `printXjson` for any `X` and ranks it
+as a prefix match, with no error and no indication the match was approximate
+([#108](https://github.com/andyrids/venv-axi/issues/108)).
+
+The rule is declared rather than left to whichever backend answers, because an approximate result
+returned as if it were exact is the one failure shape this command must not have: a caller cannot
+tell it apart from a correct answer, and the whole point of resolving a spelling is that the
+resolution is trustworthy.
+
 ## Outputs
 
 The `find` command shall emit `count: <n>` and a `symbols` table of `name`, `kind`,
@@ -91,6 +108,9 @@ ties left by the one above it:
 5. A symbol with the shorter `qualified_name` shall sort before one with a longer
    `qualified_name`.
 6. Remaining ties shall be broken by `qualified_name`, ascending.
+
+Every key above compares `query` literally, per [Literal matching](#literal-matching): a `_` or `%`
+in a query is a character in the ordering keys exactly as it is in the match, and never a wildcard.
 
 Key 3 is what makes `Class.method` - the spelling an agent reads straight off a call site -
 resolve to the method itself. Keys 1 and 2 are defined against `name`, and no row's `name` is
@@ -143,6 +163,11 @@ failure - `count: 0` exits `EX_OK`, per the
   recovery of a misspelled symbol. Never - a miss is answered
   by the situational empty-state hints above, and a guessed match would be an answer the caller
   cannot trust.
+- **Wildcard or pattern search** - `query` carries no pattern syntax; `_` and `%` are matched as
+  the literal characters they are in a Python identifier, and no quoting or escape form re-enables
+  them ([Literal matching](#literal-matching)). Never - `find` resolves a spelling an agent read
+  off a call site, and a pattern language would turn every ordinary identifier query into a
+  question of whether it had been escaped correctly.
 - **Cross-package relevance ranking** - ranking orders spellings (facade before home); it does
   not weigh one package's results against another's. No future spec is planned; `--package` is
   the supported way to narrow a search.
