@@ -40,6 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   real installed dependencies now runs on every pull request instead of never running in CI. A
   specimen guard step fails the job before pytest runs if a specimen is missing, since every
   conformance test skips rather than fails on that condition (issue #112).
+- The first job in `.github/workflows/ci.yml` is renamed from `ruff-lint` to `static` and gains a
+  third step, `uv run pkgdx-typing-hook -p venvaxi`, so a type-check regression now fails CI
+  instead of depending on a contributor's local `prek` hook having run (issue #113).
 - The private-submodule skip - a submodule whose own final name segment starts with `_` is never
   walked - is now declared in `specs/behaviors/symbol-graph.md` and cross-referenced from
   `specs/behaviors/qualified-name-semantics.md` and `specs/commands/tree.md`. The behaviour is

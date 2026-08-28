@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  ruff-lint:
+  static:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -25,12 +25,13 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
-          cache-suffix: ruff
+          cache-suffix: static
 
       - run: uv sync
 
       - run: uv run pkgdx-lint-hook
       - run: uv run pkgdx-format-hook
+      - run: uv run pkgdx-typing-hook -p venvaxi
 
   pytest:
     strategy:
