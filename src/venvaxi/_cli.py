@@ -20,6 +20,7 @@ from venvaxi._introspect import (
     DEFAULT_API_ROW_LIMIT,
     SYMBOL_INFO_FIELDS,
     find_symbol,
+    get_bases,
     get_inheritors,
     get_module_tree,
     get_public_api,
@@ -387,12 +388,17 @@ def command_tree(ctx: CLIContext) -> int:
     return ExitCode.EX_OK
 
 
-def command_inherits(ctx: CLIContext) -> int:
-    """Show classes that directly inherit from a base class.
+def _command_inherits_bases(ctx: CLIContext) -> int:
+    """Show the classes a class directly inherits from.
 
-    NOTE: AXI principle 5 (definitive empty states) - an unresolvable
-    name raises `SymbolNotFoundError` upstream, so `count: 0` always
-    means the base resolved with zero *indexed* subclasses.
+    NOTE: Zero rows has two causes, and the hint names both: every
+    base was `object` (the walk skips it), or a base's package was
+    refreshed since this class was indexed - `clear_package` strips
+    the edge the subclass's walk wrote while the subclass's node
+    survives. The recovery is `--refresh` on the named class's own
+    package - the walk that wrote the edge - never indexing another
+    package, which can never add a base
+    (`specs/commands/inherits.md`, Empty states).
 
     Args:
         ctx: The CLI context.
@@ -400,6 +406,53 @@ def command_inherits(ctx: CLIContext) -> int:
     Returns:
         The process exit code.
     """
+    nodes = get_bases(ctx.args.qualified_name, refresh=ctx.args.refresh)
+    if not nodes:
+        _emit("count: 0")
+        _emit(
+            format_help(
+                [
+                    (
+                        f"`{ctx.args.qualified_name}` derives directly"
+                        " from `object`, which is not indexed - or a"
+                        " base's package was refreshed since this class"
+                        " was indexed: run `venvaxi inherits"
+                        f" {ctx.args.qualified_name} --bases --refresh`"
+                        " to rebuild this class's own package and"
+                        " restore its base edges"
+                    )
+                ]
+            )
+        )
+        return ExitCode.EX_OK
+
+    rows = [node.as_row() for node in nodes]
+    _emit(f"count: {len(nodes)}")
+    _emit(encode_table("bases", rows, ["name", "kind", "qualified_name"]))
+    _emit(
+        format_help(
+            ["Run `venvaxi inspect <qualified_name>` for complete metadata"]
+        )
+    )
+    return ExitCode.EX_OK
+
+
+def command_inherits(ctx: CLIContext) -> int:
+    """Show a class's direct subclasses, or its bases with `--bases`.
+
+    NOTE: AXI principle 5 (definitive empty states) - an unresolvable
+    name raises `SymbolNotFoundError` upstream, so `count: 0` always
+    means the class resolved with zero *indexed* subclasses.
+
+    Args:
+        ctx: The CLI context.
+
+    Returns:
+        The process exit code.
+    """
+    if ctx.args.bases:
+        return _command_inherits_bases(ctx)
+
     nodes = get_inheritors(ctx.args.qualified_name, refresh=ctx.args.refresh)
     if not nodes:
         _emit("count: 0")
@@ -409,7 +462,10 @@ def command_inherits(ctx: CLIContext) -> int:
                     (
                         "Subclasses may live in unindexed packages or"
                         " below the built depth - run `venvaxi find"
-                        " <name> --package <package>` to index one"
+                        " <name> --package <package>` to index one - or"
+                        " the query points the wrong way: run `venvaxi"
+                        f" inherits {ctx.args.qualified_name} --bases`"
+                        " for this class's own bases"
                     )
                 ]
             )
@@ -754,11 +810,16 @@ def add_subparser(subparsers: "argparse._SubParsersAction[Any]") -> None:
     # `inherits` command
     parser_inherits = subparsers.add_parser(
         "inherits",
-        help="Show classes that directly inherit from a base class",
+        help="Show a class's direct subclasses (or bases with --bases)",
     )
     parser_inherits.add_argument(
         "qualified_name",
-        help="Qualified base class name (module::Class)",
+        help="Qualified class name (module::Class)",
+    )
+    parser_inherits.add_argument(
+        "--bases",
+        action="store_true",
+        help="Show the class's base classes instead of subclasses",
     )
     _add_refresh_argument(parser_inherits)
     parser_inherits.set_defaults(func=command_inherits)

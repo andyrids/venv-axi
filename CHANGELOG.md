@@ -20,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `venvaxi inherits <qualified_name> --bases` reports the classes a class directly subclasses,
+  reading the same `INHERITS` edges in the opposite direction. A base is reported even when its
+  own package was never indexed - the edge is written from the subclass's side. A zero count
+  names both of its causes - the class derives directly from `object` (never indexed), or a
+  base's package was refreshed since this class was indexed - and offers `--refresh` on the
+  named class's own package as the recovery for the second, never an index-another-package
+  recovery, which can never add a base. Over MCP the direction is a separate `getBasesTool`,
+  taking the server to eleven tools (issue #48).
 - `--version` reports the installed version as a single `version: <version>` TOON line and exits
   (issue #81).
 - `describeBindingTool` gains a `version` field, reported first, so an MCP-only caller can also
@@ -30,6 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The `inherits` empty-state hint for zero subclasses now names three causes instead of two -
+  subclasses in an unindexed package, subclasses below the built depth, and the query having
+  been pointed the wrong way - naming `venvaxi inherits <qualified_name> --bases`
+  (`getBasesTool` over MCP) as the recovery for the third, so an agent that wanted the parent is
+  no longer sent to index packages that cannot change the answer (issue #48).
 - The `mcp` extra's `fastmcp` requirement narrows from `>=0.1.0` to `>=3.4,<4` in all three
   places it was declared - `project.optional-dependencies`, the `dev` dependency group, and the
   type-check hook's `additional_dependencies` in `prek.toml`. The old floor admitted every

@@ -50,12 +50,13 @@ def camel_case(name: str) -> str:
 
 
 def test_build_server_registers_tools() -> None:
-    """`build_server` registers all ten expected MCP tools."""
+    """`build_server` registers all eleven expected MCP tools."""
     from venvaxi import _mcp
 
     server = build_server()
     names = {tool.name for tool in asyncio.run(server.list_tools())}
 
+    assert len(names) == 11
     assert names == {
         camel_case(_mcp.describe_binding_tool.__name__),
         camel_case(_mcp.list_packages_tool.__name__),
@@ -65,6 +66,7 @@ def test_build_server_registers_tools() -> None:
         camel_case(_mcp.get_symbol_tool.__name__),
         camel_case(_mcp.find_symbol_tool.__name__),
         camel_case(_mcp.get_inheritors_tool.__name__),
+        camel_case(_mcp.get_bases_tool.__name__),
         camel_case(_mcp.get_module_tree_tool.__name__),
         camel_case(_mcp.refresh_package_graph_tool.__name__),
     }
@@ -548,7 +550,7 @@ def test_build_server_no_root_still_builds_with_marker() -> None:
         server = build_server()
     assert NO_PROJECT_ROOT in server.instructions
     names = {tool.name for tool in asyncio.run(server.list_tools())}
-    assert len(names) == 10
+    assert len(names) == 11
     assert camel_case("describe_binding_tool") in names
 
 
@@ -1287,8 +1289,10 @@ def test_get_inheritors_tool_returns_toon(
     assert 'Dog|class|"rich::Dog"' in result
 
 
-def test_get_inheritors_tool_empty_hint_names_both_causes() -> None:
-    """No subclasses hints at both an unindexed package and depth."""
+def test_get_inheritors_tool_empty_hint_names_three_causes() -> None:
+    """No subclasses hints at an unindexed package, the built depth
+    and a wrong-direction query, naming `getBasesTool` as the third's
+    recovery (`specs/commands/inherits.md`, Empty states; #48)."""
     server = build_server()
     with mock.patch(f"{MCP}.get_inheritors", return_value=[]):
         tool = asyncio.run(server.get_tool(camel_case("get_inheritors_tool")))
@@ -1298,6 +1302,70 @@ def test_get_inheritors_tool_empty_hint_names_both_causes() -> None:
     assert "built depth" in result
     assert "findSymbolTool" in result
     assert "find_symbol_tool" not in result
+    assert "getBasesTool" in result
+    assert "get_bases_tool" not in result
+
+
+def test_get_bases_tool_returns_toon(
+    make_symbol_node: NodeFactory,
+) -> None:
+    """The bases tool returns a TOON-encoded `bases` table."""
+    server = build_server()
+    nodes = [
+        make_symbol_node(qualified_name="logging::Handler", name="Handler")
+    ]
+    with mock.patch(f"{MCP}.get_bases", return_value=nodes):
+        tool = asyncio.run(server.get_tool(camel_case("get_bases_tool")))
+        result = tool.fn(qualified_name="rich.logging::RichHandler")
+    assert "count: 1" in result
+    assert "bases[1|]" in result
+    assert 'Handler|class|"logging::Handler"' in result
+    assert "getSymbolTool" in result
+
+
+def test_get_bases_tool_empty_hint_names_both_causes() -> None:
+    """Zero bases names both causes - derivation from `object`, or a
+    base's package refreshed since this class was indexed - offering
+    `refreshPackageGraphTool` scoped to the named class's own package
+    root and never an index-another-package recovery
+    (`specs/commands/inherits.md`, Empty states)."""
+    server = build_server()
+    with mock.patch(f"{MCP}.get_bases", return_value=[]):
+        tool = asyncio.run(server.get_tool(camel_case("get_bases_tool")))
+        result = tool.fn(qualified_name="rich.logging::RichHandler")
+    assert result.startswith("count: 0")
+    assert "derives directly from `object`" in result
+    assert "base's package was refreshed" in result
+    assert "refreshPackageGraphTool" in result
+    assert "refresh_package_graph_tool" not in result
+    assert "name=rich" in result
+    assert "unindexed" not in result
+    assert "built depth" not in result
+    assert "findSymbolTool" not in result
+
+
+def test_get_bases_tool_matches_cli_bases_direction(
+    fake_package: str,
+) -> None:
+    """`getBasesTool` returns the same rows, in the same order, as the
+    `--bases` direction's engine - no mock, so parity is
+    `get_bases_tool`'s call path, not the test's: both surfaces emit
+    `get_bases(qualified_name)` rows unmodified
+    (`specs/mcp/tools.md`, `inherits` split bullet)."""
+    from venvaxi._introspect import get_bases
+
+    expected = get_bases(f"{fake_package}::Cat")
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("get_bases_tool")))
+    result = tool.fn(qualified_name=f"{fake_package}::Cat")
+
+    assert expected
+    assert f"count: {len(expected)}" in result
+    expected_lines = [
+        f'{node.name}|{node.kind}|"{node.qualified_name}"' for node in expected
+    ]
+    positions = [result.index(line) for line in expected_lines]
+    assert positions == sorted(positions)
 
 
 def test_tool_axi_error_returns_toon_error_block() -> None:
@@ -1547,12 +1615,12 @@ def test_build_server_registers_refresh_tool_under_contract_name() -> None:
 
 
 def test_registered_read_tools_expose_no_refresh_parameter() -> None:
-    """The nine read tools each still take no `refresh` parameter - the
+    """The ten read tools each still take no `refresh` parameter - the
     divergence is narrowed to one named tool, not removed."""
     server = build_server()
     tools = asyncio.run(server.list_tools())
     reads = [tool for tool in tools if tool.name != "refreshPackageGraphTool"]
-    assert len(reads) == 9
+    assert len(reads) == 10
     for tool in reads:
         assert "refresh" not in tool.parameters["properties"]
 

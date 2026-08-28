@@ -104,7 +104,7 @@ def make_cli_context() -> Callable[..., CLIContext]:
         # `venvaxi._cli.add_subparser`, so each test declares only the
         # arguments its command actually reads.
         args = argparse.Namespace(
-            refresh=False, docstring=False, package=None, limit=20
+            refresh=False, docstring=False, package=None, limit=20, bases=False
         )
         vars(args).update(vars(overrides.pop("args", argparse.Namespace())))
         defaults: dict[str, Any] = {"args": args, "is_verbose": False}
