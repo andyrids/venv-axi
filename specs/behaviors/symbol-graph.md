@@ -63,10 +63,15 @@ Five are declared; only two are read:
 | Kind           | Written                                            | Read by            |
 | -------------- | -------------------------------------------------- | ------------------ |
 | `CONTAINS`     | Module or class -> each symbol it holds             | `inspect`, `tree`  |
-| `INHERITS`     | Subclass -> base class                              | `inherits`         |
+| `INHERITS`     | Subclass -> base class                              | `inherits`, both ways |
 | `EXPORTS`      | Module -> a symbol whose home module differs        | nothing            |
 | `IMPORTS_FROM` | Module -> the home module it re-exports from        | nothing            |
 | `DEPENDS_ON`   | never                                               | nothing            |
+
+`INHERITS` is the one edge read in both directions. `inherits` follows it to the subclasses of a
+class, and `inherits --bases` follows it back to that class's own bases - one stored edge, two
+questions. The two directions do not have equal reach, because an edge is written by the walk of
+the *subclass's* package; [`inherits`](../commands/inherits.md) declares what that means for each.
 
 `EXPORTS` and `IMPORTS_FROM` are the **re-export record**: when a walked symbol's home module
 differs from the module recording it, the walk shall write both edges together, capturing the

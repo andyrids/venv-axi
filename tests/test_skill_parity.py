@@ -55,3 +55,19 @@ def test_no_lowercase_skill_md_path() -> None:
         encoding="utf-8"
     )
     assert "src/venvaxi/skill.md" not in INSTALLED.read_text(encoding="utf-8")
+
+
+def test_no_bases_of_query_denial() -> None:
+    """Neither copy claims that no bases-of query exists.
+
+    NOTE: `inherits --bases` falsified the old gotcha (#48); the skill
+    must demonstrate the new direction rather than deny it
+    (`specs/behaviors/skill-content.md`, the boundary rule).
+    """
+    for text in (
+        skill_markdown.read_text(encoding="utf-8"),
+        INSTALLED.read_text(encoding="utf-8"),
+    ):
+        assert "There is no bases-of query" not in text
+        assert "--bases" in text
+        assert "getBasesTool" in text

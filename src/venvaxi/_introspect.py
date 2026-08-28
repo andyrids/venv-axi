@@ -464,7 +464,7 @@ def _walk_class_members(
     if (
         home_module is not None
         and home_module != containing_module
-        and _top_level_root(home_module) == package
+        and top_level_root(home_module) == package
     ):
         store.upsert_node(
             SymbolNode(
@@ -792,7 +792,7 @@ def _walk_module(
     )
 
 
-def _top_level_root(name: str) -> str:
+def top_level_root(name: str) -> str:
     """Extract the top-level package/module name from any identifier.
 
     Args:
@@ -836,7 +836,7 @@ def _resolve_qualified_name(name: str) -> str:
     Returns:
         `name` with its top component resolved to an import name.
     """
-    root = _top_level_root(name)
+    root = top_level_root(name)
     import_root = _resolve_import_name(root)
     return name if import_root == root else f"{import_root}{name[len(root) :]}"
 
@@ -870,7 +870,7 @@ def _build_store_for(
     # NOTE: The check takes the *root*, not `name` - a qualified name
     # carries `.module::Symbol` that neither names a distribution nor
     # belongs in a 'not installed' message.
-    root = _top_level_root(name)
+    root = top_level_root(name)
     _ensure_valid_name(root, name)
     root_package, distributions = resolve_import_and_distributions(root)
     _ensure_installed(root_package, root)
@@ -1023,6 +1023,43 @@ def get_inheritors(
         return store.get_inheritors(canonical)
 
 
+def get_bases(
+    qualified_name: str, *, refresh: bool = False
+) -> list[SymbolNode]:
+    """Fetch the classes a class directly inherits from.
+
+    NOTE: Build depth derives from the canonical name and the resolved name,
+    because a facade re-export from inside the same package may sit shallower
+    than the home module - the same handling as `get_inheritors`.
+
+    Args:
+        qualified_name: The subclass's qualified name.
+        refresh: Rebuild the cached graph first. Defaults to False.
+
+    Raises:
+        SymbolNotFoundError: If `qualified_name` has no matching node.
+
+    Returns:
+        One `SymbolNode` per direct base, ordered by qualified name.
+    """
+    resolved = _resolve_qualified_name(qualified_name)
+    built_depth = max(DEFAULT_MAX_DEPTH, _module_offset(resolved))
+    with _build_store_for(
+        qualified_name, max_depth=built_depth, refresh=refresh
+    ) as store:
+        if store.get_node(resolved) is None:
+            msg = f"Symbol `{qualified_name}` not found"
+            raise SymbolNotFoundError(msg)
+        canonical = store.canonical_name(resolved)
+        if _module_offset(canonical) <= built_depth:
+            return store.get_bases(canonical)
+
+    with _build_store_for(
+        qualified_name, max_depth=_module_offset(canonical)
+    ) as store:
+        return store.get_bases(canonical)
+
+
 def get_module_tree(
     name: str, max_depth: int = DEFAULT_MAX_DEPTH, *, refresh: bool = False
 ) -> list[tuple[int, SymbolNode]]:
@@ -1136,7 +1173,7 @@ def find_symbol(
         with SymbolStore(get_cache_db_path(get_project_root())) as store:
             return store.search_symbols(query, limit)
 
-    import_name = _resolve_import_name(_top_level_root(package))
+    import_name = _resolve_import_name(top_level_root(package))
     with _build_store_for(package, refresh=refresh) as store:
         return store.search_symbols(query, limit, package=import_name)
 
@@ -1286,7 +1323,7 @@ def refresh_package_graph(name: str) -> RefreshReceipt:
         The resolved import name the graph is keyed by, the build depth
         recorded for it, and the number of symbol nodes recorded.
     """
-    import_name = _resolve_import_name(_top_level_root(name))
+    import_name = _resolve_import_name(top_level_root(name))
     with _build_store_for(name, refresh=True) as store:
         build = store.get_build(import_name)
         depth = DEFAULT_MAX_DEPTH if build is None else build[1]

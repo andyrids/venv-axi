@@ -339,6 +339,50 @@ class SymbolStore:
         )
         return [self._row_to_node(row) for row in cursor.fetchall()]
 
+    def get_bases(self, qualified_name: str) -> list[SymbolNode]:
+        """Fetch the classes a class directly inherits from.
+
+        NOTE: `INHERITS` edges are keyed at the home module of a class,
+        so `qualified_name` resolves through `canonical_name`.
+
+        NOTE: Reads `edges` alone (`get_bases.sql`) - the walk records
+        an `INHERITS` edge for every base except `object`, but writes
+        no node row for a base homed in a never-indexed package, so a
+        `nodes` JOIN would silently drop exactly the cross-package
+        bases this query exists to report. Each row derives from the
+        edge instead: `kind` is `class` (a base is always a class - a
+        fact about the edge, not a guess about a missing row) and
+        `name` is the tail of the qualified name.
+
+        Args:
+            qualified_name: The qualified name of the subclass.
+
+        Returns:
+            One `SymbolNode` per direct base, ordered by qualified name.
+        """
+        cursor = self._connection.execute(
+            _read_sql("get_bases.sql"),
+            (self.canonical_name(qualified_name), str(EdgeKind.INHERITS)),
+        )
+        bases: list[SymbolNode] = []
+        for row in cursor.fetchall():
+            base_qualified_name = row["dst"]
+            module, _, name = base_qualified_name.rpartition("::")
+            bases.append(
+                SymbolNode(
+                    qualified_name=base_qualified_name,
+                    kind=NodeKind.CLASS,
+                    name=name,
+                    module=module,
+                    signature="",
+                    doc="",
+                    package="",
+                    version="",
+                    home_qualified_name=base_qualified_name,
+                )
+            )
+        return bases
+
     def _collect_module_tree(
         self,
         qualified_name: str,

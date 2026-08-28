@@ -9,8 +9,8 @@ tags: [mcp, tools, parity]
 
 The MCP surface exposed by `venvaxi serve`, under server name `VenvAXI`.
 
-This file consolidates all ten tools as a deliberate exception to the one-file-per-unit rule in
-`ICM/_config/reference-standard-spec.md`. Eight of them mirror a CLI command whose behaviour is
+This file consolidates all eleven tools as a deliberate exception to the one-file-per-unit rule in
+`ICM/_config/reference-standard-spec.md`. Nine of them mirror a CLI command whose behaviour is
 already specified in `specs/commands/`; splitting this file that many ways would duplicate those
 specs as many times over, which the same standard warns against.
 
@@ -64,6 +64,7 @@ shall catch `BaseException`, re-raising only `KeyboardInterrupt` and `SystemExit
 | `getSymbolTool`       | `qualified_name`, `docstring=False` | `inspect <symbol>`        |
 | `findSymbolTool`      | `query`, `limit=20`, `package=None` | `find <query>`            |
 | `getInheritorsTool`   | `qualified_name`                    | `inherits <name>`         |
+| `getBasesTool`        | `qualified_name`                    | `inherits <name> --bases` |
 | `getModuleTreeTool`   | `name`, `max_depth=2`               | `tree <package>`          |
 | `refreshPackageGraphTool` | `name`                          | `--refresh` - see below   |
 
@@ -203,10 +204,10 @@ not exist. Likewise, once `root` resolves, only a SQLite-level failure reading t
 the cache summary; any other exception raised while reading it still returns the
 `Unexpected error:` block.
 
-**This tool degrades where the other nine raise**, for the identical unresolvable-root state. That
-is deliberate and MUST be preserved: for the other nine an unresolvable root means the answer
+**This tool degrades where the other ten raise**, for the identical unresolvable-root state. That
+is deliberate and MUST be preserved: for the other ten an unresolvable root means the answer
 cannot be computed, and for this one it *is* the answer. Harmonizing the two would either silence
-the nine or break the one that has to work when nothing else does.
+the ten or break the one that has to work when nothing else does.
 
 ### The description is part of the contract
 
@@ -357,17 +358,24 @@ These are deliberate and MUST be preserved:
   carries three different relationships to the CLI at once: a genuine equivalent for the version
   field, a genuine equivalent for the half describing the cache, and no equivalent at all for the
   half describing the binding (`root`, `venv`, `status`).
-- **No `refresh` parameter on any read tool.** The nine read tools answer from the cache and take
+- **No `refresh` parameter on any read tool.** The ten read tools answer from the cache and take
   no `refresh` parameter; refresh reaches this surface only through the dedicated
   [`refreshPackageGraphTool`](#the-refresh-tool). The reason the parameter was refused still
   holds - forcing a rebuild is an explicit, potentially slow operation - and the dedicated tool is
-  what keeps it explicitly invoked. A `refresh` parameter on nine schemas makes a slow rebuild
+  what keeps it explicitly invoked. A `refresh` parameter on ten schemas makes a slow rebuild
   reachable by setting a flag on a read, and it would then be set by whichever caller guessed it
   should be; one named tool cannot be reached by accident.
 - **`inspect` is split into two tools.** The CLI dispatches on whether the argument contains
   `::`; MCP exposes `getSymbolTool` and `showModuleTool` separately, because a typed tool schema
   should not hide two different return shapes behind one parameter. The split's malformed-input
   diagnosis is specified in [Malformed qualified names](#malformed-qualified-names).
+- **`inherits` is split into two tools.** The CLI takes a `--bases` boolean; MCP exposes
+  `getInheritorsTool` and `getBasesTool` separately. The two answer opposite questions - what
+  subclasses this, and what does this subclass - and they do not have the same reach: a base is
+  reported whether or not its own package was ever indexed, while a subclass is not
+  ([`inherits`](../commands/inherits.md), Direction). A boolean on one schema would hide that
+  asymmetry behind a parameter a caller sets without reading it, and the wrong default is the
+  silent dead end [#48](https://github.com/andyrids/venv-axi/issues/48) reports.
 - **`show` is split into two tools** for the same reason - `showPackageTool` (metadata) and
   `showPackageApiTool` (API), rather than a boolean `--api` switch.
 - **`showPackageTool` returns fixed fields** (`name`, `version`, `location`); there is no
@@ -505,10 +513,10 @@ surface only is a guard the other surface does not have.
 - **A staleness signal on every read answer.** [#49](https://github.com/andyrids/venv-axi/issues/49)
   settled where a cache summary lands: `describeBindingTool`'s [Cache summary](#cache-summary),
   reporting schema version, on-disk size, and each indexed package's built version, depth and
-  symbol count - the diagnostic gap the issue raised, closed without adding an eleventh tool. What
+  symbol count - the diagnostic gap the issue raised, closed without adding a tool of its own. What
   stays out of scope is the wider question: no *other* tool's read answer carries an inline
   staleness annotation of its own. The cache summary is checked separately, on the one tool built
-  for it, rather than folded into every symbol answer - which would put the same fact in ten
+  for it, rather than folded into every symbol answer - which would put the same fact in eleven
   places instead of one.
   [`refreshPackageGraphTool`](#the-refresh-tool) answers neither question, and the line between it
   and the cache summary is drawn deliberately because it is thin. It reports the outcome of a

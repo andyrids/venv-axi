@@ -1008,18 +1008,22 @@ def test_command_inherits_empty(
     assert "help[1]:" in out
 
 
-def test_command_inherits_empty_hint_suggests_indexing(
+def test_command_inherits_empty_hint_names_three_causes(
     capsys: pytest.CaptureFixture,
     make_cli_context: ContextFactory,
 ) -> None:
-    """The empty-state hint explains zero *indexed* subclasses and
-    suggests indexing another package via `find --package`."""
+    """The empty-state hint names all three causes - unindexed
+    packages, the built depth and a wrong-direction query - and names
+    `inherits <qualified_name> --bases` as the third's recovery
+    (`specs/commands/inherits.md`, Empty states; #48)."""
     ctx = make_cli_context(args=argparse.Namespace(qualified_name="pkg::Base"))
     with mock.patch(f"{CLI}.get_inheritors", return_value=[]):
         _cli.command_inherits(ctx)
     out = capsys.readouterr().out
     assert "unindexed packages" in out
+    assert "built depth" in out
     assert "--package" in out
+    assert "venvaxi inherits pkg::Base --bases" in out
 
 
 def test_command_inherits_propagates_not_found(
@@ -1065,6 +1069,97 @@ def test_command_inherits_passes_refresh_without_probe(
     assert exit_code == 0
     inheritors.assert_called_once_with("pkg::Base", refresh=True)
     symbol.assert_not_called()
+
+
+def test_add_subparser_inherits_has_bases_flag() -> None:
+    """The `inherits` subcommand accepts the `--bases` flag, off by
+    default."""
+    parser = _make_axi_parser()
+    args = parser.parse_args(["inherits", "pkg::Sub"])
+    assert args.bases is False
+    args = parser.parse_args(["inherits", "pkg::Sub", "--bases"])
+    assert args.bases is True
+
+
+def test_command_inherits_bases_with_results(
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+    make_symbol_node: NodeFactory,
+) -> None:
+    """`--bases` prints a `bases` TOON table with the `inspect`
+    footer."""
+    nodes = [make_symbol_node(qualified_name="pkg::Base", name="Base")]
+    ctx = make_cli_context(
+        args=argparse.Namespace(qualified_name="pkg::Sub", bases=True)
+    )
+    with mock.patch(f"{CLI}.get_bases", return_value=nodes):
+        exit_code = _cli.command_inherits(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "count: 1" in out
+    assert "bases[1|]" in out
+    assert 'Base|class|"pkg::Base"' in out
+    assert "venvaxi inspect" in out
+
+
+def test_command_inherits_bases_empty_hint_names_both_causes(
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+) -> None:
+    """Zero bases names both causes - derivation from `object`, or a
+    base's package refreshed since this class was indexed - offering
+    `--refresh` on the named class's own package and never an
+    index-another-package recovery
+    (`specs/commands/inherits.md`, Empty states)."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(qualified_name="pkg::Sub", bases=True)
+    )
+    with mock.patch(f"{CLI}.get_bases", return_value=[]):
+        exit_code = _cli.command_inherits(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "count: 0" in out
+    assert "derives directly from `object`" in out
+    assert "base's package was refreshed" in out
+    assert "venvaxi inherits pkg::Sub --bases --refresh" in out
+    assert "unindexed" not in out
+    assert "built depth" not in out
+    assert "--package" not in out
+
+
+def test_command_inherits_bases_propagates_not_found(
+    make_cli_context: ContextFactory,
+) -> None:
+    """An unresolvable name raises identically with `--bases`."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(qualified_name="pkg::NoSuchClass", bases=True)
+    )
+    with (
+        mock.patch(
+            f"{CLI}.get_bases",
+            side_effect=exceptions.SymbolNotFoundError("not found"),
+        ),
+        pytest.raises(exceptions.SymbolNotFoundError),
+    ):
+        _cli.command_inherits(ctx)
+
+
+def test_command_inherits_bases_passes_refresh(
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+    make_symbol_node: NodeFactory,
+) -> None:
+    """`--refresh` reaches `get_bases` alongside `--bases`."""
+    nodes = [make_symbol_node(qualified_name="pkg::Base", name="Base")]
+    ctx = make_cli_context(
+        args=argparse.Namespace(
+            qualified_name="pkg::Sub", bases=True, refresh=True
+        )
+    )
+    with mock.patch(f"{CLI}.get_bases", return_value=nodes) as bases:
+        exit_code = _cli.command_inherits(ctx)
+    assert exit_code == 0
+    bases.assert_called_once_with("pkg::Sub", refresh=True)
 
 
 def test_command_find_passes_refresh(

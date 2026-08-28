@@ -41,6 +41,7 @@ Other commands:
 - `venvaxi tree rich --max-depth 1` - Nested module tree
 - `venvaxi inspect rich.console` - Direct children
 - `venvaxi inherits <qualified_name>` - Direct subclasses
+- `venvaxi inherits <qualified_name> --bases` - Direct base classes
 
 Docstrings are truncated to a first line by default - add `--docstring` for complete bodies. The
 `--refresh` option rebuilds a stale graph after a dependency version change.

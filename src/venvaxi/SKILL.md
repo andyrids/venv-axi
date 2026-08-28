@@ -99,7 +99,8 @@ help[1]:
 
 A follow-up query could include `inspect rich.console` for direct children discovery, or
 `inherits` to enumerate subclasses: `inherits rich.progress::ProgressColumn` returns `count: 11`
-(`BarColumn`, `SpinnerColumn`, `TextColumn`, `TimeRemainingColumn` and seven more).
+(`BarColumn`, `SpinnerColumn`, `TextColumn`, `TimeRemainingColumn` and seven more). The same
+command with `--bases` walks the other way, to the classes a class directly subclasses.
 
 ## Commands
 
@@ -115,7 +116,7 @@ Verified against `venvaxi --help` output; defaults shown in parentheses.
 | `venvaxi find <query>` | `--package`, `--limit` (`20`), `--refresh` | Search cached symbols |
 | `venvaxi tree <pkg>` | `--max-depth` (`2`), `--refresh` | Nested module tree |
 | `venvaxi inspect <name>` | `--docstring`, `--refresh` | Symbol detail, or module children |
-| `venvaxi inherits <qname>` | `--refresh` | Classes directly subclassing a base |
+| `venvaxi inherits <qname>` | `--bases`, `--refresh` | Direct subclasses; bases with `--bases` |
 | `venvaxi cache` | - | This project's cache/build state - schema, path/size, per-package build |
 | `venvaxi serve` | - | Run the MCP server over stdio |
 | `venvaxi setup` | `--skill`, `--no-skill` | Install ambient context (MCP config & skill) |
@@ -176,6 +177,7 @@ error block instead of an MCP transport error.
 | `getSymbolTool` | `qualified_name`, `docstring=False` | `venvaxi inspect <qname>` |
 | `findSymbolTool` | `query`, `limit=20`, `package=None` | `venvaxi find <query>` |
 | `getInheritorsTool` | `qualified_name` | `venvaxi inherits <qname>` |
+| `getBasesTool` | `qualified_name` | `venvaxi inherits <qname> --bases` |
 | `getModuleTreeTool` | `name`, `max_depth=2` | `venvaxi tree <pkg>` |
 | `refreshPackageGraphTool` | `name` | `venvaxi <cmd> ... --refresh` |
 
@@ -198,7 +200,7 @@ Notable CLI differences:
   one naming a real module - is rejected before lookup with a diagnosis pointing at
   `showModuleTool`. Send module names straight to `showModuleTool` rather than spending the
   round trip.
-- **No *read* tool takes a `refresh` parameter.** The nine read tools answer from the cache
+- **No *read* tool takes a `refresh` parameter.** The ten read tools answer from the cache
   and cannot force a rebuild; `refreshPackageGraphTool` is the single exception and the way a
   rebuild is started over MCP. Call it with the package name, then carry on over MCP - it is a
   rebuild, not a cheap precondition, so do not prefix every lookup with it.
@@ -213,8 +215,8 @@ Notable CLI differences:
   package - it indexes and scopes in one step. `--refresh` without `--package` is a hard
   error ('A rebuild must name the package to rebuild').
 - **`count: 0` is a definitive empty state, not a failure.** Unresolvable names raise, so a
-  zero count means the query resolved and genuinely matched nothing. For `inherits`
-  specifically it means the base class resolved with zero *indexed* subclasses - subclasses
+  zero count means the query resolved and genuinely matched nothing. For `inherits` without
+  `--bases` it means the class resolved with zero *indexed* subclasses - subclasses
   living in an unindexed package, or below the built depth, are simply invisible until you
   index that package (`find <name> --package <pkg>`) or rebuild deeper (`tree <pkg>
   --max-depth N`).
@@ -224,10 +226,18 @@ Notable CLI differences:
   `installed: <m>` (present whenever it differs from the declared count, including on
   `count: 0`) before concluding a package 'isn't available' - it almost certainly still
   resolves through `show <package>`.
-- **`inherits` answers 'what subclasses X', never 'what does X subclass'.** There is no
-  bases-of query, so running `inherits` on the class you just resolved returns `count: 0` and
-  reads as a dead end. To find a parent, guess the likely base and run `inherits` on *that*,
-  checking your class appears among its children.
+- **`inherits` answers 'what subclasses X' by default; `--bases` answers 'what does X
+  subclass'.** To find a parent, run the class you have in hand with `--bases` -
+  `inherits rich.logging::RichHandler --bases` returns `logging::Handler` - rather than guessing
+  the likely base and probing it. The two directions do not have equal reach: a base is reported
+  even when its own package was never indexed, while a subclass stays invisible until its own
+  package is indexed. A `count: 0` under `--bases` has two causes: the class derives directly
+  from `object` (never indexed), or a base's package was refreshed since this class was indexed,
+  which strips the recorded edge while the class itself survives. The recovery for the second is
+  a rebuild of *this class's own* package - re-run with `--refresh` (over MCP,
+  `refreshPackageGraphTool` with this class's package) - never indexing another package, which
+  can add a subclass but never a base (over MCP the split is two tools, `getInheritorsTool` and
+  `getBasesTool`).
 - **Dunders are not indexed.** `find RichHandler.__init__ --package rich` returns `count: 0`
   even though the constructor exists; the constructor signature lives on the class symbol
   instead - `inspect rich.logging::RichHandler` returns the full `__init__` signature. That

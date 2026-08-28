@@ -18,6 +18,7 @@ from venvaxi._introspect import (
     MCP_ESCAPE_HATCH,
     SYMBOL_INFO_FIELDS,
     find_symbol,
+    get_bases,
     get_inheritors,
     get_module_tree,
     get_public_api,
@@ -26,6 +27,7 @@ from venvaxi._introspect import (
     refresh_package_graph,
     show_module,
     summarize_doc,
+    top_level_root,
 )
 from venvaxi._packages import installed_count, list_packages, resolve_package
 from venvaxi._toon import (
@@ -471,14 +473,17 @@ def get_inheritors_tool(qualified_name: str) -> str:
     """Show classes that directly inherit from a class (TOON format)."""
     nodes = get_inheritors(qualified_name)
     if not nodes:
-        cname = camel_case(find_symbol_tool.__name__)
+        fname = camel_case(find_symbol_tool.__name__)
+        bname = camel_case(get_bases_tool.__name__)
         return _with_help(
             "count: 0",
             [
                 (
                     "Subclasses may live in unindexed packages or below"
-                    f" the built depth - call `{cname}` with"
-                    " package=<package> to index one"
+                    f" the built depth - call `{fname}` with"
+                    " package=<package> to index one - or the query"
+                    f" points the wrong way: call `{bname}` with this"
+                    " qualified_name for this class's own bases"
                 )
             ],
         )
@@ -486,6 +491,41 @@ def get_inheritors_tool(qualified_name: str) -> str:
     table = encode_table(
         "inheritors", rows, ["name", "kind", "qualified_name"]
     )
+    cname = camel_case(get_symbol_tool.__name__)
+    return _with_help(
+        f"count: {len(nodes)}\n{table}",
+        [f"Call `{cname}` with a qualified_name for full detail"],
+    )
+
+
+def get_bases_tool(qualified_name: str) -> str:
+    """Show the classes a class directly inherits from (TOON format)."""
+    nodes = get_bases(qualified_name)
+    if not nodes:
+        # NOTE: Two causes, both named - every base was `object` (the
+        # walk skips it), or a base's package was refreshed since this
+        # class was indexed (`clear_package` strips the edge the
+        # subclass's walk wrote). The recovery is a rebuild of the
+        # named class's *own* package - never indexing another
+        # package, which can never add a base
+        # (`specs/commands/inherits.md`, Empty states).
+        rname = camel_case(refresh_package_graph_tool.__name__)
+        root = top_level_root(qualified_name)
+        return _with_help(
+            "count: 0",
+            [
+                (
+                    f"`{qualified_name}` derives directly from"
+                    " `object`, which is not indexed - or a base's"
+                    " package was refreshed since this class was"
+                    f" indexed: call `{rname}` with name={root} to"
+                    " rebuild this class's own package, then re-call"
+                    " this tool"
+                )
+            ],
+        )
+    rows = [node.as_row() for node in nodes]
+    table = encode_table("bases", rows, ["name", "kind", "qualified_name"])
     cname = camel_case(get_symbol_tool.__name__)
     return _with_help(
         f"count: {len(nodes)}\n{table}",
@@ -576,6 +616,7 @@ _TOOLS: tuple[Callable[..., str], ...] = (
     get_symbol_tool,
     find_symbol_tool,
     get_inheritors_tool,
+    get_bases_tool,
     get_module_tree_tool,
     refresh_package_graph_tool,
 )

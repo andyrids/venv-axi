@@ -181,6 +181,161 @@ def test_get_inheritors_resolves_facade_via_canonical_name(
     assert [node.name for node in inheritors] == ["Sub"]
 
 
+def test_get_bases_indexed_base(
+    tmp_path: Path, make_symbol_node: NodeFactory
+) -> None:
+    """A direct base with its own node row is found via the edge."""
+    with SymbolStore(tmp_path / "store.db") as store:
+        store.upsert_node(
+            make_symbol_node(qualified_name="pkg::Animal", name="Animal")
+        )
+        store.upsert_node(
+            make_symbol_node(qualified_name="pkg::Dog", name="Dog")
+        )
+        store.upsert_edge(
+            SymbolEdge(
+                src="pkg::Dog", dst="pkg::Animal", kind=EdgeKind.INHERITS
+            )
+        )
+        bases = store.get_bases("pkg::Dog")
+    assert [(node.name, node.kind, node.qualified_name) for node in bases] == [
+        ("Animal", NodeKind.CLASS, "pkg::Animal")
+    ]
+
+
+def test_get_bases_unindexed_base_package(
+    tmp_path: Path, make_symbol_node: NodeFactory
+) -> None:
+    """A base whose own package was never indexed is still reported.
+
+    NOTE: The fixture deliberately seeds the `INHERITS` edge but **no**
+    node row for `logging::Handler` - the walk writes the edge for a
+    cross-package base and leaves the node alone
+    (`_introspect._walk_class_members`). A naive `nodes` JOIN passes a
+    both-nodes fixture and silently drops exactly this case
+    (`specs/commands/inherits.md`, Direction; #48).
+    """
+    with SymbolStore(tmp_path / "store.db") as store:
+        store.upsert_node(
+            make_symbol_node(
+                qualified_name="rich.logging::RichHandler",
+                name="RichHandler",
+                module="rich.logging",
+                package="rich",
+            )
+        )
+        store.upsert_edge(
+            SymbolEdge(
+                src="rich.logging::RichHandler",
+                dst="logging::Handler",
+                kind=EdgeKind.INHERITS,
+            )
+        )
+        assert store.get_node("logging::Handler") is None
+        bases = store.get_bases("rich.logging::RichHandler")
+    assert [(node.name, node.kind, node.qualified_name) for node in bases] == [
+        ("Handler", NodeKind.CLASS, "logging::Handler")
+    ]
+
+
+def test_get_bases_resolves_facade_via_canonical_name(
+    tmp_path: Path, make_symbol_node: NodeFactory
+) -> None:
+    """A facade-path `get_bases` finds home-keyed edges."""
+    with SymbolStore(tmp_path / "store.db") as store:
+        store.upsert_node(
+            make_symbol_node(
+                qualified_name="pkg.api::Sub",
+                name="Sub",
+                home_qualified_name="pkg._impl::Sub",
+            )
+        )
+        store.upsert_edge(
+            SymbolEdge(
+                src="pkg._impl::Sub",
+                dst="pkg._impl::Base",
+                kind=EdgeKind.INHERITS,
+            )
+        )
+        bases = store.get_bases("pkg.api::Sub")
+    assert [node.qualified_name for node in bases] == ["pkg._impl::Base"]
+
+
+def test_get_bases_ordered_by_qualified_name(
+    tmp_path: Path, make_symbol_node: NodeFactory
+) -> None:
+    """Bases order by qualified name, stable across repeated runs.
+
+    NOTE: Edges are seeded in a non-alphabetical order, so an
+    implementation ordering on rowid/insertion order fails here
+    (`specs/commands/inherits.md`, Result ordering).
+    """
+    with SymbolStore(tmp_path / "store.db") as store:
+        store.upsert_node(
+            make_symbol_node(qualified_name="pkg::Multi", name="Multi")
+        )
+        for dst in ("zpkg::Late", "apkg::Early", "mpkg::Middle"):
+            store.upsert_edge(
+                SymbolEdge(src="pkg::Multi", dst=dst, kind=EdgeKind.INHERITS)
+            )
+        first = store.get_bases("pkg::Multi")
+        second = store.get_bases("pkg::Multi")
+    assert [node.qualified_name for node in first] == [
+        "apkg::Early",
+        "mpkg::Middle",
+        "zpkg::Late",
+    ]
+    assert first == second
+
+
+def test_get_bases_after_base_package_cleared(
+    tmp_path: Path, make_symbol_node: NodeFactory
+) -> None:
+    """`clear_package` on a base's package strips the subclass's edge.
+
+    NOTE: Pins the limitation behind the two-cause empty state (plan
+    Validation criterion 4; `specs/commands/inherits.md`, Empty
+    states): the edge was written by the *subclass's* walk, but
+    `clear_package` deletes every edge with the cleared package's node
+    at either end - so the base vanishes from `get_bases` while the
+    subclass's own node survives, and the surface must not read the
+    resulting zero as a derivation from `object`.
+    """
+    with SymbolStore(tmp_path / "store.db") as store:
+        store.upsert_node(
+            make_symbol_node(
+                qualified_name="alib.core::Base",
+                name="Base",
+                module="alib.core",
+                package="alib",
+            )
+        )
+        store.upsert_node(
+            make_symbol_node(
+                qualified_name="blib.impl::Sub",
+                name="Sub",
+                module="blib.impl",
+                package="blib",
+            )
+        )
+        store.upsert_edge(
+            SymbolEdge(
+                src="blib.impl::Sub",
+                dst="alib.core::Base",
+                kind=EdgeKind.INHERITS,
+            )
+        )
+        store.flush()
+        assert [
+            node.qualified_name for node in store.get_bases("blib.impl::Sub")
+        ] == ["alib.core::Base"]
+
+        store.clear_package("alib")
+
+        assert store.get_bases("blib.impl::Sub") == []
+        assert store.get_node("blib.impl::Sub") is not None
+
+
 def test_get_module_tree(
     tmp_path: Path, make_symbol_node: NodeFactory
 ) -> None:
