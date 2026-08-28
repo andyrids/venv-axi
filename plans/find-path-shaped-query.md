@@ -2,13 +2,13 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs:
   - specs/commands/find.md
 authors: []
 issues: [94]
-pr:
+pr: 109
 ---
 
 # Plan: Find path-shaped query
