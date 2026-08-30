@@ -36,6 +36,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `venvaxi inspect` on a dotted, no-`::` argument that fails to resolve now states, on top of the
+  existing message, that the argument was read as a dotted module path and that a symbol lookup
+  requires `module::Symbol`. `inspect not.a.symbol` previously named a package the caller never
+  typed (`not`), and `inspect rich.console.Console` was indistinguishable from a genuine module
+  miss like `inspect rich.nosuchmodule`. Both answers were true, not wrong - the statement makes
+  the reading explicit without proposing a corrected spelling. A bare name and a private submodule
+  are unaffected: the first has no dropped-separator reading, and the second already carries a
+  more specific diagnosis. `_ensure_installed`'s shared message is untouched, so `tree`, `inherits`,
+  `find` and `show` report an absent root exactly as before (issue #95).
 - The `inherits` empty-state hint for zero *bases* returns to a single cause and offers no
   recovery: the class derives directly from `object`, which is not indexed. It was widened to
   two causes, naming `--refresh` on the class's own package as a recovery, only because a

@@ -36,7 +36,11 @@ from venvaxi._packages import (
     resolve_package,
 )
 from venvaxi._toon import encode_object, encode_table, format_help
-from venvaxi.exceptions import InvalidArgumentError
+from venvaxi.exceptions import (
+    InvalidArgumentError,
+    PackageNotFoundError,
+    SymbolNotFoundError,
+)
 
 logger = logging.getLogger(__package__)
 
@@ -486,6 +490,35 @@ def command_inherits(ctx: CLIContext) -> int:
     return ExitCode.EX_OK
 
 
+def _with_dotted_module_reading(
+    err: PackageNotFoundError | SymbolNotFoundError, name: str
+) -> PackageNotFoundError | SymbolNotFoundError:
+    """Append the dotted-path reading statement to a module-lookup failure.
+
+    NOTE: Two carve-outs return `err` unchanged rather than appending: a
+    bare name (no `.`) has no dropped-separator reading to describe, and
+    a private submodule already carries its own more specific diagnosis
+    (`is_private_submodule`) that this must not bury under a generic one
+    (`specs/commands/inspect.md`, Failure modes).
+
+    Args:
+        err: The `PackageNotFoundError` or `SymbolNotFoundError` raised
+            by `show_module`.
+        name: The caller's original `qualified_name` argument.
+
+    Returns:
+        `err` unchanged, or a new instance of the same exception class
+        whose message has the dotted-path reading appended.
+    """
+    if "." not in name or is_private_submodule(name):
+        return err
+    msg = (
+        f"{err} - the argument was read as a dotted module path;"
+        " a symbol lookup requires `module::Symbol`"
+    )
+    return type(err)(msg)
+
+
 def _command_inspect_module(ctx: CLIContext) -> int:
     """Show a module/package node and its direct children.
 
@@ -496,9 +529,18 @@ def _command_inspect_module(ctx: CLIContext) -> int:
         The process exit code.
     """
     docstring = ctx.args.docstring
-    node, children = show_module(
-        ctx.args.qualified_name, refresh=ctx.args.refresh
-    )
+    try:
+        node, children = show_module(
+            ctx.args.qualified_name, refresh=ctx.args.refresh
+        )
+    except (PackageNotFoundError, SymbolNotFoundError) as err:
+        # NOTE: Caught by name, never a broad `except Error` - that would
+        # also wrap `InvalidArgumentError` and `PackageImportError`,
+        # whose messages are already correct
+        # (`specs/commands/inspect.md`, Failure modes; issue #95).
+        raise _with_dotted_module_reading(
+            err, ctx.args.qualified_name
+        ) from err
     _emit(
         encode_object(
             {

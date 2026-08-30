@@ -2,7 +2,7 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: planned
+status: in-progress
 depends: []
 specs:
   - specs/commands/inspect.md

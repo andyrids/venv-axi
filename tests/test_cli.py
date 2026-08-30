@@ -967,6 +967,189 @@ def test_command_inspect_propagates_not_found(
         _cli.command_inspect(ctx)
 
 
+def test_command_inspect_module_dotted_absent_root_states_reading(
+    make_cli_context: ContextFactory,
+) -> None:
+    """A dotted, no-`::` argument whose top-level root is not installed
+    states the dotted-path reading on top of the existing message,
+    naming no package the caller never typed (issue #95)."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(qualified_name="not.a.symbol")
+    )
+    with (
+        mock.patch(
+            f"{CLI}.show_module",
+            side_effect=exceptions.PackageNotFoundError(
+                "Package `not` is not installed in the active venv"
+            ),
+        ),
+        pytest.raises(exceptions.PackageNotFoundError) as exc_info,
+    ):
+        _cli.command_inspect(ctx)
+    message = str(exc_info.value)
+    assert "Package `not` is not installed in the active venv" in message
+    assert "read as a dotted module path" in message
+    assert "module::Symbol" in message
+
+
+def test_command_inspect_module_dotted_resolving_root_states_reading(
+    make_cli_context: ContextFactory,
+) -> None:
+    """A dotted, no-`::` argument whose root resolves but whose tail has
+    no module states the same reading on the module-miss message, which
+    is otherwise indistinguishable from a genuine module miss
+    (issue #95)."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(qualified_name="rich.console.Console")
+    )
+    with (
+        mock.patch(
+            f"{CLI}.show_module",
+            side_effect=exceptions.SymbolNotFoundError(
+                "Module `rich.console.Console` not found"
+            ),
+        ),
+        pytest.raises(exceptions.SymbolNotFoundError) as exc_info,
+    ):
+        _cli.command_inspect(ctx)
+    message = str(exc_info.value)
+    assert "Module `rich.console.Console` not found" in message
+    assert "read as a dotted module path" in message
+    assert "module::Symbol" in message
+
+
+def test_command_inspect_module_bare_name_message_unchanged(
+    make_cli_context: ContextFactory,
+) -> None:
+    """A bare (no-`.`) argument has no dropped-separator reading to
+    describe, so its failure message is reported unchanged (issue #95)."""
+    ctx = make_cli_context(args=argparse.Namespace(qualified_name="nope"))
+    original = exceptions.PackageNotFoundError(
+        "Package `nope` is not installed in the active venv"
+    )
+    with (
+        mock.patch(f"{CLI}.show_module", side_effect=original),
+        pytest.raises(exceptions.PackageNotFoundError) as exc_info,
+    ):
+        _cli.command_inspect(ctx)
+    assert str(exc_info.value) == str(original)
+
+
+def test_command_inspect_module_private_submodule_message_unchanged(
+    make_cli_context: ContextFactory,
+) -> None:
+    """A private-submodule argument already carries a more specific
+    diagnosis - the dotted-path reading must not bury it (issue #95)."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(qualified_name="rich._private")
+    )
+    original = exceptions.SymbolNotFoundError(
+        "Module `rich._private` is private and never indexed -"
+        " `rich` is the reachable root"
+    )
+    with (
+        mock.patch(f"{CLI}.show_module", side_effect=original),
+        pytest.raises(exceptions.SymbolNotFoundError) as exc_info,
+    ):
+        _cli.command_inspect(ctx)
+    assert str(exc_info.value) == str(original)
+
+
+def test_command_inspect_module_reading_proposes_no_spelling(
+    make_cli_context: ContextFactory,
+) -> None:
+    """The dotted-path statement names `module::Symbol` as this command's
+    own contract; it must not propose the caller's argument rewritten
+    with `::`, which is the 'did you mean' recovery
+    `specs/behaviors/package-resolution.md` forbids (issue #95)."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(qualified_name="rich.console.Console")
+    )
+    with (
+        mock.patch(
+            f"{CLI}.show_module",
+            side_effect=exceptions.SymbolNotFoundError(
+                "Module `rich.console.Console` not found"
+            ),
+        ),
+        pytest.raises(exceptions.SymbolNotFoundError) as exc_info,
+    ):
+        _cli.command_inspect(ctx)
+    assert "rich.console::Console" not in str(exc_info.value)
+
+
+def test_command_inspect_module_malformed_root_unchanged(
+    make_cli_context: ContextFactory,
+) -> None:
+    """A malformed top-level root raises `InvalidArgumentError`
+    untouched - it is not caught by the `PackageNotFoundError` |
+    `SymbolNotFoundError` guard (issue #95)."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(qualified_name="1bad.thing")
+    )
+    original = exceptions.InvalidArgumentError("Invalid package name `1bad`")
+    with (
+        mock.patch(f"{CLI}.show_module", side_effect=original),
+        pytest.raises(exceptions.InvalidArgumentError) as exc_info,
+    ):
+        _cli.command_inspect(ctx)
+    assert str(exc_info.value) == str(original)
+
+
+def test_absent_root_message_unchanged_on_other_commands(
+    make_cli_context: ContextFactory,
+) -> None:
+    """`tree`, `inherits`, `find` and `show` report the package-not-found
+    message unchanged against an absent root - the blast-radius guard on
+    `_ensure_installed`'s shared message, which the `inspect` fix must
+    not touch (`_build_store_for`; issue #95)."""
+    original = exceptions.PackageNotFoundError(
+        "Package `nope` is not installed in the active venv"
+    )
+
+    tree_ctx = make_cli_context(
+        args=argparse.Namespace(package="nope", max_depth=2)
+    )
+    with (
+        mock.patch(f"{CLI}.get_module_tree", side_effect=original),
+        pytest.raises(exceptions.PackageNotFoundError) as exc_info,
+    ):
+        _cli.command_tree(tree_ctx)
+    assert str(exc_info.value) == str(original)
+
+    inherits_ctx = make_cli_context(
+        args=argparse.Namespace(qualified_name="nope::Class", bases=False)
+    )
+    with (
+        mock.patch(f"{CLI}.get_inheritors", side_effect=original),
+        pytest.raises(exceptions.PackageNotFoundError) as exc_info,
+    ):
+        _cli.command_inherits(inherits_ctx)
+    assert str(exc_info.value) == str(original)
+
+    find_ctx = make_cli_context(
+        args=argparse.Namespace(query="Console", limit=20, package="nope")
+    )
+    with (
+        mock.patch(f"{CLI}.find_symbol", side_effect=original),
+        pytest.raises(exceptions.PackageNotFoundError) as exc_info,
+    ):
+        _cli.command_find(find_ctx)
+    assert str(exc_info.value) == str(original)
+
+    show_ctx = make_cli_context(
+        args=argparse.Namespace(
+            package="nope", fields="name,version", api=False
+        )
+    )
+    with (
+        mock.patch(f"{CLI}.resolve_package", side_effect=original),
+        pytest.raises(exceptions.PackageNotFoundError) as exc_info,
+    ):
+        _cli.command_show(show_ctx)
+    assert str(exc_info.value) == str(original)
+
+
 def test_add_subparser_inherits_requires_qualified_name() -> None:
     """The `inherits` subcommand requires a positional name."""
     parser = _make_axi_parser()
