@@ -2,13 +2,13 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs:
   - specs/commands/inspect.md
 authors: []
 issues: [95]
-pr:
+pr: 126
 ---
 
 # Plan: Inspect dotted module diagnosis
@@ -109,27 +109,51 @@ asymmetry.
 
 ## Validation
 
-- [ ] Where the `inspect` argument carries no `::` and at least one `.`, and its top-level root is
+- [x] Where the `inspect` argument carries no `::` and at least one `.`, and its top-level root is
       not installed, the `inspect` command shall state that the argument was read as a dotted
       module path and that a symbol lookup requires `module::Symbol`, and shall exit `EX_FAILURE`.
-- [ ] Where the `inspect` argument carries no `::` and at least one `.`, and no module is indexed
+      —
+      `tests/test_cli.py::test_command_inspect_module_dotted_absent_root_states_reading`
+- [x] Where the `inspect` argument carries no `::` and at least one `.`, and no module is indexed
       at that path, the `inspect` command shall state that the argument was read as a dotted module
       path and that a symbol lookup requires `module::Symbol`, and shall exit `EX_FAILURE`.
-- [ ] Where the `inspect` argument carries no `.`, the `inspect` command shall report the failure
+      —
+      `tests/test_cli.py::test_command_inspect_module_dotted_resolving_root_states_reading`
+- [x] Where the `inspect` argument carries no `.`, the `inspect` command shall report the failure
       unchanged, naming no dotted-module reading.
-- [ ] Where the `inspect` argument names a private submodule, the `inspect` command shall emit the
+      — `tests/test_cli.py::test_command_inspect_module_bare_name_message_unchanged`
+- [x] Where the `inspect` argument names a private submodule, the `inspect` command shall emit the
       private-and-never-indexed message unchanged.
-- [ ] When `inspect` is given a dotted module name that resolves, the `inspect` command shall
+      — `tests/test_cli.py::test_command_inspect_module_private_submodule_message_unchanged`
+- [x] When `inspect` is given a dotted module name that resolves, the `inspect` command shall
       return the module node and its direct children as it did before this change.
-- [ ] When `inspect` is given a name containing `::`, the `inspect` command shall behave as it did
+      —
+      `tests/test_cli.py::test_command_inspect_module_prints_header_and_children` (pre-existing,
+      unaffected by the new `try`/`except`, whose mocked `show_module` never raises)
+- [x] When `inspect` is given a name containing `::`, the `inspect` command shall behave as it did
       before this change, on both a resolving name and a missing one.
-- [ ] The `inspect` command shall propose no corrected spelling of the caller's argument.
-- [ ] When `tree`, `inherits`, `find` or `show` is given a name whose top-level root is not
+      — `tests/test_cli.py::test_command_inspect_prints_symbol_detail` and
+      `tests/test_cli.py::test_command_inspect_propagates_not_found` (pre-existing; the `::`
+      dispatch never reaches `_command_inspect_module`)
+- [x] The `inspect` command shall propose no corrected spelling of the caller's argument.
+      — `tests/test_cli.py::test_command_inspect_module_reading_proposes_no_spelling`
+- [x] When `tree`, `inherits`, `find` or `show` is given a name whose top-level root is not
       installed, each command shall emit the package-not-found message unchanged.
-- [ ] If the `inspect` argument's top-level root is not a possible package name, then the `inspect`
+      —
+      `tests/test_cli.py::test_absent_root_ensure_installed_message_reaches_a_non_inspect_command`
+      (the real, unmocked `_ensure_installed` path via `tree`, proven discriminating by the
+      criterion-8 mutation trial in the stage 03 report) and
+      `tests/test_cli.py::test_absent_root_other_commands_do_not_wrap_handed_exception`
+- [x] If the `inspect` argument's top-level root is not a possible package name, then the `inspect`
       command shall raise `InvalidArgumentError` with its message unchanged.
-- [ ] The MCP tools shall return the same answers as before this change.
-- [ ] The test suite and the conformance tier shall pass.
+      — `tests/test_cli.py::test_command_inspect_module_malformed_root_unchanged`, and live:
+      `venvaxi inspect .bad.thing` and `venvaxi inspect "bad!.thing"` both unchanged
+- [x] The MCP tools shall return the same answers as before this change.
+      — `uv run pytest tests/test_mcp.py -v` — `94 passed`; `src/venvaxi/_mcp.py` untouched by
+      this unit's commits (`git show 6e1d896 --stat`, `git show d95909f --stat`)
+- [x] The test suite and the conformance tier shall pass.
+      — `uv run coverage run -m pytest` — `558 passed, 21 deselected`; `uv run pytest -m
+      conformance -v` — `21 passed, 558 deselected`
 
 ## Risks / unknowns
 
@@ -153,4 +177,82 @@ asymmetry.
 
 ## Notes
 
+- **Why both failure shapes were taken when #95 named only one.** The issue's own reproduction
+  (`not.a.symbol`) needs the top-level root absent, naming a package the caller never typed
+  (`not`, an artefact of splitting on `.`). The commoner shape an agent actually hits is the
+  other one: a name formed correctly against an *installed* package with the `::` dropped,
+  giving a bare module-not-found answer indistinguishable from a genuine module miss (`inspect
+  rich.nosuchmodule`). Both are literally
+  true and both send an agent somewhere it never asked to go. Fixing only the issue's literal
+  reproduction would have closed #95 on paper and left the case an agent forms by mistake, not by
+  reading the issue, unaddressed.
+- **Why the fix lives in the CLI and not in `_ensure_installed`.** `_ensure_installed`
+  (`src/venvaxi/_introspect.py`) builds its message at one call site inside `_build_store_for`,
+  shared by `show_module`, `get_symbol`, `get_inheritors`, `get_bases`, `get_module_tree`,
+  `get_public_api` and `search_symbols`. Editing that string in place is the obvious wrong fix
+  the plan's Risks section names: it would attach the dotted-path reading to `venvaxi tree
+  nonexistent` and `venvaxi inherits nonexistent::X`, where no misreading of a `::`-carrying or
+  bare argument ever occurred. The guard instead wraps only `_command_inspect_module`'s call to
+  `show_module`, catching `PackageNotFoundError` and `SymbolNotFoundError` by name and re-raising
+  the same class with the message extended - the other six callers of the shared message are
+  never touched.
+- **The stage 02 correction, and what it teaches.** The first criterion-8 test
+  (`test_absent_root_message_unchanged_on_other_commands`, as originally written) mocked each
+  command's own introspect entry point (`get_module_tree`, `get_inheritors`, `find_symbol`,
+  `resolve_package`) with `side_effect`. That proves a real but different property - the CLI
+  commands do not wrap an exception handed to them - but the call never reaches
+  `_ensure_installed`, so editing that shared message in place would not be caught. The suite
+  stayed green at `557 passed` with the message corrupted, and a live `venvaxi tree nonexistent`
+  under the mutation carried the `inspect` clause it must never carry. Review caught this before
+  stage 03; the fix added `test_absent_root_ensure_installed_message_reaches_a_non_inspect_command`,
+  which drives `_ensure_installed` for real (no mock) via `command_tree` against a genuinely
+  absent root, and proved it discriminating with the same mutation trial, repeated again
+  independently at stage 03. The lesson: the guard against this unit's central risk - rewriting
+  the shared message and passing every `inspect` test anyway - was itself unguarded by a mocked
+  test, and only a mutation run surfaced that. A green suite asserts the assertions written down
+  still hold; it does not by itself prove a test can fail for the reason it was written to catch.
+- **No corrected spelling.** The appended statement names `module::Symbol` as the required form -
+  a fact about `inspect`'s own contract, true for every caller regardless of what they typed.
+  Naming a rewritten form of the caller's specific argument (`rich.console::Console` as "did you
+  mean") would be the 'did you mean' recovery `specs/behaviors/package-resolution.md` forbids
+  outright: a guess about intent instead of a report of what happened. Criterion 7's test
+  (`test_command_inspect_module_reading_proposes_no_spelling`) asserts the specific rewritten
+  spelling is absent, not merely that some help text is present, so the distinction is tested,
+  not just documented.
+- **Why the private-submodule and bare-name carve-outs exist.** A bare name (`inspect
+  nonexistent`) has no `.` in it and therefore no dropped-separator reading to describe -
+  appending the statement would assert a reading that was never applied. A private submodule
+  (`inspect rich._loop`) already carries a more specific diagnosis - "private and never indexed"
+  - that pre-dates this unit and pins down exactly why the lookup failed; burying it under the
+  generic dotted-path statement would replace a precise answer with a vaguer one covering the
+  same ground. Both carve-outs are guarded by `is_private_submodule` (reused from
+  `command_tree`, not re-derived) and the `"." in name` check, verified unchanged by criteria 3
+  and 4.
+
 ## Follow-ups
+
+- **Issue** - None filed. Two candidates were considered at this closeout and neither is
+  actionable-but-unowned:
+  - The `1bad.thing` example in criterion 9's test
+    (`test_command_inspect_module_malformed_root_unchanged`). Stage 03 found that `1bad` is not
+    actually malformed - `_VALID_NAME_RE` permits a leading digit, so live it takes the
+    `PackageNotFoundError` path with the dotted-path statement appended, not
+    `InvalidArgumentError` unchanged as the test's name suggests. The test still correctly
+    asserts what it is written to assert, because it mocks `show_module` to raise
+    `InvalidArgumentError` directly rather than relying on `1bad.thing` reaching that exception
+    through the real validation regex - so this is a misleading example in a working test, not a
+    coverage hole. Genuinely malformed roots (`.bad.thing`, `bad!.thing`) were verified live at
+    stage 03 and criterion 9 holds on the real code path. Renaming the test's fixture value to a
+    genuinely malformed root is a one-line, zero-risk cleanup, but this stage does not edit
+    tests, and the mislabelling is now recorded here and in the stage 03 report for whoever next
+    touches this test.
+  - The `showModuleTool` asymmetry - `showModuleTool` answers a module-mode miss without the
+    dotted-path statement `inspect` now carries. This is not a new finding: it is already
+    recorded, with its reason, in `specs/commands/inspect.md` Out of scope ("Filed if the shape
+    turns up against it in use"), which is the durable record for a deliberately-conditional
+    follow-up. Restating it as a plan Follow-up would duplicate that record without adding
+    anything - the spec is where a future reader who hits the asymmetry in practice will look,
+    and where the trigger for filing an issue is already stated.
+- **Deferred to** - None. This unit found nothing that an unstarted downstream plan needs to
+  absorb, so no downstream plan was edited at this closeout.
+- **Tracked as** - None. No external dependency, upstream fix or release gates anything here.
