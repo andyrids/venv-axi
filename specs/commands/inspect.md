@@ -96,6 +96,23 @@ Rules binding both modes:
 - If the owning package is installed but cannot be imported to build the graph, then the
   `inspect` command shall raise `PackageImportError`, emit the TOON error block and exit
   `EX_FAILURE`.
+- Where the argument carries no `::` and at least one `.`, the `inspect` command shall state, on
+  the failures above, that the argument was read as a dotted module path and that a symbol lookup
+  requires `module::Symbol`. Dispatch is on shape alone, so the command cannot tell a module name
+  from a symbol name with its separator dropped, and it MUST NOT answer as though it could: both
+  failures are literally true and both name something the caller never asked about - `Package
+  <root> is not installed` names a root taken from a name meant as a whole, and `Module <name> not
+  found` is indistinguishable from a genuine module miss. That is the definitive-negative failure
+  [#47](https://github.com/andyrids/venv-axi/issues/47) found on the MCP surface and
+  [#62](https://github.com/andyrids/venv-axi/issues/62) fixed there by sharpening the message
+  rather than widening the fallback; this is the same fix on the surface that has a fallback
+  ([#95](https://github.com/andyrids/venv-axi/issues/95)).
+- The statement reports the reading the command applied. It shall not propose a corrected spelling
+  of the argument - [Package resolution](../behaviors/package-resolution.md) rules that out, and
+  the reading is a fact about what happened rather than a guess about what was meant.
+- A **bare** name carries no dropped-separator reading, so a failure for one is unchanged. The
+  private-submodule message above is likewise unchanged: it already diagnoses its own case, and
+  restating the dispatch over it would bury the more specific answer.
 
 The three package classes are defined once in
 [Package resolution](../behaviors/package-resolution.md). Only the top-level component is
@@ -110,6 +127,14 @@ success and exits `EX_OK`, per the [exit codes](../behaviors/output-contract.md#
   principle already decides this.
 - **Recursive listing** - module mode lists direct children only; the nested view is `tree`'s
   job.
+- **The dotted-path statement on the MCP surface** - `showModuleTool` answers the same shape
+  without it. Not an oversight: MCP splits this command in two, and `getSymbolTool` refuses a
+  no-`::` name with its own diagnosis before any lookup runs
+  ([MCP tools](../mcp/tools.md#malformed-qualified-names)), so the mistyped-symbol spelling is
+  caught there rather than falling through to a module lookup as it does here. `showModuleTool` is
+  named for modules and reached deliberately. Filed if the shape turns up against it in use; the
+  asymmetry is recorded rather than left silent because a reader who found the statement here
+  would otherwise reasonably assume both surfaces carry it.
 
 ## Principles
 
