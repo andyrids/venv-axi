@@ -1096,13 +1096,20 @@ def test_command_inspect_module_malformed_root_unchanged(
     assert str(exc_info.value) == str(original)
 
 
-def test_absent_root_message_unchanged_on_other_commands(
+def test_absent_root_other_commands_do_not_wrap_handed_exception(
     make_cli_context: ContextFactory,
 ) -> None:
-    """`tree`, `inherits`, `find` and `show` report the package-not-found
-    message unchanged against an absent root - the blast-radius guard on
-    `_ensure_installed`'s shared message, which the `inspect` fix must
-    not touch (`_build_store_for`; issue #95)."""
+    """`tree`, `inherits`, `find` and `show` propagate a
+    `PackageNotFoundError` handed to them from their introspect entry
+    point completely unwrapped.
+
+    NOTE: This is a real property, but not the criterion-8 blast-radius
+    guard - the introspect entry points are mocked here, so the call
+    never reaches `_ensure_installed`, and this test cannot detect that
+    shared message being edited in place. That guard is
+    `test_absent_root_ensure_installed_message_reaches_a_non_inspect_command`
+    below, which drives the real resolution path (stage 02 review,
+    issue #95)."""
     original = exceptions.PackageNotFoundError(
         "Package `nope` is not installed in the active venv"
     )
@@ -1148,6 +1155,25 @@ def test_absent_root_message_unchanged_on_other_commands(
     ):
         _cli.command_show(show_ctx)
     assert str(exc_info.value) == str(original)
+
+
+def test_absent_root_ensure_installed_message_reaches_a_non_inspect_command(
+    make_cli_context: ContextFactory,
+) -> None:
+    """`tree` against a genuinely not-installed root drives the real
+    `_ensure_installed` path, with no mock on the introspect entry
+    point - the actual criterion-8 blast-radius guard. If
+    `_ensure_installed`'s shared message were edited in place to carry
+    the `inspect` dotted-path reading, this is the test that would fail
+    (`_build_store_for`; issue #95, stage 02 review)."""
+    root = "totally_nonexistent_package_zzz_venvaxi_test"
+    ctx = make_cli_context(args=argparse.Namespace(package=root, max_depth=2))
+    with pytest.raises(exceptions.PackageNotFoundError) as exc_info:
+        _cli.command_tree(ctx)
+    assert (
+        str(exc_info.value)
+        == f"Package `{root}` is not installed in the active venv"
+    )
 
 
 def test_add_subparser_inherits_requires_qualified_name() -> None:
