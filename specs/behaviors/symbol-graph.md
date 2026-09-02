@@ -87,6 +87,49 @@ or be removed under YAGNI.
 Keying differs between `CONTAINS` and `INHERITS` - see
 [Qualified name semantics](qualified-name-semantics.md).
 
+### Re-exported symbols
+
+A re-export is a name bound in one module whose object is defined in another. Whether the walk
+records it turns on two things: whether the recording module declares `__all__`, and whether it
+is the package's own root module.
+
+Where a module declares `__all__`, every name it lists shall be recorded at that module, whatever
+module defines the object, at any depth. `__all__` is the module's own statement of what it
+exports, and a stated intent is not second-guessed.
+
+Where a module declares no `__all__` and is not the package's own root module, a class or
+function whose defining module differs from the recording module shall not be recorded there.
+With no `__all__` to read there is no declaration, only the module's public attributes, and those
+cannot tell a deliberate re-export from an incidental import - a module that imports a helper in
+order to call it looks exactly like one re-exporting it. The symbol is already recorded at its
+own defining module, so recording it again at every module that imported it would inflate the
+graph with names the package never exported and report them as public surface.
+
+Where a module declares no `__all__` and **is** the package's own root module, its re-exports
+shall be recorded. Every walk begins at the installed top-level package, not at whatever dotted
+module a query names, so this applies to the root module alone and to no submodule, however the
+query spelled its target. At the root a re-export is the answer rather than a duplicate, because
+the root is the spelling an agent imports from - see
+[The agent's spelling wins](../principles.md#the-agents-spelling-wins-over-the-internally-correct-one).
+It is also what lets [`show --api`](../commands/show.md#outputs) report a surface at all for a
+facade package: one whose root defines nothing of its own and declares no `__all__`, but
+re-exports its whole API from submodules.
+
+The filter tests classes and functions, and no other kind. A module-level constant is therefore
+recorded at the module that binds it, whatever module defines its type. An instance has no
+defining module of its own - it reports its type's - so testing it the same way would attribute a
+package's own constants to whatever library built them, and a compiled regular expression bound
+at module level would read as belonging to `re` rather than to the module that defines it.
+
+- If a class or function is re-exported into an `__all__`-less module below the root from
+  outside the walked package root, then it shall not be recorded there. A package that imports a
+  name from a dependency has not made that name part of its own API, and the graph shall not
+  report that it has.
+- If a class or function is re-exported into an `__all__`-less module below the root from a
+  private submodule of the same package root, then it shall still be recorded at the re-exporting
+  module. This is the single carve-out from the rule above, because the facade is that symbol's
+  only public surface - declared at [Private submodules](#private-submodules).
+
 ### Private submodules
 
 The walk shall not descend into a submodule whose own final name segment starts with `_`. The
@@ -147,6 +190,11 @@ the rowid mapping must stay stable, per
   [#87](https://github.com/andyrids/venv-axi/issues/87) asks that the skip be declared, not
   reconsidered; exposing it would be its own unit, and would have to answer what a private
   module's presence means for `show --api`'s public-surface claim.
+- **Opting an `__all__`-less re-export into the graph below the root** - no flag records one, and
+  none is planned here. [#106](https://github.com/andyrids/venv-axi/issues/106) asks that the
+  filter be declared, not changed; widening it would have to answer what the same symbol recorded
+  at two modules means for `show --api`'s public-surface claim and for `find`'s preference for
+  short facade paths.
 
 ## Principles
 
