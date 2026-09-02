@@ -9,7 +9,7 @@ specs:
   - specs/behaviors/skill-content.md
 authors: []
 issues: [106]
-pr:
+pr: 132
 ---
 
 # Plan: Re-export filter contract
