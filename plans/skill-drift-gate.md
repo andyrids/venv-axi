@@ -2,13 +2,13 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs:
   - specs/behaviors/skill-content.md
 authors: []
 issues: [39]
-pr:
+pr: 127
 ---
 
 # Plan: Skill drift gate
