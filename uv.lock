@@ -2344,6 +2344,7 @@ dev = [
     { name = "pkgdx" },
     { name = "polars" },
     { name = "pytest" },
+    { name = "rich" },
 ]
 
 [package.metadata]
@@ -2358,6 +2359,7 @@ dev = [
     { name = "pkgdx", index = "https://gitlab.com/api/v4/projects/82928123/packages/pypi/simple" },
     { name = "polars" },
     { name = "pytest", specifier = ">=9.1.1" },
+    { name = "rich" },
 ]
 
 [[package]]

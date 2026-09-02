@@ -98,9 +98,9 @@ help[1]:
 ```
 
 A follow-up query could include `inspect rich.console` for direct children discovery, or
-`inherits` to enumerate subclasses: `inherits rich.progress::ProgressColumn` returns `count: 11`
-(`BarColumn`, `SpinnerColumn`, `TextColumn`, `TimeRemainingColumn` and seven more). The same
-command with `--bases` walks the other way, to the classes a class directly subclasses.
+`inherits` to enumerate subclasses: `inherits rich.progress::ProgressColumn` reports the column
+classes - `BarColumn`, `SpinnerColumn`, `TextColumn` and `TimeRemainingColumn` among them. The
+same command with `--bases` walks the other way, to the classes a class directly subclasses.
 
 ## Commands
 
