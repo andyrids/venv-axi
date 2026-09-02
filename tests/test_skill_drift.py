@@ -37,16 +37,19 @@ import inspect
 import io
 import re
 import shlex
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import NamedTuple
 
 import pytest
 
-from venvaxi.__main__ import build_parser
+from venvaxi.__main__ import CLI_ERROR_HINT, build_parser
 from venvaxi._ambient import skill_markdown
 from venvaxi._core import CLIContext, ExitCode
 from venvaxi._mcp import _TOOLS, camel_case
+from venvaxi._toon import format_error
+from venvaxi.exceptions import Error
 
 SKILL_TEXT = skill_markdown.read_text(encoding="utf-8")
 
@@ -750,6 +753,90 @@ def _check_show_fastmcp(out: str, exit_code: int) -> None:
     assert _toon_field(out, "version")
 
 
+def _align_reexported_classes() -> set[str]:
+    """Return the classes `rich.align` binds but does not define.
+
+    NOTE: Read off the live module rather than listed here. The gotcha
+    is about a *shape* - a below-the-root module with no `__all__`
+    binding classes homed elsewhere - and `rich` is free to move which
+    names those are. A frozen list would report that move as skill
+    drift (`specs/behaviors/skill-content.md`, first limit).
+
+    Returns:
+        The names `rich.align` binds to a class whose `__module__` is
+        some other module.
+    """
+    import rich.align
+
+    return {
+        name
+        for name, obj in vars(rich.align).items()
+        if inspect.isclass(obj) and obj.__module__ != "rich.align"
+    }
+
+
+def _check_inspect_align_facade_miss(out: str, exit_code: int) -> None:
+    """Assert the facade spelling misses, and says so as a failure.
+
+    NOTE: The taught property is that the spelling the reading agent
+    holds - the one the file under review imports by - does not
+    resolve. Asserted against the live binding, so the check fails if
+    `rich` ever stops importing the class into `rich.align` and the
+    example stops demonstrating anything.
+
+    Args:
+        out: The command's stdout.
+        exit_code: The command's exit code.
+    """
+    assert "Measurement" in _align_reexported_classes()
+    assert exit_code == ExitCode.EX_FAILURE
+    assert "rich.align::Measurement" in out
+
+
+def _check_inspect_align_listing(out: str, exit_code: int) -> None:
+    """Assert the module listing succeeds and is short of the module.
+
+    NOTE: Two halves, and the pair is what discriminates. That the
+    listing omits the re-exported classes would also hold if `rich`
+    stopped binding them; that the module binds them would also hold if
+    the filter were removed. Only both together say the listing is
+    definitively incomplete, which is the half an agent cannot detect
+    from the output (`specs/behaviors/symbol-graph.md`, Re-exported
+    symbols).
+
+    Args:
+        out: The command's stdout.
+        exit_code: The command's exit code.
+    """
+    assert exit_code == ExitCode.EX_OK
+    listed = {row[0] for row in _toon_rows(out)}
+    assert listed, out
+    reexported = _align_reexported_classes()
+    assert reexported
+    assert not (reexported & listed)
+
+
+def _check_find_measurement(out: str, exit_code: int) -> None:
+    """Assert the bare name resolves to a home outside the facade.
+
+    NOTE: The home module is not pinned. What the example teaches is
+    the route - the bare name leads, and the `qualified_name` it
+    returns is somewhere other than the facade that missed - not which
+    module `rich` happens to home the class in today.
+
+    Args:
+        out: The command's stdout.
+        exit_code: The command's exit code.
+    """
+    assert exit_code == ExitCode.EX_OK
+    rows = _toon_rows(out)
+    assert rows, out
+    assert rows[0][0] == "Measurement"
+    assert rows[0][1] == "class"
+    assert rows[0][2].endswith("::Measurement")
+    assert not rows[0][2].startswith("rich.align::")
+
+
 class WorkedExample(NamedTuple):
     """A query the skill documents, with the property it teaches.
 
@@ -804,6 +891,21 @@ WORKED_EXAMPLES: tuple[WorkedExample, ...] = (
         command="venvaxi inspect rich.logging::RichHandler",
         claim="Gotchas - the constructor signature lives on the class symbol",
         check=_check_inspect_rich_handler,
+    ),
+    WorkedExample(
+        command="venvaxi inspect rich.align::Measurement",
+        claim="Gotchas - below the root, re-exports are not indexed",
+        check=_check_inspect_align_facade_miss,
+    ),
+    WorkedExample(
+        command="venvaxi inspect rich.align",
+        claim="Gotchas - the module listing that leaves the re-export out",
+        check=_check_inspect_align_listing,
+    ),
+    WorkedExample(
+        command="venvaxi find Measurement --package rich",
+        claim="Gotchas - the move off a facade miss, below the root",
+        check=_check_find_measurement,
     ),
     WorkedExample(
         command="venvaxi find StructNameSpace --package polars",
@@ -958,9 +1060,23 @@ def test_documented_query_teaches_what_it_claims(
     route `tests/test_conformance.py` takes. Parsing the documented
     command line rather than hand-building a `Namespace` also asserts
     the spelling in the skill is one the CLI accepts.
+
+    NOTE: The `Error` arm mirrors `venvaxi.__main__.main()` rather than
+    letting the raise escape. A documented query whose *result is a
+    miss* is still a documented query, and the skill now carries one
+    (the facade spelling under the re-export gotcha). Without this arm
+    the only way to triage it would be `NOT_AN_EXAMPLE`, which would
+    record a query the skill does document a result for as documenting
+    none - the "four examples of five" the third limit forbids
+    (`specs/behaviors/skill-content.md`, What is machine-checked).
     """
     args = PARSER.parse_args(shlex.split(example.command)[1:])
-    exit_code = int(args.func(CLIContext(args=args)))
+    try:
+        exit_code = int(args.func(CLIContext(args=args)))
+    except Error as err:
+        report = format_error(str(err), hints=[CLI_ERROR_HINT])
+        sys.stdout.write(f"{report}\n")
+        exit_code = int(ExitCode.EX_FAILURE)
     out = capsys.readouterr().out
     assert example.check is not None
     example.check(out, exit_code)

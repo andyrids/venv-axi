@@ -241,12 +241,26 @@ Notable CLI differences:
   instead - `inspect rich.logging::RichHandler` returns the full `__init__` signature. That
   route covers `__init__` only: no non-constructor dunder (`__getitem__`, `__eq__`, and the
   like) has any AXI path today, so a `count: 0` there is not a gap to work around.
+- **Below the package root, re-exports are not indexed.** A module that declares no `__all__`
+  and is not the package's own root module does not record a class or function defined in
+  another module - not one imported from a public sibling, and not one imported from another
+  package. `rich.align` is the shape: it declares no `__all__` and imports `Measurement` from a
+  public sibling, so `inspect rich.align::Measurement` raises even though that file really does
+  import the class, while `inspect rich.align` succeeds with a children listing that leaves it
+  out. There is no failure there to retype your way out of, so read a module listing as what the
+  graph recorded and never as everything the module binds. The move is
+  `find Measurement --package rich`, then `inspect` the `qualified_name` it returns. Two cases
+  are unaffected: a module that declares `__all__` records every name it lists, at any depth, and
+  the package's own root module records its re-exports, because the root is the spelling you
+  import from.
 - **Private submodules are not indexed.** A submodule whose name starts with `_` is never
   walked, so `show --api` and `tree` answer `count: 0` and `inspect` raises - each now saying the
   module is *private*, not missing, and naming the recovery. Do not read those as "this exposes
-  nothing". Symbols a public module re-exports from a private one *are* indexed, so query the
-  facade (`inspect pkg.api`); a class member keeps its home spelling
-  (`pkg._impl::Client.connect`) and resolves under it even though that module has no node.
+  nothing". A private home is the single carve-out from the rule above: symbols a public module
+  re-exports from a private submodule of the same package *are* indexed at the facade
+  (`inspect pkg.api`), and no other re-export below the root is - a public sibling's is not. A
+  class member keeps its home spelling (`pkg._impl::Client.connect`) and resolves under it even
+  though that module has no node.
 - **Docstrings are truncated to a first line by default.** Add `--docstring` to `inspect` or
   to `show --api` when the parameter semantics matter, not just the signature.
 - **`doc: (no docstring)` is a definitive answer.** It means the symbol defines no docstring of
