@@ -52,6 +52,37 @@ def fake_package(
 
 
 @pytest.fixture
+def fake_private_root_package(
+    isolated_cache: pathlib.Path, tmp_path_factory: pytest.TempPathFactory
+) -> Iterator[str]:
+    """Register an on-disk package whose own root name starts with `_`.
+
+    NOTE: `package` cannot exercise the underscore-rooted case at all -
+    the root's own name is the discriminator. Kept as its own fixture
+    rather than a rename so every existing assertion on `package` is
+    untouched (`specs/behaviors/symbol-graph.md`, Re-exported symbols;
+    #106).
+    """
+    from tests.resources import _private_root
+
+    src_test = tmp_path_factory.mktemp("src_test_private_root")
+    shutil.copytree(
+        pathlib.Path(_private_root.__file__).parent,
+        src_test / "_private_root",
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
+
+    sys.path.insert(0, str(src_test))
+    try:
+        yield "_private_root"
+    finally:
+        sys.path.remove(str(src_test))
+        for name in list(sys.modules):
+            if name.startswith("_private_root"):
+                del sys.modules[name]
+
+
+@pytest.fixture
 def make_symbol_node() -> Callable[..., SymbolNode]:
     """Factory-build a `SymbolNode` with defaults for every field.
 
