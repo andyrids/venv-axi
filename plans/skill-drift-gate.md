@@ -363,10 +363,10 @@ gate declares its own gaps must not hide behind the same opt-in flag as the thin
 
 ## Follow-ups
 
-Both issue-shaped items below are **drafted, not filed** - stage 04 does not open issues, and the
-reviewer decides what gets a number.
+Both issue-shaped items below were drafted at stage 04 and filed at the closeout gate.
 
-- **Issue (drafted, not filed) - the gate's dependence on private argparse API.**
+- **Issue [#128](https://github.com/andyrids/venv-axi/issues/128)** - the gate's dependence on
+  private argparse API.
   `tests/test_skill_drift.py` reads `parser._actions` and `argparse._SubParsersAction` to reach
   the subparsers. The dependence is deliberate (see Notes) but unverified across interpreters:
   the project runs one. [#115](https://github.com/andyrids/venv-axi/issues/115) wants CI across
@@ -375,7 +375,8 @@ reviewer decides what gets a number.
   attribute reads behind a single accessor with an explicit failure message before that matrix
   lands, so a future argparse change reads as "the gate cannot see the parser" rather than as
   "the skill is fine".
-- **Issue (drafted, not filed) - a cheap check over one slice of the tier-3 residue.**
+- **Issue [#129](https://github.com/andyrids/venv-axi/issues/129)** - a cheap check over one
+  slice of the tier-3 residue.
   `specs/behaviors/skill-content.md` now names the residue by surface: quoted error strings, a
   count of the read tools, the `--fields` value set, and an exit code named in a gotcha rather
   than in the contract statement all sit outside the four checked surfaces. #39's second comment
