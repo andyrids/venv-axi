@@ -33,9 +33,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `pyproject.toml` `classifiers` gain `Operating System :: Microsoft :: Windows` and
   `Operating System :: POSIX :: Linux`, matching the platforms `docs/architecture.md` claims
   support for (issue #111).
+- A drift gate over the packaged skill (`tests/test_skill_drift.py`). Tier 1 runs on every
+  `pytest`: it introspects the real parser and asserts the Commands table's flags and stated
+  defaults against it, in both directions - a flag named that no command accepts and a
+  non-global flag accepted that no row names are both failures - then asserts the MCP tool
+  table against the registered signatures and the named exit codes against `ExitCode`. A non-zero
+  result count stated in prose is a failure in its own right, backticked or not and whether or not
+  the span wraps across a line, while `count: 0` and a count inside a fenced output block stay
+  legal. Tier 2 runs under `-m conformance` and executes the skill's documented queries against
+  real `rich` and `polars`, asserting the property each example teaches rather than equality
+  against the recorded block. `inspect numba::njit` is recorded as unexecutable with its reason
+  rather than passed over. Row-count checks on both tables, and a triage check over the
+  documented queries, stop a parser that matches nothing - or a hand-maintained list that has
+  fallen behind the skill - passing vacuously (issue #39).
 
 ### Changed
 
+- `venvaxi __main__` gains `build_parser()`, extracted from `main()`. `main()` calls it and is
+  otherwise unchanged; the stream reconfiguration stays there, being process setup rather than
+  parser construction. Arguments, defaults and every `--help` rendering are byte-identical - the
+  extraction exists so the drift gate introspects the real parser rather than a reconstruction
+  of it (issue #39).
+- The skill's Workflow section names the columns `inherits rich.progress::ProgressColumn`
+  reports instead of stating `count: 11`. A figure only one version of `rich` produces cannot be
+  asserted without reporting every dependency upgrade as skill drift, and in prose it carries
+  nothing the exemplars do not. `count: 0` in prose is unaffected: it is a declared empty state,
+  not a measurement (issue #39).
+- `rich` is declared in the `dev` dependency group. It was installed only as a transitive
+  dependency of `fastmcp`, so a `fastmcp` release dropping it would have turned the conformance
+  tier green by removing what it checks (issue #39).
+- `specs/behaviors/skill-content.md` gains a What is machine-checked subsection declaring which of
+  its content rules have a counterpart in the code: the command table's flags and stated defaults,
+  the table's completeness against each command's real flags, the MCP tool table against the
+  registered signatures, the exit-code statement against the output contract, and a documented
+  query run against the venv the project installs for itself - with three limits that belong to
+  the rule, chiefly that an executed check asserts what an example teaches and never equality
+  against a recorded block, because a recorded count is what one version of a dependency returned.
+  Its Out of scope bullet is narrowed rather than deleted, and states the residue by surface - a
+  claim outside those four surfaces - rather than by vocabulary. An earlier wording made it a
+  question of which words a claim used, which excluded from the residue the very `getSymbolTool`
+  prose it cited to define the residue, and so reinstated the assumption the bullet exists to
+  prevent: that a stale prose line was machine-checked. The MCP and exit-code rules are scoped to
+  the table and the paragraph the checks read, so a tool or a code named elsewhere is residue and
+  says so (issue #39).
 - `venvaxi inspect` on a dotted, no-`::` argument that fails to resolve now states, on top of the
   existing message, that the argument was read as a dotted module path and that a symbol lookup
   requires `module::Symbol`. `inspect not.a.symbol` previously named a package the caller never

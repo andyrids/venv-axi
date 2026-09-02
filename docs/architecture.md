@@ -75,3 +75,18 @@ enforced rule rather than operational caution.
 
 `install_skill` overwrites unconditionally for any project root, and the returned mapping reports
 only `SKILL.md: true|false` - never what a diverged copy contained before it was replaced.
+
+Parity is one of two protections, and they answer different questions.
+`tests/test_skill_parity.py` pins the copies to *each other*; it cannot see both going stale
+together against the code, byte-identical and green. `tests/test_skill_drift.py` is the second
+half: it pins the packaged copy to the *CLI*. Tier 1 runs on every `pytest` and diffs the
+Commands table, the MCP tool table and the named exit codes against the real parser,
+`venvaxi._mcp`'s registry and `ExitCode` - which is why `build_parser()` is extracted from
+`main()`, so the gate reads the parser object rather than a rendering of it. Tier 2 runs under
+`-m conformance` and executes the skill's documented queries against this repo's own venv,
+asserting what each example teaches rather than the block it recorded.
+
+The boundary is drawn by surface, not by subject matter: a claim outside the two tables, the
+exit-code statement and the documented queries has nothing to diff against and stays enforced at
+review. `specs/behaviors/skill-content.md` names that residue, and it is deliberately larger than
+it looks - prose naming a flag or a tool is still prose.

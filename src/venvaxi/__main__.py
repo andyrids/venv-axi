@@ -13,7 +13,7 @@ from venvaxi._toon import encode_object, format_error
 
 logger = logging.getLogger(__package__)
 
-__all__: list[str] = ["main"]
+__all__: list[str] = ["build_parser", "main"]
 
 # NOTE: CLI spelling, so it lives here rather than in `_toon.py` - the
 # formatter is surface-neutral and each surface supplies its own footer
@@ -55,20 +55,21 @@ class _VersionAction(argparse.Action):
         parser.exit(status=_core.ExitCode.EX_OK)
 
 
-def main() -> NoReturn:
-    """Provide the `venvaxi` CLI entrypoint.
+def build_parser() -> argparse.ArgumentParser:
+    """Build the fully configured top-level `venvaxi` parser.
+
+    NOTE: A factory rather than parser construction inline in `main()`
+    so a check can introspect the real parser object - the one `--help`
+    renders from - instead of a reconstruction of it
+    (`specs/behaviors/skill-content.md`, What is machine-checked).
 
     NOTE: The subparsers action is deliberately not `required` - a bare
     `venvaxi` invocation falls through to the home view.
-    """
-    # NOTE: The payload's character set is the dependency's business - a
-    # docstring can carry anything its author wrote - so the stream is moved
-    # to UTF-8 rather than the payload being degraded to fit an ambient
-    # encoding that is an accident of the caller's shell.
-    for stream in (sys.stdout, sys.stderr):
-        if isinstance(stream, io.TextIOWrapper):
-            stream.reconfigure(encoding="utf-8")
 
+    Returns:
+        The top-level parser, with the global flags and every
+        subcommand registered.
+    """
     description = "Agent eXperience Interface (AXI)"
     parser = argparse.ArgumentParser(prog=__package__, description=description)
 
@@ -91,8 +92,24 @@ def main() -> NoReturn:
 
     subparsers = parser.add_subparsers(title="commands", dest="command")
     _cli.add_subparser(subparsers)
+    return parser
 
-    args = parser.parse_args()
+
+def main() -> NoReturn:
+    """Provide the `venvaxi` CLI entrypoint."""
+    # NOTE: The payload's character set is the dependency's business - a
+    # docstring can carry anything its author wrote - so the stream is moved
+    # to UTF-8 rather than the payload being degraded to fit an ambient
+    # encoding that is an accident of the caller's shell.
+    #
+    # NOTE: Stays in `main()` rather than moving into `build_parser()` -
+    # it is process setup, not parser construction, and importing the
+    # factory must not reconfigure stdout.
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8")
+
+    args = build_parser().parse_args()
 
     # Configure logging based on verbosity
     is_verbose = args.verbose

@@ -35,6 +35,7 @@ dev = [
     "pkgdx",
     "polars",
     "pytest>=9.1.1",
+    "rich",
 ]
 
 [project.scripts]

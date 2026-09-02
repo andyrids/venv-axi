@@ -64,12 +64,66 @@ three through the one source.
   observed misbehaviour whose cause is a signature fact the caller has not yet identified as one.
   That is the larger share of real work, and the share where version drift does the most damage.
 
+### What is machine-checked
+
+The rules above are content rules, and most of them can only be judged by a reader. Some of what
+the skill asserts has a counterpart in the code that can be diffed against it, and where one
+exists the check exists too - four confirmed instances of the skill going stale
+([#39](https://github.com/andyrids/venv-axi/issues/39)) were each caught by a person noticing,
+which is not a mechanism.
+
+- Where the packaged skill's command table names a flag, that flag shall be accepted by the
+  command it is listed against, and any default the table states shall be that command's own
+  default.
+- Where the packaged skill's command table describes a command, it shall name every non-global
+  flag that command accepts. Naming a flag that does not exist and omitting one that does are
+  different failures, and only the second survives a reader checking the table against the tool.
+- Where the packaged skill's MCP tool table names a tool, that tool shall exist under that name,
+  and the parameters and defaults the table states shall be the ones it is registered with.
+- Where the packaged skill states the exit-code contract, the codes it names there shall be
+  exactly those [Output contract](output-contract.md#exit-codes) declares - neither fewer nor
+  more. That paragraph was wrong three times inside one run; what recurred was *how many outcomes
+  there are*, which is countable. An exit code named elsewhere in the skill is residue, below.
+- Where the packaged skill documents a query together with the result it returns, that query shall
+  be run against the venv the project installs for itself, and the property the example teaches
+  shall hold of the result. No such query shall be absent from the set the gate runs or records as
+  unexecutable - a set that is added to by hand goes stale in the one direction none of the
+  parsed surfaces can.
+
+Three limits belong to the rule rather than being exceptions to it:
+
+- **A documented result is venv-dependent.** A recorded `count:` is what one version of a
+  dependency returns and the next returns something else, so an executed check asserts what the
+  example teaches - that the symbol the caller asked for leads the results - never equality
+  against the recorded block. An assertion pinned to a frozen string reports a dependency upgrade
+  as skill drift.
+- **Where the packaged skill states a non-zero result count in prose, it shall name the results
+  the example teaches by instead.** In prose a figure carries nothing the exemplars do not, and a
+  figure no check can hold is a claim that goes stale unobserved. A fenced block reproducing real
+  output is a different thing and keeps what it recorded - it is a specimen of the output shape,
+  and the executed check above is what keeps it honest. `count: 0` is exempt: the definitive empty
+  state is a fact [Output contract](output-contract.md#definitive-empty-states) declares, not a
+  measurement of an installed version.
+- **If a documented query names a package the project does not install, then it shall be recorded
+  as unexecutable rather than passed over.** A check that silently covers four examples of five
+  reports the same green as one that covers all five.
+
 ## Out of scope
 
-- **Automated detection of skill/code drift** - nothing compares the skill's claims against the
-  CLI or `venvaxi --help`, so this spec is enforced at review.
-  [#39](https://github.com/andyrids/venv-axi/issues/39) owns it, and until it lands every rule
-  above is a rule a human checks.
+- **Drift detection for a claim outside the four checked surfaces** - those surfaces are the
+  command table, the MCP tool table, the exit-code contract statement, and the documented queries.
+  A claim in prose outside all four stays enforced at review **even when it names a flag, an exit
+  code or a tool**. `getSymbolTool`'s error wording going false under
+  [#62](https://github.com/andyrids/venv-axi/issues/62) is the shape of it: prose in the MCP
+  section, naming two tools, sitting in no table. So is a count of the read tools, an error string
+  quoted from the code, and an exit code named in a gotcha rather than in the contract statement.
+
+  **The residue is stated by surface, not by vocabulary, and that is the correction.** An earlier
+  wording made it a question of which words a claim used - a claim "naming no flag, no exit code,
+  no MCP tool and no runnable query" - which excluded from the residue the very `getSymbolTool`
+  prose it cited to define the residue, and so reinstated the assumption this bullet exists to
+  prevent: that a stale prose line was machine-checked. A rule assumed covered by a gate that
+  structurally cannot see it is worse off than one known to be unchecked.
 - **Executing the eval suite** - `.claude/skills/venvaxi/evals/` is exercised by a human running
   the loop in its README, never by CI, so an eval case is a specimen rather than a gate.
   [#40](https://github.com/andyrids/venv-axi/issues/40) owns it.
