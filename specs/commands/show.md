@@ -67,8 +67,10 @@ The `show` command shall report every public top-level **symbol** the package de
 kind in [Symbol graph](../behaviors/symbol-graph.md#node-kinds) except `module` and `package`.
 
 A package's `__all__` is its own declaration of its public API, and this command answers what that
-API is. Reporting only `class` and `function` would drop every exported instance, namespace object
-and constant - `pytest.skip`, `pytest.mark`, `requests.codes` - and, because a `count` below the
+API is; what the graph records for a module declaring none is
+[Re-exported symbols](../behaviors/symbol-graph.md#re-exported-symbols). Reporting only `class`
+and `function` would drop every exported instance, namespace object and constant -
+`pytest.skip`, `pytest.mark`, `requests.codes` - and, because a `count` below the
 bound is definitive under
 [Bounded collections](../behaviors/output-contract.md#bounded-collections), would state as fact
 that the dropped names do not exist. 'Callable' is no better a proxy: it keeps `pytest.fail` and

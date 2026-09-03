@@ -26,7 +26,7 @@ from typing import Self
 
 logger = logging.getLogger(__package__)
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 """The cache schema version, stored as SQLite's `PRAGMA user_version`.
 
 NOTE: Tracks *what the store ends up holding*, not only the table
@@ -64,6 +64,15 @@ package's walk recorded (#124); a version-8 cache can hold a subclass
 whose ancestry a previous clear removed, which no rebuild of the
 refreshed package can restore and which would falsify the definitive
 `--bases` empty state (`specs/commands/inherits.md`, Empty states).
+
+NOTE: 10 - the re-export filter's private-home carve-out now calls
+`is_private_submodule` instead of re-spelling it inline, so a package
+whose own root name starts with `_` (`_pytest`) no longer keeps a
+public-sibling re-export below its root (#106); a version-9 cache built
+for such a package holds the duplicate rows the fixed walk no longer
+writes, which no rebuild of an unrelated package can restore and which
+`specs/behaviors/symbol-graph.md` Re-exported symbols now says shall
+not happen.
 """
 
 

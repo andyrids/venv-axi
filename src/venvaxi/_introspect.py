@@ -756,11 +756,17 @@ def _walk_module(
                 and obj_home is not None
                 and obj_home != module.__name__
             ):
+                # NOTE: The carve-out asks the private-submodule rule
+                # its own question rather than re-spelling it inline.
+                # An inline `any(...)` over every segment includes the
+                # root, so a package whose own name starts with `_`
+                # (`_pytest`) satisfied it for every same-root home and
+                # kept public-sibling re-exports below the root - which
+                # `specs/behaviors/symbol-graph.md`, Re-exported
+                # symbols, says shall not be recorded there (#106).
                 private_home_facade = obj_home.startswith(
                     f"{package_root}."
-                ) and any(
-                    segment.startswith("_") for segment in obj_home.split(".")
-                )
+                ) and is_private_submodule(obj_home)
                 if not private_home_facade:
                     continue
         kind = _record_symbol(

@@ -2,6 +2,7 @@
 
 import importlib
 import logging
+import re
 import sqlite3
 import sys
 import types
@@ -500,7 +501,22 @@ def test_get_public_api_top_level_keeps_default_depth(
     """A top-level package still builds at `DEFAULT_MAX_DEPTH` - the
     depth derivation must not trigger a deeper build it does not need."""
     symbols = get_public_api(fake_package).symbols
-    assert [symbol.name for symbol in symbols] == ["Animal", "Cat", "Dog"]
+    # NOTE: `render_grid` is the root exemption working - the fixture
+    # root re-exports it from the public sibling `package.module` and a
+    # package's own root keeps its re-exports
+    # (`specs/behaviors/symbol-graph.md`, Re-exported symbols; #106).
+    # `module` is not: the same import binds `package.module` as an
+    # attribute of `package`, which surfaces as an `attribute` row - the
+    # submodule-as-`attribute` finding in
+    # `plans/reexport-filter-contract.md` Risks / unknowns, filed
+    # separately and not declared behaviour.
+    assert [symbol.name for symbol in symbols] == [
+        "Animal",
+        "Cat",
+        "Dog",
+        "module",
+        "render_grid",
+    ]
     with SymbolStore(get_cache_db_path(get_project_root())) as store:
         build = store.get_build(fake_package)
     assert build is not None
@@ -525,9 +541,26 @@ def test_get_public_api_excludes_module_and_package_kind(
     names = {symbol.name for symbol in symbols}
     assert "module" not in kinds
     assert "package" not in kinds
+    # NOTE: `module` is *narrowed out* of the disjoint set below, not
+    # deleted. The #106 fixture root re-exports `render_grid` from
+    # `package.module`, and the same import binds `package.module` as an
+    # attribute of `package`. At depth 0 the walk's re-export filter -
+    # and with it the `inspect.ismodule` skip nested inside it - does
+    # not run, so `_record_symbol` records the module object keyed
+    # `package::module` with kind `attribute`, and `get_public_api`
+    # excludes only the `module`|`package` *kinds*. That is the
+    # submodule-as-`attribute` finding recorded in
+    # `plans/reexport-filter-contract.md` Risks / unknowns: an artefact
+    # reached by a route the #82 kind-based fix does not cover, filed as
+    # its own issue at closeout. It is NOT blessed behaviour, and it
+    # contradicts the declaration this test guards, which is why the
+    # name stays visible here rather than being dropped from the set.
     assert names.isdisjoint(
-        {"api", "constants", "facade", "importer", "module", "subpkg"}
+        {"api", "constants", "facade", "importer", "subpkg"}
     )
+    # The finding itself, pinned so that fixing it fails this test and
+    # returns a reader to the narrowing above instead of leaving it.
+    assert "module" in names
 
 
 def test_show_module_returns_node_and_children(fake_package: str) -> None:
@@ -535,6 +568,13 @@ def test_show_module_returns_node_and_children(fake_package: str) -> None:
     node, children = show_module(fake_package)
     assert node.kind is NodeKind.PACKAGE
     names = [child.name for child in children]
+    # NOTE: `module` appears twice and the two rows are distinct nodes -
+    # `_walk_submodules` keys the module node `package.module`, while
+    # `_record_symbol` keys the attribute row `package::module`, so
+    # neither upsert overwrites the other. The attribute row is the
+    # submodule-as-`attribute` finding in
+    # `plans/reexport-filter-contract.md` Risks / unknowns, not declared
+    # behaviour. `render_grid` is the root exemption working (#106).
     assert names == [
         "Animal",
         "Cat",
@@ -544,8 +584,12 @@ def test_show_module_returns_node_and_children(fake_package: str) -> None:
         "facade",
         "importer",
         "module",
+        "module",
+        "render_grid",
         "subpkg",
     ]
+    kinds = [child.kind for child in children if child.name == "module"]
+    assert kinds == [NodeKind.MODULE, NodeKind.ATTRIBUTE]
 
 
 def test_show_module_raises_for_unknown_symbol(fake_package: str) -> None:
@@ -569,6 +613,99 @@ def test_show_module_includes_reexports_with_all(fake_package: str) -> None:
     re-exports (explicit export intent is trusted)."""
     _, children = show_module(f"{fake_package}.facade")
     assert "util" in [child.name for child in children]
+
+
+def test_get_public_api_root_keeps_reexport_from_public_sibling(
+    fake_package: str,
+) -> None:
+    """A package's own root module keeps a class or function it
+    re-exports, even declaring no `__all__` - the root is the spelling
+    an agent imports from, and without the exemption `show --api` on a
+    facade package would report `count: 0` for a full public surface
+    (`specs/behaviors/symbol-graph.md`, Re-exported symbols; #106). The
+    home is a *public* sibling, so the private-home carve-out cannot
+    account for the keep. `::test_show_module_excludes_reexports_
+    without_all` is the contrast control one level down."""
+    names = [symbol.name for symbol in get_public_api(fake_package).symbols]
+    assert "render_grid" in names
+    node = get_symbol(f"{fake_package}::render_grid")
+    assert node.kind is NodeKind.FUNCTION
+    assert node.module == fake_package
+    assert node.home_qualified_name == f"{fake_package}.module::render_grid"
+
+
+def test_show_module_excludes_reexport_homed_outside_package_root(
+    fake_package: str,
+) -> None:
+    """A class re-exported into an `__all__`-less module below the root
+    from outside the walked package root is not recorded there - a
+    package importing a name from elsewhere has not made it part of its
+    own API (`specs/behaviors/symbol-graph.md`, Re-exported symbols,
+    first `If/then` bullet; #106). `package.importer` imports
+    `collections.OrderedDict`: the carve-out's first conjunct,
+    `obj_home.startswith(f"{package_root}.")`, is false for a
+    standard-library home exactly as it is for a third-party one, so
+    both reach `continue` by the identical path."""
+    _, children = show_module(f"{fake_package}.importer")
+    assert "OrderedDict" not in [child.name for child in children]
+    assert find_symbol("OrderedDict", package=fake_package) == []
+
+
+def test_show_module_below_root_rule_holds_for_underscore_root(
+    fake_private_root_package: str,
+) -> None:
+    """A package whose own root name starts with `_` obeys the
+    below-the-root rule identically to any other package
+    (`specs/behaviors/symbol-graph.md`, Re-exported symbols; #106).
+    `_private_root.facade` declares no `__all__` and re-exports two
+    classes differing only in whether the home is private: `Exposed`
+    (public sibling `_private_root.public`) is dropped, `Carved`
+    (private sibling `_private_root._impl`) is kept by the carve-out.
+    Both halves are asserted because the pair is what discriminates -
+    the drop alone would also pass with the carve-out deleted, and the
+    keep alone would also pass with the pre-fix inline `any(...)` over
+    every segment of the home name, which the `_` root satisfied."""
+    root = fake_private_root_package
+    _, children = show_module(f"{root}.facade")
+    names = [child.name for child in children]
+    assert "Exposed" not in names
+    assert "Carved" in names
+    node = get_symbol(f"{root}.facade::Carved")
+    assert node.home_qualified_name == f"{root}._impl::Carved"
+
+
+def test_show_module_reexports_identical_when_built_from_parent(
+    fake_package: str,
+) -> None:
+    """Naming a dotted submodule does not make it the walk's root. Every
+    walk begins at the installed top-level package, so `package.importer`
+    reports its re-exports absent whether the graph was built by a query
+    naming the parent or one naming the submodule
+    (`specs/behaviors/symbol-graph.md`, Re-exported symbols; #106).
+    `::test_show_module_excludes_reexports_without_all` pins the
+    submodule-named spelling; this pins the parent-named one, so a root
+    exemption keyed off the query target rather than the walk root
+    would fail exactly one of the pair."""
+    get_public_api(fake_package)
+    _, children = show_module(f"{fake_package}.importer")
+    assert [child.name for child in children] == ["local"]
+
+
+def test_walk_module_keeps_constant_whose_type_is_homed_elsewhere(
+    fake_package: str,
+) -> None:
+    """The re-export filter tests classes and functions and no other
+    kind, so a module-level constant is recorded at the module that
+    binds it whatever module defines its type
+    (`specs/behaviors/symbol-graph.md`, Re-exported symbols; #106).
+    `PATTERN = re.compile("x")` in `package.constants` reports `re` as
+    its defining module, and `constants` declares no `__all__` and sits
+    below the root, so the filter's branch does run for it - the symbol
+    survives on the kind guard alone, which is the claim."""
+    assert getattr(re.compile("x"), "__module__", None) == "re"
+    node = get_symbol(f"{fake_package}.constants::PATTERN")
+    assert node.kind is NodeKind.ATTRIBUTE
+    assert node.module == f"{fake_package}.constants"
 
 
 def test_get_module_tree_not_installed_raises(
@@ -1498,7 +1635,22 @@ def test_walk_module_visited_set_prevents_revisit(
             version="1.0.0",
         )
         children = store.get_children(fake_package)
-    assert "module" not in [child.name for child in children]
+    # NOTE: The subject here is `_walk_submodules`' visited-set skip, so
+    # the assertion is narrowed to the `module`-kind row it governs. A
+    # second, unrelated row named `module` now reaches the store by the
+    # other route: the #106 root re-export binds `package.module` as an
+    # attribute of `package`, and `_record_symbol` records it keyed
+    # `package::module` with kind `attribute` from `_walk_module`, which
+    # the visited set does not govern. That is the
+    # submodule-as-`attribute` finding in
+    # `plans/reexport-filter-contract.md` Risks / unknowns - collateral
+    # of the fixture change, not a hole in the skip under test.
+    assert f"{fake_package}.module" not in [
+        child.qualified_name for child in children
+    ]
+    assert NodeKind.MODULE not in [
+        child.kind for child in children if child.name == "module"
+    ]
 
 
 def test_refresh_package_graph_reports_the_rebuilt_walk(
