@@ -49,6 +49,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The `inspect` row of `specs/principles.md`'s measured-efficiency table changes unit, from `~6%`
+  to `~10 chars`. Measuring more symbols than the figure's original evidencing fixture showed the
+  percentage standing for a whole command it did not describe: `os.path::join` saves ~11% on the
+  default path and `rich.console::Console.print` ~1.5%, so the flag TOON is measured under is not
+  the variable, symbol size is. On a flat object the encoder's saving does not scale with content
+  at all - 14 characters less two for every value that takes the quoting branch, giving a real
+  symbol object 6 to 12 characters regardless of `doc` length, with newlines cost-neutral because
+  `json.dumps` escapes them the same way TOON does. `specs/commands/inspect.md`'s repeated `~6%`
+  is replaced by the mechanism, so the two files can no longer drift apart on a number. Three
+  symbol-object fixtures in `tests/test_toon_benchmark.py` - two of them new, all built from one
+  shared base mapping so `doc` is the only variable - evidence the count directly; the encoder
+  itself carried no defect (issue [#98](https://github.com/andyrids/venv-axi/issues/98)).
 - `specs/behaviors/symbol-graph.md` gains a `Re-exported symbols` subsection declaring the walk's
   re-export filter, which no spec stated before. The declared rules are the ones the walk already
   applied for a normally-named package - `__all__` is trusted at any depth; a class or function

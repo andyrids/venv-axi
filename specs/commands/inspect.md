@@ -144,5 +144,8 @@ success and exits `EX_OK`, per the [exit codes](../behaviors/output-contract.md#
   - the own-docstring rule is this principle at its sharpest. An inherited docstring describes a
   different symbol, so surfacing it is a usage narrative rather than a report.
 - [Measured token efficiency beats the headline claim](../principles.md#measured-token-efficiency-beats-the-headline-claim)
-  - symbol mode is a flat single object, where TOON saves only ~6%. Efficiency here comes from
-  truncation, so the 200-character default MUST NOT be relaxed to compensate for the encoding.
+  - symbol mode is a flat single object, where TOON's saving is a fixed handful of characters -
+  roughly 10 - that does not grow with the docstring, so its share of the payload is whatever the
+  symbol's size makes it, and `--docstring` is not the variable. No figure is repeated here; that
+  principle's table is the one place they are measured. Efficiency comes from truncation, so the
+  200-character default MUST NOT be relaxed to compensate for the encoding.
