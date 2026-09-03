@@ -9,7 +9,7 @@ authors:
   - specs/principles.md
   - specs/commands/inspect.md
 issues: [98]
-pr:
+pr: 133
 ---
 
 # Plan: Inspect saving payload shapes
