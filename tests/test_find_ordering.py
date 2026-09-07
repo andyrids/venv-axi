@@ -503,16 +503,21 @@ def test_find_percent_query_ignores_bm25_and_falls_back_to_ordering(
     The lexically greater row (`gamma`) is inserted first, so insertion
     order cannot produce the pass.
 
-    NOTE: A two-row graph cannot produce a real `bm25` difference no
-    matter what the `doc` text says - the matched term's IDF collapses
-    to zero when every row in the index contains it, and the two rows
-    tie exactly regardless of doc length or repetition. The six filler
-    rows below (`Other`, non-matching `doc`) exist solely to keep
-    `widget` rare enough in the graph to carry IDF for the
-    discrimination run; they never satisfy the `%` query themselves,
-    never appear in this test's own assertion, and are not incidental
-    scaffolding - removing them makes the discrimination run measure
-    nothing.
+    NOTE: With only the two matched rows in the graph, `bm25` does not
+    tie - SQLite floors rather than zeroes the IDF of a term every row
+    carries, so a real difference survives (verified directly: `gamma
+    -1.4347826086956523e-06`, `alpha -7.674418604651162e-07` for the
+    plain `widget` query), and the direction matches the six-filler
+    case below, so the discrimination run would still pass without
+    them. The six filler rows (`Other`, non-matching `doc`) exist to
+    make that separation a designed signal of real magnitude
+    (`gamma -1.151849413183759`, `alpha -0.4356736122404892`) rather
+    than one resting on that IDF flooring at ~1e-6, which is too
+    close to floating-point noise to trust as a discrimination margin.
+    They never satisfy the `%` query themselves and never appear in
+    this test's own assertion - do not tidy them away as unused
+    scaffolding; removing them does not flip this test, but it does
+    shrink the discrimination run's margin back to that ~1e-6 floor.
 
     Meaningful on `[fts]` only: an FTS build that failed to route the
     `%` query away would let `bm25` decide this tie instead of key 6,
