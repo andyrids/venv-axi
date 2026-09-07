@@ -2,7 +2,7 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs: []
 authors:
@@ -123,16 +123,31 @@ produce a principle that rules nothing out.
 
 ## Validation
 
-- [ ] If the search index refuses `query`, its query grammar rejecting one or more of the
+- [x] If the search index refuses `query`, its query grammar rejecting one or more of the
       characters in it, then the `find` command shall return its results and exit `EX_OK`, raising
-      nothing and reporting no degraded search.
-- [ ] If the search index refuses `query`, its query grammar rejecting one or more of the
+      nothing and reporting no degraded search. — Store-level degrade-without-raising:
+      `tests/test_store.py::test_search_symbols_fts_syntax_error_degrades_to_like` - PASSED.
+      Literal-answer-through-`find_symbol` half: `tests/test_find_ordering.py::test_find_percent_query_matches_literal_substring_only[fts]`/`[like]`
+      and `::test_find_backslash_query_matches_literal_backslash[fts]`/`[like]` - all 4 PASSED.
+      CLI-level `EX_OK` half - live run performed in stage 03 (transcript in
+      `ICM/process-plan/stages/03-verification/output/find-backend-routing-test.md`, "Live-run
+      transcript, criterion 1 CLI half"): both invocations exit `0`, stderr empty on both.
+- [x] If the search index refuses `query`, its query grammar rejecting one or more of the
       characters in it, then the `find` command shall order two results tied on keys 1 to 4 and
       equal in `qualified_name` length by `qualified_name` ascending, with no relevance score
-      interposed.
-- [ ] While no full-text index is available to a build, the `find` command shall order results by
-      keys 1 to 6 alone for every query.
-- [ ] The test suite shall pass.
+      interposed. — `tests/test_find_ordering.py::test_find_percent_query_ignores_bm25_and_falls_back_to_ordering`:
+      `[fts]` PASSED (the parameter that is itself the assertion), `[like]` PASSED (holds for
+      free, no `bm25` to interpose). Both parameters re-run individually, both green.
+- [x] While no full-text index is available to a build, the `find` command shall order results by
+      keys 1 to 6 alone for every query. — `like_only`-fixture-driven tests, re-run individually:
+      `tests/test_find_ordering.py::test_find_orders_shorter_qualified_name_first[like]` (key 5) -
+      PASSED; `tests/test_find_ordering.py::test_find_breaks_final_ties_on_qualified_name_ascending[like]`
+      (key 6) - PASSED. Confirmed by reading `search_backend`'s fixture body
+      (`tests/test_find_ordering.py:98-111`): the `like` parameter calls
+      `request.getfixturevalue("like_only")`, which monkeypatches `SymbolStore.__init__` to set
+      `self._fts_enabled = False` after schema creation - the "no full-text index available" case
+      the criterion names.
+- [x] The test suite shall pass. — `uv run pytest -v` -> `619 passed, 32 deselected in 76.70s`.
 
 ## Risks / unknowns
 
@@ -166,4 +181,99 @@ produce a principle that rules nothing out.
 
 ## Notes
 
+**Why consequence-framing, not routing-framing.** "Which backend answered" is not itself
+observable - the only trace is a `DEBUG`-level log line at `_store.py:496` that no spec owns - so
+every declaration in `### Result ordering` is stated over the ordering a caller can measure
+instead. The decisive reason is the second one: a *routing* rule, if
+[#122](https://github.com/andyrids/venv-axi/issues/122) resolution 1 ever lands, is deleted as an
+internal reroute with nothing for a caller to notice. A *consequence* rule is instead **withdrawn
+as a guarantee a caller was told it could rely on** - which is what resolution 1 actually costs,
+and framing it this way is what makes that cost show up in the diff rather than disappearing
+inside an implementation detail.
+
+**Why the trigger is refusal, not text-versus-syntax.** The first draft fired on any query the
+index reads as its own syntax. That set includes `name:print`, which the index *accepts* as a
+column filter rather than rejecting - `bm25` is still interposed and the observed order is not key
+5 ascending. That wording would have been violated by current behaviour on the day it landed,
+manufacturing an Invariant 2 divergence (`specs/README.md`) inside a plan premised on nothing
+changing. Keying the trigger on **refusal** excludes the accepted-but-misread case by construction
+rather than by argument - `.`, `::`, `%` and `\` are rejected outright, `:` is not, and the leak
+stays a Literal matching failure, filed as
+[#134](https://github.com/andyrids/venv-axi/issues/134).
+
+**The discrimination run** (scratch, not retained as a test): with the shipped fixture, the
+`%`-bearing query (`rate%calc`) routes to the substring surface and returns
+`[pkg.alpha::rate%calc, pkg.gamma::rate%calc]` (key 6, `qualified_name` ascending), while a plain
+`widget` query stays on the full-text index and returns
+`[pkg.gamma::rate%calc, pkg.alpha::rate%calc]` - the other order, `bm25` gamma
+`-1.151849413183759`, alpha `-0.4356736122404892`. That inversion is what makes the new test
+non-vacuous: an FTS build that failed to route the `%` query away would have produced the `bm25`
+order on both parameters, not just on `[like]`. It was deliberately not retained as a test:
+asserting it would place order *inside* the deliberately unspecified key 4/5 gap and make one
+backend's `bm25` the contract by the back door -
+[`plans/find-ordering-contract.md`](find-ordering-contract.md) Notes set that precedent.
+
+**The bm25/IDF correction, and that it was a stage 03 re-entry into stage 02's output.** The
+implementation report's original justification for the six filler rows claimed a two-row graph
+ties **exactly** at zero, because the IDF of a term every row carries collapses to zero. That is
+wrong: SQLite *floors* rather than zeroes that IDF, so a real, correctly-directed difference
+survives at roughly `1e-6` (`pkg.gamma::rate%calc -> -1.4347826086956523e-06`,
+`pkg.alpha::rate%calc -> -7.674418604651162e-07`), independently reproduced by stage 03 via a
+fresh in-memory build of the project's own `schema_fts5.sql` rather than by trusting the report's
+figures. The filler rows were kept, and correctly so, but for the corrected reason: not because a
+two-row graph ties, but because they make the separation a designed signal of real magnitude
+(`gamma -1.151849413183759`, `alpha -0.4356736122404892`, six orders of magnitude wider) rather
+than a margin indistinguishable from floating-point noise. The shipped test's own correctness was
+unaffected either way, because its query (`rate%calc`) never reaches `MATCH` regardless of graph
+size - stage 03 caught the reasoning error, not a defect.
+
+**Read and deliberately not amended:**
+
+- `## Data requirements` and `## Principles` in `specs/commands/find.md` - routing does not change
+  *what* is searched, and nothing here settles a trade-off a principle would need to state; see
+  the plan's own Implements section for the full rationale.
+- `src/venvaxi/SKILL.md` and the skill drift gate - the skill makes no claim about backends,
+  relevance or ranking, and the gate's checks (flags, defaults, the command table, MCP tool
+  signatures, exit codes, documented invocations) are all untouched by this delta. The skill's
+  executed query `venvaxi find Console.print --package rich` is *described* by this delta - it is
+  a path-shaped query that now has a declared refusal-ordering guarantee - but its own behaviour
+  and the skill's claim about it are unchanged.
+- `specs/mcp/tools.md` - restates no ordering guarantee of its own and inherits `find.md`'s
+  guarantee through `findSymbolTool` rather than duplicating it.
+
+**Version pin:** the SQLite version probed against this venv is **3.49.1**
+(`sqlite3.sqlite_version`); [#122](https://github.com/andyrids/venv-axi/issues/122) was written
+against 3.50.4. The spec deliberately names no version and enumerates no character set - the
+trigger belongs to the index's own grammar and to whatever version of it a build ships, not to a
+list that would drift the moment SQLite's FTS5 grammar changes.
+
+**Ripple check:** `grep -l 'specs/commands/find.md' plans/*.md` returns 14 plans, all
+`status: done` (listed in full in the stage 01 techspec's References section). Nothing is
+stranded, and no frozen plan needed editing.
+
+**`authors:` not `specs:`, and why.** This plan changes no file under `src/` - the routing
+behaviour it declares already existed and was already deterministic. `specs:` would claim a code
+conformance this plan never delivers, and adding a regression test is not a code conformance
+either; `authors:` is the honest field for a plan that writes a spec describing behaviour already
+true, following the precedent
+[`plans/find-ordering-contract.md`](find-ordering-contract.md) set for the ordering keys
+themselves.
+
 ## Follow-ups
+
+- **Issue [#134](https://github.com/andyrids/venv-axi/issues/134)** - the `:` column-filter leak:
+  `name:print` and `doc:json` reach the full-text index as column filters rather than as text, a
+  live divergence against `find.md`'s Literal matching rule. Found while specifying this plan and
+  filed during stage 01. Actionable, owned by no current plan.
+- **[#122](https://github.com/andyrids/venv-axi/issues/122) resolution 1** (phrase-quoting the
+  query so every query reaches the full-text index) is not started here and has no owning plan. It
+  is recorded, with its cost - reintroducing the `%`-tokenizer regression
+  [#108](https://github.com/andyrids/venv-axi/issues/108) closed - in `specs/commands/find.md`
+  `## Out of scope`, and is explicitly gated on [#134](https://github.com/andyrids/venv-axi/issues/134)
+  being settled first. It lives there, not in this plan's Follow-ups, because it is scope this
+  plan declined rather than work this plan deferred to a named successor.
+- **None deferred.** There are no `Deferred to` entries - no downstream plan absorbs anything from
+  this run, so no plan besides this one needed editing in this commit.
+- This plan resolves [#122](https://github.com/andyrids/venv-axi/issues/122): resolution 2
+  (declare the routing consequence) was the one chosen and shipped; resolution 1 (phrase-quoting)
+  is recorded above as not taken, gated on #134.
