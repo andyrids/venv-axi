@@ -38,7 +38,7 @@ jobs:
             echo "CI run ${run_id} is ${status}; waiting"
             sleep 15
           done
-          conclusion=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" --jq '.conclusion')
+          conclusion=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" --jq '.conclusion // empty')
           if [ "$conclusion" != "success" ]; then
             echo "::error::CI run ${run_id} for ${GITHUB_SHA} concluded ${conclusion:-in-progress}"
             exit 1
