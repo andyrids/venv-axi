@@ -188,6 +188,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The first job in `.github/workflows/ci.yml` is renamed from `ruff-lint` to `static` and gains a
   third step, `uv run pkgdx-typing-hook -p venvaxi`, so a type-check regression now fails CI
   instead of depending on a contributor's local `prek` hook having run (issue #113).
+- `.github/workflows/release.yml` gains a `verify-ci` job that `build` now `needs`, so publishing
+  a release no longer starts from a commit CI has not validated. The job resolves the newest
+  `ci.yml` run for the released commit's SHA, fails naming that SHA if none exists, polls the run
+  until it completes, and fails unless it concluded `success` - closing the race where a release
+  event fires before the commit's own CI run finishes, and the case where a tag carries no CI run
+  at all (issue #110).
 - The private-submodule skip - a submodule whose own final name segment starts with `_` is never
   walked - is now declared in `specs/behaviors/symbol-graph.md` and cross-referenced from
   `specs/behaviors/qualified-name-semantics.md` and `specs/commands/tree.md`. The behaviour is
