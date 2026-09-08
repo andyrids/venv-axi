@@ -2,7 +2,10 @@
 
 Regression coverage for the six-key total order declared in
 `specs/commands/find.md` under `### Result ordering`, driven through
-`venvaxi._introspect.find_symbol` on both search backends.
+`venvaxi._introspect.find_symbol` on both search backends. Which
+characters the search index refuses, and what that guarantees about
+ordering, is declared there - see `### Result ordering` - and is not
+restated here.
 
 NOTE: The relevance gap the spec leaves *deliberately unspecified*
 between key 4 and key 5 (FTS5 `bm25`; absent on the `LIKE` fallback) is
@@ -12,27 +15,30 @@ with identical FTS token statistics (same name, same token count, same
 matched terms, empty docs) so `bm25` ties exactly and the key under
 test is what breaks the tie on the FTS path too.
 
+NOTE: `test_find_percent_query_ignores_bm25_and_falls_back_to_ordering`
+below is the one deliberate exception to that convention - its two
+tied rows are built so their `bm25` scores genuinely *differ* under a
+plain query, so a build that failed to route its `%` query away from
+FTS would produce a different order, not the same one. Do not "fix"
+that fixture back into a bm25-identical tie; a tied fixture there would
+pass whether or not the routing it exists to prove ever happened.
+
 NOTE: Key 3 is asserted on `search_like.sql` only, on *both* fixture
-parameters. A path-shaped query cannot reach `search_fts.sql` at all -
-FTS5's query grammar rejects an unquoted `.` or `:`, so `search_symbols`
-raises `sqlite3.OperationalError` and routes it to the `LIKE` fallback
-before MATCH is evaluated. Key 3's copy in `search_fts.sql` is mirrored
-so the two files state one ordering contract rather than two, but it is
-unexercised: deleting it from that file leaves every assertion here
-passing (verified at the stage 02 review gate). Do not read a `[fts]`
-parameter on a path-shaped test as proof that clause works. The
-literal-matching tests (#108) sit under the same convention: key 2's
-escaped copy in `search_fts.sql` is likewise mirrored but unexercised,
-and each such test states which parameter proves what. A `_`-query
-membership assertion is meaningful on `[like]` only - unicode61 splits
-`print_json` into `print` and `json`, so the single-token competitor
-`printXjson` never enters the FTS candidate set and that parameter
-passes with or without escaping. A `%` or `\\` query reaches
-`search_like.sql` under either parameter - FTS5 rejects both with a
-syntax error, routing them to the fallback. The `_`-query ranking test
-runs on the fallback only: `bm25` sits in the deliberately unspecified
-gap between keys 4 and 5 on the FTS path and would own the tie that
-test pins on key 5.
+parameters. Key 3's copy in `search_fts.sql` is mirrored so the two
+files state one ordering contract rather than two, but it is
+unexercised on the FTS path for a path-shaped query: deleting it from
+that file leaves every assertion here passing (verified at the stage
+02 review gate). Do not read a `[fts]` parameter on a path-shaped test
+as proof that clause works. The literal-matching tests (#108) sit
+under the same convention: key 2's escaped copy in `search_fts.sql` is
+likewise mirrored but unexercised, and each such test states which
+parameter proves what. A `_`-query membership assertion is meaningful
+on `[like]` only - unicode61 splits `print_json` into `print` and
+`json`, so the single-token competitor `printXjson` never enters the
+FTS candidate set and that parameter passes with or without escaping.
+The `_`-query ranking test runs on the fallback only: `bm25` sits in
+the deliberately unspecified gap between keys 4 and 5 on the FTS path
+and would own the tie that test pins on key 5.
 """
 
 from collections.abc import Callable, Sequence
@@ -386,7 +392,7 @@ def test_find_percent_query_matches_literal_substring_only(
     Meaningful on both fixture parameters: FTS5 rejects `%` with
     `fts5: syntax error near "%"`, so `search_symbols` routes the
     query to the `LIKE` fallback under `[fts]` too (re-confirmed at
-    stage 02 against this venv's SQLite 3.50.4).
+    stage 02 against this venv's SQLite 3.49.1).
     """
     nodes = [
         make_symbol_node(
@@ -473,3 +479,76 @@ def test_find_backslash_query_matches_literal_backslash(
     ]
     results = _seed_and_find(nodes, "a\\b")
     assert [node.name for node in results] == ["parse_escape"]
+
+
+def test_find_percent_query_ignores_bm25_and_falls_back_to_ordering(
+    search_backend: str, make_symbol_node: NodeFactory
+) -> None:
+    """Result ordering, closing-the-gap paragraph: a query the index
+    refuses orders two rows tied on keys 1 to 4 and equal in
+    `qualified_name` length, differing only lexically, by
+    `qualified_name` ascending - key 6 - with no relevance score
+    interposed, even under `[fts]`
+    (`specs/commands/find.md` `### Result ordering`).
+
+    The two tied rows deliberately *invert* this module's usual key
+    5/6 convention: their `doc` text is built so `bm25` genuinely
+    differs between them under a plain query (see the discrimination
+    run in the stage 02 implementation report), rather than tying
+    exactly. A bm25-identical fixture here would pass whether or not
+    the `%` query actually routed away from FTS to `search_like.sql`
+    - the vacuous pass this test exists to rule out. Do not "fix" this
+    fixture back into a tie.
+
+    The lexically greater row (`gamma`) is inserted first, so insertion
+    order cannot produce the pass.
+
+    NOTE: With only the two matched rows in the graph, `bm25` does not
+    tie - SQLite floors rather than zeroes the IDF of a term every row
+    carries, so a real difference survives (verified directly: `gamma
+    -1.4347826086956523e-06`, `alpha -7.674418604651162e-07` for the
+    plain `widget` query), and the direction matches the six-filler
+    case below, so the discrimination run would still pass without
+    them. The six filler rows (`Other`, non-matching `doc`) exist to
+    make that separation a designed signal of real magnitude
+    (`gamma -1.151849413183759`, `alpha -0.4356736122404892`) rather
+    than one resting on that IDF flooring at ~1e-6, which is too
+    close to floating-point noise to trust as a discrimination margin.
+    They never satisfy the `%` query themselves and never appear in
+    this test's own assertion - do not tidy them away as unused
+    scaffolding; removing them does not flip this test, but it does
+    shrink the discrimination run's margin back to that ~1e-6 floor.
+
+    Meaningful on `[fts]` only: an FTS build that failed to route the
+    `%` query away would let `bm25` decide this tie instead of key 6,
+    and the doc text is built precisely so that would produce the
+    other order (confirmed by the discrimination run - see the stage
+    02 report). `[like]` asserts the same order for free, since it
+    never had a `bm25` to interpose.
+    """
+    fillers = [
+        make_symbol_node(
+            qualified_name=f"pkg.f0{i}::Other",
+            name="Other",
+            doc="unrelated text here",
+        )
+        for i in range(6)
+    ]
+    nodes = [
+        *fillers,
+        make_symbol_node(
+            qualified_name="pkg.gamma::rate%calc",
+            name="rate%calc",
+            doc="widget",
+        ),
+        make_symbol_node(
+            qualified_name="pkg.alpha::rate%calc",
+            name="rate%calc",
+            doc="widget " + "filler " * 40,
+        ),
+    ]
+    results = _seed_and_find(nodes, "rate%calc")
+    assert [node.qualified_name for node in results] == [
+        "pkg.alpha::rate%calc",
+        "pkg.gamma::rate%calc",
+    ]

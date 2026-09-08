@@ -130,6 +130,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are unaffected: the first has no dropped-separator reading, and the second already carries a
   more specific diagnosis. `_ensure_installed`'s shared message is untouched, so `tree`, `inherits`,
   `find` and `show` report an absent root exactly as before (issue #95).
+- `specs/commands/find.md` `### Result ordering` declares that a query the search index refuses -
+  its query grammar rejecting one or more of the characters in it - is ordered by keys 1 to 6
+  alone, with the relevance-score slot between key 4 and key 5 left empty rather than merely
+  unspecified for that class of query. `.`, `::`, `%` and `\` are named as the cases this command
+  already meets, through rules `find.md` already carries. A query the index instead *accepts* but
+  reads as something other than text - `name:print`, read as a column filter - is excluded from
+  the new rule by construction: it is a Literal matching failure, filed as
+  [#134](https://github.com/andyrids/venv-axi/issues/134), and carries no ordering guarantee. The
+  converse is declared **not** to be a rule: a query the index accepts is not thereby guaranteed a
+  relevance score, since a build carrying no full-text index at all answers every query from the
+  substring surface regardless of what the query looks like. `## Failure modes` gains the matching
+  `If <trigger>, then` criterion, and `## Out of scope` gains two entries - `find` never reports
+  which surface answered a query, and widening the index's reach to close the gap (the alternative
+  resolution to [#122](https://github.com/andyrids/venv-axi/issues/122)) is deferred behind #134's
+  resolution and costs the `%`-separator regression [#108](https://github.com/andyrids/venv-axi/issues/108)
+  closed. Nothing under `src/` changed - the routing was already deterministic - and one new test
+  in `tests/test_find_ordering.py` pins the previously-untested half by forcing two ordering-tied
+  rows to genuinely differing `bm25` scores and asserting the `%`-routed order overrides them
+  (issue [#122](https://github.com/andyrids/venv-axi/issues/122)).
 - The `inherits` empty-state hint for zero *bases* returns to a single cause and offers no
   recovery: the class derives directly from `object`, which is not indexed. It was widened to
   two causes, naming `--refresh` on the class's own package as a recovery, only because a

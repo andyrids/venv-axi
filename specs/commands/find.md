@@ -136,6 +136,32 @@ Writing the gap down is the point. v0.1.0 freezes `specs/` as the public contrac
 'unspecified' is only a safe answer where it is recorded as a decision rather than left as a
 silence a caller has to discover.
 
+That gap closes in one direction. If the search index refuses `query` - its query grammar rejecting
+one or more of the characters in it - then the `find` command shall order results by keys 1 to 6
+alone, with no relevance score interposed, and for such a query a caller may rely on the slot
+between key 4 and key 5 being empty. Conformance is decided by **observing the order**, not by
+inspecting the query: which characters are refused belongs to the index's own query grammar and to
+the version of that grammar a build ships, so no list written here would stay true. `.`, `::`, `%`
+and `\` are the ones this command already meets - the first two through the path-shaped rule in
+[Data requirements](#data-requirements), the last two through
+[Literal matching](#literal-matching) - and stating the rule over the consequence rather than over
+the character set is what survives the grammar moving underneath it
+([#122](https://github.com/andyrids/venv-axi/issues/122)).
+
+Refusal is the distinguishing property, and a query the index *accepts* but reads as something
+other than text is a different case entirely: it is a [Literal matching](#literal-matching)
+failure, not a routing consequence, and no ordering guarantee attaches to it.
+[#134](https://github.com/andyrids/venv-axi/issues/134) is the open instance - a `:` in a query is
+accepted and read as a filter on one of the index's own fields, so rows come back that carry no
+such literal at all.
+
+The converse is not a rule either, and reading it as one is what this paragraph exists to prevent.
+A query the index accepts is still not guaranteed a relevance score: a build carrying no full-text
+index at all answers every query from the substring surface, whatever the query looks like.
+Relevance may be found absent; it may never be counted on. This **narrows** the unspecified gap
+declared above rather than replacing it - the gap stays open for every other query, and what is
+newly declared is only that one class of query never falls into it.
+
 ## Failure modes
 
 - If `query` is empty, then the `find` command shall raise `InvalidArgumentError`, emit the TOON
@@ -150,11 +176,17 @@ silence a caller has to discover.
   `PackageNotFoundError`, emit the TOON error block and exit `EX_FAILURE`.
 - If the package cannot be imported for introspection, then the `find` command shall raise
   `PackageImportError`, emit the TOON error block and exit `EX_FAILURE`.
+- If the search index refuses `query`, its query grammar rejecting one or more of the characters in
+  it, then the `find` command shall return its results, matched literally per
+  [Literal matching](#literal-matching), and exit `EX_OK`, raising nothing and reporting no
+  degraded search.
 
 The three package classes are defined once in
 [Package resolution](../behaviors/package-resolution.md). An empty result is success, not
 failure - `count: 0` exits `EX_OK`, per the
-[exit codes](../behaviors/output-contract.md#exit-codes).
+[exit codes](../behaviors/output-contract.md#exit-codes). Nor is a query the search index refuses a
+failure: it is answered like any other, and its one observable consequence is the ordering
+guarantee in [Result ordering](#result-ordering).
 
 ## Out of scope
 
@@ -177,6 +209,20 @@ failure - `count: 0` exits `EX_OK`, per the
   and a query carrying more than one dot behaves identically. No future spec is planned; head
   filtering would change what the query *means* rather than how results are ranked, and would be
   filed on its own if a need for it appears.
+- **Reporting which search surface answered a query** - the `find` command emits results, not the
+  route it took to them, and carries no field, flag or hint separating a full-text answer from a
+  substring one. Never - the only consequence a caller can act on is the ordering guarantee in
+  [Result ordering](#result-ordering), and a caller told which surface answered would branch on a
+  detail this spec deliberately declines to fix.
+- **Widening the index's reach so every query can be read by it** - quoting a query into one
+  literal phrase would put the class above back on the full-text surface, changing the result
+  *set* and not only its order. No future spec is planned, and it is not free: the index's
+  tokenizer treats `%` as a separator, so a phrase-quoted `print%json` matches `print_json` again,
+  reintroducing the wrong answer [#108](https://github.com/andyrids/venv-axi/issues/108) closed.
+  [#122](https://github.com/andyrids/venv-axi/issues/122) records it as the alternative resolution
+  to the declaration above, and [#134](https://github.com/andyrids/venv-axi/issues/134) is the open
+  divergence it would have to settle first - a `:` in a query reaches the index as a column filter
+  today, against [Literal matching](#literal-matching).
 
 ## Principles
 
