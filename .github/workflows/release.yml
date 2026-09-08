@@ -8,7 +8,44 @@ on:
     types: [published, prereleased]
 
 jobs:
+  # NOTE: `build` starts from the tag ref the instant the release event fires, independent of
+  # `ci.yml`'s own trigger - nothing otherwise stops a release from publishing a commit CI is
+  # still validating, never validated, or went red on. This job fails the workflow before `build`
+  # unless a CI run for the released commit concluded `success`; a PyPI filename is reserved
+  # permanently, so the check runs before the build it would be too late to undo.
+  verify-ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Require a successful CI run for the released commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run_id=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}" \
+            --jq '.workflow_runs[0].id // empty')
+          if [ -z "$run_id" ]; then
+            echo "::error::No CI run exists for ${GITHUB_SHA} - nothing has validated this commit"
+            exit 1
+          fi
+          for _ in $(seq 1 120); do
+            status=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" --jq '.status')
+            [ "$status" = "completed" ] && break
+            echo "CI run ${run_id} is ${status}; waiting"
+            sleep 15
+          done
+          conclusion=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" --jq '.conclusion')
+          if [ "$conclusion" != "success" ]; then
+            echo "::error::CI run ${run_id} for ${GITHUB_SHA} concluded ${conclusion:-in-progress}"
+            exit 1
+          fi
+
   build:
+    needs: verify-ci
     runs-on: ubuntu-latest
     permissions:
       contents: read
