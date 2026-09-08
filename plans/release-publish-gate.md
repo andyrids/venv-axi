@@ -2,12 +2,12 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs: []
 authors: []
 issues: [110]
-pr:
+pr: 137
 ---
 
 # Plan: Release publish gate
@@ -31,8 +31,11 @@ This unit adds a `verify-ci` job to `release.yml` that `build` now `needs` (`pub
 released commit's SHA, fails naming the SHA if none exists, waits for an in-flight run to
 conclude, and fails unless it concluded `success`.
 
-**Eligibility for `express-change`.** All three conditions in `ICM/express-change/CONTEXT.md`
-hold.
+**Eligibility for `express-change`.** Conditions 1 and 2 in `ICM/express-change/CONTEXT.md` hold
+outright; condition 3 holds for four of the five Validation criteria, and criterion 5 is knowingly
+outside it - the call is made anyway, following `plans/ci-platform-matrix.md`'s identical
+precedent of closing at `status: done` with a permanently un-triggerable box explained rather than
+ticked.
 
 1. **No spec change is required.** `specs/README.md` -> `## What specs cover` is observable
    behaviour of the tool - invocation, inputs, outputs, failure modes. This unit is CI/release
@@ -43,14 +46,13 @@ hold.
 2. **One commit's worth**, with no new dependency and no new public surface. One new job in one
    file, using `gh` and `actions: read` permissions already available to the workflow token - no
    new action pinned, no source or test change.
-3. **Every Validation criterion can be evidenced within this run.** Criteria 1-3 assert on the
-   `verify-ci` script body run directly against real Actions API data (a SHA with no CI run, a
-   cancelled run, a successful run) and are evidenced locally. Criterion 4 needs the branch pushed
-   so `ci.yml` runs on it, which this run does not do (hard constraint: no push); it is evidenced
-   in a follow-up pass once the branch is pushed and a run is in flight. Criterion 5 needs a real
-   GitHub Release event and is not evidenceable by any run of this kind - it stays permanently
-   unticked with the reason recorded in Notes, per the identical precedent
-   `plans/ci-platform-matrix.md` set for its own un-triggered boxes.
+3. **Four of five Validation criteria are evidenced within this run; the fifth knowingly is not.**
+   Criteria 1-3 assert on the `verify-ci` script body run directly against real Actions API data (a
+   SHA with no CI run, a cancelled run, a successful run) and are evidenced locally. Criterion 4
+   needed a real in-flight `ci.yml` run, which PR #137 provided after this plan opened - evidenced
+   in a follow-up pass, below. Criterion 5 needs a real GitHub Release event, which nothing short of
+   an actual release produces; it stays permanently unticked with the reason recorded in Notes, per
+   the identical precedent `plans/ci-platform-matrix.md` set for its own un-triggered boxes.
 
 ## Implements
 
@@ -86,30 +88,43 @@ both empty for that reason.
 6. Add the `CHANGELOG.md` entry under `[Unreleased]` -> `Changed`, citing issue #110.
 7. Report to the human that criterion 4 needs the branch pushed, which this run does not do
    (hard constraint). Stop with `status: in-progress`; criteria 1-3 ticked, 4 and 5 unticked.
+8. Follow-up pass, after the human pushed the branch and opened PR #137: reword the `.conclusion`
+   read to `.conclusion // empty` so the fail-closed error message reads a real word instead of the
+   literal string `"null"`, re-run criteria 1-3 against the re-extracted shipped script to confirm
+   the fix changes nothing they assert on, then run the shipped script against the PR's real
+   in-flight run (criterion 4). Tighten the eligibility verdict's summary sentence so it states the
+   condition-3 caveat instead of a flat "all three hold". Close out: tick criteria 1-4, leave 5
+   unticked, flip `status: done`, leave `pr:` blank per this repo's convention of recording the PR
+   number in a separate follow-up commit.
 
 ## Validation
 
 - [x] If no CI workflow run exists for the released commit, then the release workflow shall fail
-      before building and shall name the commit it found nothing for. — script body run with
+      before building and shall name the commit it found nothing for. — script body (post
+      `.conclusion // empty` fix) run with
       `GITHUB_SHA=1ad19d49939547dd38b6303873d878186002054a`: exit 1,
       `::error::No CI run exists for 1ad19d49939547dd38b6303873d878186002054a - nothing has
       validated this commit`
 - [x] If the CI workflow run for the released commit concluded anything other than success, then
       the release workflow shall fail before building. — poll+conclusion portion of the script
-      run with `run_id=34165306857` (a real cancelled run): exit 1,
+      (post-fix) run with `run_id=34165306857` (a real cancelled run): exit 1,
       `::error::CI run 34165306857 for 34165306857-sha-placeholder concluded cancelled`
 - [x] When the CI workflow run for the released commit concluded success, the release workflow
-      shall proceed to build. — poll+conclusion portion of the script run with
+      shall proceed to build. — poll+conclusion portion of the script (post-fix) run with
       `run_id=32575536666` (a real successful run): exit 0, `gate passed`
-- [ ] While a CI workflow run for the released commit is still in progress, the release workflow
-      shall wait for it to conclude rather than building alongside it.
+- [x] While a CI workflow run for the released commit is still in progress, the release workflow
+      shall wait for it to conclude rather than building alongside it. — full script body run
+      against PR #137's head SHA `c5938229e461bc5a9482e4bd2242b3f04038cee9`, CI run `34221620993`,
+      caught genuinely in flight: output shows the loop iterating seven times -
+      `CI run 34221620993 is in_progress; waiting` repeated - before exiting 0 once the run
+      concluded `success`; a re-run afterwards against the now-completed run also exits 0.
+      Captured under the pre-fix script (`.conclusion` without `// empty`); the fix only reworded
+      the failure-path message this success path never reaches, and a post-fix re-run of the same
+      command against the same completed run confirms exit 0 unchanged
 - [ ] If the gate job fails, then the build and publish jobs shall not run.
 
 ## Risks / unknowns
 
-- **Criterion 4 needs the branch pushed.** This run makes no commit and no push (hard
-  constraint). Evidencing it requires running the gate against the branch head while `ci.yml` is
-  in flight on it, which can only happen after a human pushes. Stays unticked until that pass.
 - **Criterion 5 needs a real GitHub Release event.** No run of this kind - local script execution,
   or even a pushed branch's CI run - produces a `release` event. It is not deferred to a specific
   future plan; the next real release is what evidences it, tracked in Follow-ups.
@@ -171,6 +186,28 @@ of it.
 **Job needs no `checkout` and no `setup-uv`.** It calls `gh api` only, which is preinstalled on
 GitHub-hosted runners and authenticates from `GH_TOKEN: ${{ github.token }}`; nothing it does
 touches the repository checkout or the Python toolchain.
+
+**Pushing the branch alone does not trigger CI; opening the PR did.** The plan assumed a push
+would give criterion 4 its in-flight run. `ci.yml` triggers on `push: branches: [develop]` and
+`pull_request:` - a push to a feature branch with no open PR against it matches neither, so
+nothing ran until PR #137 was opened. Worth a line for the next person reusing this evidence
+route: push the branch, then open (or already have open) the PR, and watch for the `pull_request`
+run rather than waiting on the push.
+
+**`.conclusion` prints the literal string `"null"` for an in-flight run.** `gh api --jq
+'.conclusion'` renders JSON `null` as the four-character string `null`, so `${conclusion:-in-
+progress}` never substitutes - the shell parameter-expansion fallback only fires on an unset or
+empty variable, and `null` is neither. The behaviour was already correct (`null != "success"`
+fails closed), but the message read "concluded null" instead of naming an in-progress run. Fixed
+by reading `.conclusion // empty` instead, so a `null` conclusion becomes an actually-empty
+`conclusion` and the fallback fires as written.
+
+**The `completed`-check inside the loop does not abort under `set -euo pipefail`.** `[ "$status" =
+"completed" ] && break` looks like a bare test that `set -e` would kill on a non-zero exit, but
+the left side of `&&` is exempt from `set -e`'s abort rule - only the whole compound command's
+final exit status matters, and `break` (or falling through when the test is false) both succeed.
+Confirmed by the criterion-4 capture itself: the loop ran seven iterations printing `waiting`
+before the status became `completed`, rather than aborting on the first non-matching check.
 
 ## Follow-ups
 
