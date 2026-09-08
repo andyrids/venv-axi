@@ -2,12 +2,12 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs: []
 authors: []
 issues: [115]
-pr:
+pr: 139
 ---
 
 # Plan: CI Python version matrix
@@ -141,22 +141,44 @@ specification".
 
 ## Validation
 
-- [ ] When a pull request targets `main` or `develop`, the CI workflow shall run the `pytest` job
-      once on `ubuntu-latest` for each of Python 3.11, 3.12, 3.13 and 3.14.
-- [ ] When a pull request targets `main` or `develop`, the CI workflow shall run the `conformance`
-      job once on `ubuntu-latest` for each of Python 3.11, 3.12, 3.13 and 3.14.
-- [ ] While the version axis runs, each leg shall resolve the interpreter its matrix entry names, so
-      a leg's result identifies the Python version and nothing else.
-- [ ] While the version axis runs, the `windows-latest` leg of each test job shall continue to
-      resolve Python 3.13, so the platform axis issue #111 established stays one-variable.
-- [ ] Where Python 3.14 defers annotation evaluation under PEP 649, when the `pytest` job runs
-      against it, the job shall complete with zero test failures.
-- [ ] When the `conformance` job runs against Python 3.11 and against Python 3.14, it shall complete
-      with zero test failures over the different third-party versions `uv.lock` resolves for each.
-- [ ] While the version axis runs, each leg shall restore a `uv` cache keyed to its own interpreter
-      version, so no leg reports on an environment another leg built.
-- [ ] The `python-version` values in `.github/workflows/ci.yml` shall equal the Python versions
-      `pyproject.toml` declares a `Programming Language :: Python` classifier for.
+- [x] When a pull request targets `main` or `develop`, the CI workflow shall run the `pytest` job
+      once on `ubuntu-latest` for each of Python 3.11, 3.12, 3.13 and 3.14. — PR #139 run
+      34280163798 reports `pytest (ubuntu-latest, 3.11)`, `(ubuntu-latest, 3.12)`,
+      `(ubuntu-latest, 3.13)` and `(ubuntu-latest, 3.14)`, all `pass`, where `develop` reports
+      `pytest (ubuntu-latest)` alone
+- [x] When a pull request targets `main` or `develop`, the CI workflow shall run the `conformance`
+      job once on `ubuntu-latest` for each of Python 3.11, 3.12, 3.13 and 3.14. — run 34280163798
+      reports `conformance (ubuntu-latest, 3.11)` through `(ubuntu-latest, 3.14)`, all `pass`;
+      11 check runs total against 7 on `develop`
+- [x] While the version axis runs, each leg shall resolve the interpreter its matrix entry names, so
+      a leg's result identifies the Python version and nothing else. — run 34280163798, the four
+      ubuntu `pytest` legs log `Using CPython 3.11.16`, `3.12.3`, `3.13.15` and `3.14.7` at the
+      `uv sync` step
+- [x] While the version axis runs, the `windows-latest` leg of each test job shall continue to
+      resolve Python 3.13, so the platform axis issue #111 established stays one-variable. — run
+      34280163798, both windows legs log `Using CPython 3.13.15 interpreter at:
+      C:\hostedtoolcache\windows\Python\3.13.15\x64\python.exe`
+- [x] Where Python 3.14 defers annotation evaluation under PEP 649, when the `pytest` job runs
+      against it, the job shall complete with zero test failures. — run 34280163798
+      `pytest (ubuntu-latest, 3.14)`: `622 passed, 32 deselected in 28.98s`, coverage
+      `TOTAL 1352 24 98%`
+- [x] When the `conformance` job runs against Python 3.11 and against Python 3.14, it shall complete
+      with zero test failures over the different third-party versions `uv.lock` resolves for
+      each. — run 34280163798 `conformance (ubuntu-latest, 3.11)`: `32 passed, 622 deselected,
+      4775 warnings
+      in 50.18s`; `conformance (ubuntu-latest, 3.14)`: `32 passed, 622 deselected, 4795 warnings in
+      52.40s`
+- [x] While the version axis runs, each leg shall restore a `uv` cache keyed to its own interpreter
+      version, so no leg reports on an environment another leg built. — run 34280163798, each leg
+      resolves its own suffix (`cache-suffix: pytest-ubuntu-latest-3.11` against
+      `pytest-ubuntu-latest-3.14`) and saves under it: `uv cache saved with key:
+      setup-uv-2-x86_64-unknown-linux-gnu-ubuntu-24.04-3.11-<hash>-pytest-ubuntu-latest-3.11`.
+      Key separation is what is evidenced, not a restore - see Notes
+- [x] The `python-version` values in `.github/workflows/ci.yml` shall equal the Python versions
+      `pyproject.toml` declares a `Programming Language :: Python` classifier for. — a comparison
+      over both the array and `include:` scalar forms of `python-version` against the
+      `Programming Language :: Python` classifiers reports both sides
+      `['3.11', '3.12', '3.13', '3.14']` and `equal: True`
 - [ ] If the suite fails on one interpreter only, then the workflow shall report the check run as
       failed rather than succeeded.
 
@@ -198,4 +220,121 @@ specification".
 
 ## Notes
 
+**Eight of nine boxes ticked; the ninth is un-triggered, not satisfied.** Criterion 9 is an
+`If <trigger>, then` over a red leg, and all eleven check runs passed on the first attempt. A
+structural argument exists - `fail-fast: false` with no `continue-on-error` anywhere - but that is a
+reading of the YAML, not a run, and [ci-platform-matrix](ci-platform-matrix.md) set the convention
+of leaving such a box unticked rather than arguing it. Its own identical box is still open two units
+later, which is the honest state of affairs: nothing has yet gone red on one leg only.
+
+**Issue #115 expected 3.14 to go red and it did not.** All four interpreters pass both tiers, in CI
+and in the local Windows pre-flight. Read narrowly: the suite passes against the interpreter and
+dependency versions resolved on 2026-09-08, and that is all. The value of the unit is that the next
+`inspect` or annotation-semantics change is caught by CI rather than by an installer who trusted the
+classifiers. Worth noting the prediction was reasonable and the pre-flight is *why* it was cheap to
+disprove - the eligibility call under `express-change` depended on knowing before writing the plan,
+since a red 3.14 needing a behaviour fix would have re-entered `process-plan` at stage 01.
+
+**PEP 649 changes what `coverage` counts, and the Risks section predicted the symptom without the
+cause.** The 3.14 leg reports `TOTAL 1352` statements where 3.11, 3.12, 3.13 and Windows all report
+`TOTAL 1385` - a 33-statement gap. This plan's Risks said `src/` carries no `sys.version_info`
+branch so the per-leg totals "should agree, and a disagreement would itself be worth investigating".
+They disagreed, so it was investigated, and the cause is exact:
+
+| Module | 3.13 | 3.14 | Delta | Bare class-body annotations |
+| --- | --- | --- | --- | --- |
+| `_cache.py` | 95 | 87 | -8 | 8 |
+| `_core.py` | 40 | 39 | -1 | 1 |
+| `_introspect.py` | 300 | 291 | -9 | 9 |
+| `_packages.py` | 70 | 67 | -3 | 3 |
+| `_store.py` | 154 | 142 | -12 | 12 |
+| **Total** | **1385** | **1352** | **-33** | **33** |
+
+An `ast` walk counting `AnnAssign` nodes with no value inside a `ClassDef` matches the delta module
+for module, with no residual. PEP 649 compiles class-body annotations into a lazily evaluated
+`__annotate__` function, so a bare `qualified_name: str` is no longer an executed statement at class
+creation time and `coverage` stops counting it. **This is a measurement artifact, not a coverage
+regression**: misses are identical at 24 on every leg, and the percentage is 98% on all five. It is
+also a neat confirmation of the issue's own argument for testing 3.14 - the interpreter change it
+named as the risk is observable in this project's numbers, just not where anyone was looking.
+
+**`cache-suffix` was not load-bearing, and the plan overstated it.** Approach step 3 justified the
+suffix as "the one way this axis could report a green leg for an environment it did not build". The
+saved key is
+`setup-uv-2-x86_64-unknown-linux-gnu-ubuntu-24.04-3.11-<hash>-pytest-ubuntu-latest-3.11`, and
+`setup-uv` already interpolates the interpreter version (`-3.11-`) ahead of our suffix.
+Cross-version cache collision was therefore not possible before this change either. The suffix
+still earns its place - it keys the cache per job as well as per version, and makes the key legible
+in the log - but the stated justification was wrong and is corrected here rather than left
+standing.
+
+**Criterion 7 evidences key separation, not a restore.** Every suffix is new on the first run, so
+every leg necessarily missed and `saved` rather than `restored`. The observable the criterion exists
+for - no two legs sharing a key - is fully evidenced; the word "restore" will only be literally
+true from the second run on. Worth stating rather than ticking past.
+
+**One leg resolves the runner's system interpreter, not a uv-managed build.** The 3.12 legs log
+`Using CPython 3.12.3 interpreter at: /usr/bin/python3.12`, where 3.11, 3.13 and 3.14 log a
+uv-downloaded build with no path. The matrix entry is satisfied - 3.12.3 is 3.12 - so criterion 3
+holds, but patch-level provenance is not uniform across the axis and a 3.12-only failure would be
+worth checking against the runner image before the code.
+
+**CI and the pre-flight disagree on patch level for 3.13.** Local ran `3.13.7` (already installed on
+the machine); CI resolves `3.13.15`. Both satisfy the matrix entry. Recorded because the pre-flight
+is cited as evidence in this plan and a future reader re-running it will not get the same build.
+
+**Windows x 3.14 is exercised nowhere on a standing basis.** The Windows leg stays pinned at 3.13 by
+decision at the plan gate, so the interpreter with the sharpest semantic change runs in CI on Linux
+only. The local pre-flight covers Windows x 3.11 and x 3.14 and passed, which dates that
+combination rather than gating it. If a Windows-conditional 3.14 defect ever ships, this paragraph
+is the reason, and the fix is one more `include` entry.
+
+**Why the axis went on both test jobs.** `uv.lock` resolves different third-party versions per
+interpreter, so `conformance` is not a redundant multiplication of `pytest` - it walks different
+real code on each leg. The differing warning counts across legs (4775 on 3.11, 4795 on
+3.12/3.13/3.14 ubuntu, 4771 on Windows 3.13) are the visible trace of that. Cost was negligible:
+the four ubuntu `conformance` legs ran 1m7s to 1m12s in parallel.
+
+**The changelog entry landed in the implementation commit, not the closeout commit.** This plan's
+Approach put it at step 9, before "stop before closeout" at step 10, and that is what was done. The
+immediately preceding unit ([skill-gate-parser-access](skill-gate-parser-access.md)) landed its
+entry in the closeout commit instead, and the `ICM/express-change` stage contract lists the
+changelog under closeout. Both readings are live in the repo now; worth settling in the contract
+rather than per plan, since the difference decides whether a changelog entry can describe a run that
+has not happened yet.
+
+**The review found two defects in the implementing agent's output**, both in `CHANGELOG.md`, both
+corrected before the commit. The entry claimed "three of the four interpreters they name are now
+exercised" - four are; three were previously unexercised, so the sentence inverted its own point.
+Separately, the matrix/classifier check written to evidence criterion 8 read only the
+`python-version: [...]` array form, so it would have passed even had the `include:` Windows pin
+named an undeclared version, which is the one drift that criterion exists to catch. The citation
+above is the corrected check, reading both forms. Recorded because it is the same shape as the
+defect this whole CI sequence keeps closing: a check that reports success over something it never
+examined.
+
 ## Follow-ups
+
+- **Issue** [#136](https://github.com/andyrids/venv-axi/issues/136) - the GitHub-side publish gate.
+  **Updated in this unit rather than only noted**: its resolution 2 quoted `pytest (ubuntu-latest)`,
+  `pytest (windows-latest)`, `conformance (ubuntu-latest)` and `conformance (windows-latest)`
+  verbatim as the ruleset entries to add, and all four spellings ceased to exist here. The body now
+  lists the eleven real names and records that the name-drift risk resolution 2 has to "accept" is
+  no longer hypothetical - the names have now drifted twice in this milestone, once per axis, each
+  time silently invalidating every ruleset entry with no failure at the point of breakage. Adding or
+  dropping a supported Python version rewrites five of the eleven. That is an argument for
+  weighting resolution 1, which gates the `pypi` environment and names no checks at all.
+- **Issue** [#117](https://github.com/andyrids/venv-axi/issues/117) - four prek hook families
+  enforced only by local developer configuration. The last remaining "a claim CI enforces by
+  nothing" issue that touches `ci.yml` itself. It lands against an eleven-leg matrix now, and its
+  hooks are interpreter-independent, so it belongs on `static` rather than on either test job -
+  worth deciding explicitly rather than by default.
+- **Issue** [#120](https://github.com/andyrids/venv-axi/issues/120) - nothing exercises the `mcp`
+  extra's declared floor. This unit multiplies the interpreter axis by nothing else; #120 adds a
+  *dependency-version* axis, and crossing the two would be 8 legs per job for a floor claim. The
+  precedent set here - asymmetric, cheapest platform carrying the widest axis - is the shape to
+  reuse rather than a cross-product.
+- **Deferred to** - none.
+- **Tracked as** - none. The PEP 649 coverage artifact is documented in Notes and needs no issue:
+  nothing consumes `coverage.xml`, no statement went uncovered, and per-leg totals are not compared
+  by any gate.
