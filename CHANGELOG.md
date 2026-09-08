@@ -201,6 +201,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The packaged skill gains a gotcha for that rule. It was previously unwritable: the skill may
   restate no claim `specs/**` does not declare, so declaring the behaviour is what allowed
   documenting it where an agent meets it (issue #87).
+- `tests/test_skill_drift.py`'s three private argparse reads - the module-level subparser walk and
+  both `_option_strings` and `_parser_defaults` - now go through two accessors, `_actions` and
+  `_subcommand_parsers`, that raise a named `GateCannotWalkParserError` naming the failing
+  attribute and the interpreter's `sys.version_info`, instead of an `AttributeError` at collection
+  or a walk that empties silently and passes: every real parser carries at least `-h`/`--help`,
+  and a parser built with subcommands registers at least one, so an empty result is itself a
+  failure. A new canary, `test_subcommand_walk_reaches_working_parsers`, asserts the walk is
+  non-empty and that every walked parser reports `-h`/`--help`, independently of the packaged
+  skill's Commands table - closing the case where both sides of that existing comparison could
+  empty together and still pass. The private-API dependence itself is unchanged; only its failure
+  shape is (issue #128).
 
 ### Fixed
 

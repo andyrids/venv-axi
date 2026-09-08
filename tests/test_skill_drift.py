@@ -55,19 +55,117 @@ SKILL_TEXT = skill_markdown.read_text(encoding="utf-8")
 
 PARSER = build_parser()
 
-SUBCOMMAND_PARSERS: dict[str, argparse.ArgumentParser] = {
-    name: subparser
-    for action in PARSER._actions
-    if isinstance(action, argparse._SubParsersAction)
-    for name, subparser in action.choices.items()
-}
-"""Every registered subcommand, keyed by the name argparse dispatches on.
 
-NOTE: The real parser object - the one `--help` renders from - not a
-reconstruction of it. `plans/skill-drift-gate.md` (Out of scope)
-rejected scraping `--help` text for the same reason: this is the
-authority that does not move when argparse changes its formatting.
-"""
+class GateCannotWalkParserError(Exception):
+    """Raised when the drift gate cannot walk a parser's internals.
+
+    NOTE: argparse exposes no public API to enumerate a built parser's
+    actions or its registered subparsers, so this module reads
+    `_actions` and `argparse._SubParsersAction` by necessity - the
+    alternative is scraping rendered `--help` text, which is the
+    reading `specs/README.md` Invariant 4 and #128 both reject, since
+    the parser is what `--help` renders *from*. This error exists so
+    that a future interpreter moving those internals fails loudly and
+    by name, instead of as a raw `AttributeError` at collection or a
+    walk that quietly empties and passes (#128).
+    """
+
+    def __init__(self, problem: str) -> None:
+        """Build the message, with the interpreter version attached.
+
+        NOTE: Built here rather than at each `raise` site, so every
+        touchpoint reports the same shape and the interpreter version
+        - the entire point of this module's private-API dependence
+        (#128) - is never a call site's to forget.
+
+        Args:
+            problem: What the gate could not do, e.g. "no `_actions`
+                attribute" or "`_actions` is empty".
+        """
+        version = ".".join(map(str, sys.version_info[:3]))
+        super().__init__(
+            f"the drift gate cannot walk the parser: {problem}"
+            f" (Python {version})"
+        )
+
+
+def _actions(parser: argparse.ArgumentParser) -> list[argparse.Action]:
+    """Return a parser's registered actions, or fail loudly trying.
+
+    NOTE: `parser._actions` is private; wrapping every read behind this
+    accessor means an argparse change that renames or empties it raises
+    one named error instead of surfacing at each of the three call
+    sites separately (#128).
+
+    Args:
+        parser: A top-level or subcommand parser.
+
+    Returns:
+        The parser's `_actions` list.
+
+    Raises:
+        GateCannotWalkParserError: If `parser` carries no `_actions`
+            attribute, or if `_actions` is empty - every real parser
+            carries at least `-h`/`--help`, so empty means the
+            internals changed shape without changing the name.
+    """
+    try:
+        actions = parser._actions
+    except AttributeError as err:
+        msg = "no `_actions` attribute"
+        raise GateCannotWalkParserError(msg) from err
+    if not actions:
+        msg = "`_actions` is empty"
+        raise GateCannotWalkParserError(msg)
+    return actions
+
+
+def _subcommand_parsers(
+    parser: argparse.ArgumentParser,
+) -> dict[str, argparse.ArgumentParser]:
+    """Return every subparser registered on `parser`, by dispatch name.
+
+    NOTE: The real parser objects - the ones `--help` renders from -
+    not a reconstruction of them. `plans/skill-drift-gate.md` (Out of
+    scope) rejected scraping `--help` text for the same reason: this is
+    the authority that does not move when argparse changes its
+    formatting.
+
+    Args:
+        parser: The parser whose subparsers are walked. `PARSER` for
+            `venvaxi`'s own subcommands.
+
+    Returns:
+        Every registered subcommand, keyed by the name argparse
+        dispatches on.
+
+    Raises:
+        GateCannotWalkParserError: If `argparse._SubParsersAction` is
+            not reachable on this interpreter, or if the walk finds no
+            subparsers - a parser built with subcommands registers at
+            least one.
+    """
+    try:
+        subparsers_action = argparse._SubParsersAction
+    except AttributeError as err:
+        msg = "no `argparse._SubParsersAction`"
+        raise GateCannotWalkParserError(msg) from err
+    found = {
+        name: subparser
+        for action in _actions(parser)
+        if isinstance(action, subparsers_action)
+        for name, subparser in action.choices.items()
+    }
+    if not found:
+        msg = "no subparsers found"
+        raise GateCannotWalkParserError(msg)
+    return found
+
+
+SUBCOMMAND_PARSERS: dict[str, argparse.ArgumentParser] = _subcommand_parsers(
+    PARSER
+)
+"""Every registered subcommand, keyed by the name argparse dispatches on."""
 
 GLOBAL_OPTION_STRINGS = frozenset({"-v", "--verbose", "--version"})
 """Flags the skill documents in prose rather than in the Commands table.
@@ -260,7 +358,7 @@ def _option_strings(parser: argparse.ArgumentParser) -> set[str]:
     """
     return {
         option
-        for action in parser._actions
+        for action in _actions(parser)
         for option in action.option_strings
     }
 
@@ -276,7 +374,7 @@ def _parser_defaults(parser: argparse.ArgumentParser) -> dict[str, str]:
     """
     return {
         option: str(action.default)
-        for action in parser._actions
+        for action in _actions(parser)
         for option in action.option_strings
     }
 
@@ -341,6 +439,76 @@ def test_commands_table_covers_every_registered_subcommand() -> None:
     """
     resolved = {name for name in DOCUMENTED_COMMANDS if name is not None}
     assert resolved == set(SUBCOMMAND_PARSERS)
+
+
+def test_subcommand_walk_reaches_working_parsers() -> None:
+    """The subparser walk is a canary in its own right, independent of
+    `SKILL.md`.
+
+    NOTE: Anchored on `HELP_OPTION_STRINGS` rather than on
+    `SUBCOMMAND_PARSERS` being merely non-empty. `-h`/`--help` sits "on
+    every parser, in no table row", so a walked parser reporting it
+    proves the walk returned a *working* parser, not merely a non-empty
+    dict entry. Deliberately never compared against the Commands table
+    - `test_commands_table_covers_every_registered_subcommand` already
+    does that comparison, and its two sides could empty together, which
+    is the hole this test closes (#128).
+
+    NOTE: `assert subparsers` is unreachable as written -
+    `_subcommand_parsers` now raises `GateCannotWalkParserError` before
+    it can return empty, and
+    `test_subcommand_parsers_raises_named_error_when_empty` is what
+    actually exercises that branch. Kept anyway, deliberately, as
+    belt-and-braces: this test's job is proving the walk reaches
+    *working* parsers, and a reader should not have to know the
+    accessor's internals to see that non-emptiness is asserted here
+    too.
+    """
+    subparsers = _subcommand_parsers(PARSER)
+    assert subparsers
+    for name, subparser in subparsers.items():
+        assert HELP_OPTION_STRINGS <= _option_strings(subparser), name
+
+
+def test_actions_raises_named_error_when_parser_is_unreadable() -> None:
+    """`_actions` raises the named error, not a bare `AttributeError`,
+    when the object it is given carries no `_actions`.
+
+    NOTE: Evidenced by causing the failure - a stand-in object with no
+    `_actions` attribute - rather than by reasoning about what argparse
+    would do if its internals moved (`plans/ci-static-typing.md`,
+    Notes). Only the exception type and the identifying facts in the
+    message are asserted, not the whole string, which would make this
+    brittle against wording changes. The interpreter-version assertion
+    checks the full dotted version rather than `sys.version_info[0]`
+    alone, since a bare major-version digit is a near-vacuous check -
+    it would pass on almost any message that happened to contain a
+    `3` somewhere, version or not.
+    """
+
+    class _NoActions:
+        """Carries none of argparse's private attributes."""
+
+    with pytest.raises(GateCannotWalkParserError) as excinfo:
+        _actions(_NoActions())
+    message = str(excinfo.value)
+    assert "_actions" in message
+    assert ".".join(map(str, sys.version_info[:3])) in message
+
+
+def test_subcommand_parsers_raises_named_error_when_empty() -> None:
+    """`_subcommand_parsers` raises the named error on a parser that
+    registers no subparsers, on the shipped, unmodified accessor.
+
+    NOTE: A bare `argparse.ArgumentParser()` carries `_actions` (every
+    parser does, for `-h`), so this lands past `_actions` and onto the
+    walk's own empty-result branch - no neutering of the guard, no
+    hand-modified copy of it, just a parser built with no subcommands
+    registered (#128).
+    """
+    with pytest.raises(GateCannotWalkParserError) as excinfo:
+        _subcommand_parsers(argparse.ArgumentParser())
+    assert "no subparsers found" in str(excinfo.value)
 
 
 def test_commands_table_states_at_least_one_default() -> None:
