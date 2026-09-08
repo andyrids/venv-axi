@@ -212,6 +212,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   skill's Commands table - closing the case where both sides of that existing comparison could
   empty together and still pass. The private-API dependence itself is unchanged; only its failure
   shape is (issue #128).
+- The `pytest` and `conformance` jobs in `.github/workflows/ci.yml` gain a `python-version` axis:
+  each now runs once per Python 3.11, 3.12, 3.13 and 3.14 on `ubuntu-latest`, while the
+  `windows-latest` leg of each stays pinned at 3.13, so the platform axis issue #111 established
+  keeps varying exactly one thing. `pyproject.toml` names all four versions in its
+  `Programming Language :: Python` classifiers while CI ran 3.13 alone, so three of the four were
+  advertised on the PyPI listing and exercised by nothing. Every one of them now runs on every
+  pull request (issue #115).
 
 ### Fixed
 
