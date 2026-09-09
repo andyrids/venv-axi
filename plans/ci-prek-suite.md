@@ -321,13 +321,14 @@ Split into `Fixed`. Its own report flagged the `pkgdx` deviation, the loop-cost 
 
 ## Follow-ups
 
-- **Issue to file** - `pkgdx-secrets` scans Python files only (`types_or: ["python", "pyi"]`), so
-  `detect-secrets` gates no YAML, JSON, `.env` or markdown file even though the `Justfile` baseline
-  recipe scans all of them. The fix belongs in `pkgdx`'s `.pre-commit-hooks.yaml` upstream, since
-  `prek.toml` must not be hand-edited and `pkgdx init` would revert a local widening. Worth noting
-  in that issue that a locked repo-wide alternative exists without touching `prek.toml`, passing
-  `git ls-files` output to `detect-secrets-hook` directly, and was rejected here as hand-rolling
-  the file selection prek already does.
+- **Issue** [#141](https://github.com/andyrids/venv-axi/issues/141) - `pkgdx-secrets` scans Python
+  files only (`types_or: ["python", "pyi"]`), so `detect-secrets` gates no YAML, JSON, `.env` or
+  markdown file even though the `Justfile` baseline recipe scans all of them. Measured when filing:
+  an AWS access key in a tracked YAML file leaves the hook reporting `Passed` at exit 0, while
+  `detect-secrets scan` records that same key - so the baseline can acquire an entry for a secret no
+  gate has ever objected to. The fix belongs in `pkgdx`'s `.pre-commit-hooks.yaml` upstream, since
+  `prek.toml` must not be hand-edited and `pkgdx init` would revert a local widening; filed with no
+  milestone for that reason, as issue #20 was.
 - **Issue** [#20](https://github.com/andyrids/venv-axi/issues/20) - the PyMarkdown tokenizer crash
   stays open and unmilestoned. This unit makes its failure legible, not fixed: CI now names the file
   rather than nothing. Its own resolution 1, narrowing the reproducer and reporting upstream, is
