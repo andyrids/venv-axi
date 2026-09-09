@@ -57,6 +57,12 @@ done
 Then bisect within the file by rewriting one block at a time. The fix is to drop the pipes -
 write 'or' - rather than to restructure the list, since restructuring does not reliably help.
 
+CI runs that first loop for you. When the hook fails, the `Locate a PyMarkdown tokenizer crash`
+step in `.github/workflows/ci.yml`'s `static` job replays it over every tracked `.md` file and
+annotates each file that reproduces the crash, so read the CI log before bisecting locally. The
+annotation carries no line number - GitHub anchors it at line 1 - so it narrows the search to a
+file and the within-file bisection above is still yours to run.
+
 This is worth writing down precisely because the tool gives no signal. Contrast Ruff, which names
 the rule and prints the remedy; a reference entry duplicating *that* would rot while the tool
 stays right.

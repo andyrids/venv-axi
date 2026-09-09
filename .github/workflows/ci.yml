@@ -29,9 +29,50 @@ jobs:
 
       - run: uv sync
 
-      - run: uv run pkgdx-lint-hook
-      - run: uv run pkgdx-format-hook
-      - run: uv run pkgdx-typing-hook -p venvaxi
+      # NOTE: prek builds each hook's environment itself and never reads `uv.lock`, and `pkgdx`
+      # constrains its tools with lower bounds only, so an unconstrained hook environment resolves
+      # whatever is newest on PyPI. A ruff or mypy release could then turn this job red with no
+      # commit responsible for it. `UV_CONSTRAINT` points uv at the lock's own pins, so the hooks
+      # run the versions the project resolves. `pkgdx` itself is excluded: prek clones the hook
+      # repo without tags, so its `hatch-vcs` version is not the `0.2.0` the lock records and
+      # pinning it makes the hook environment unsolvable.
+      - name: Pin prek's hook environments to uv.lock
+        run: uv export --frozen --no-hashes --no-emit-project --no-emit-package pkgdx --format requirements-txt > "${{ runner.temp }}/constraints.txt"
+
+      - name: Run every prek hook
+        id: hooks
+        env:
+          UV_CONSTRAINT: ${{ runner.temp }}/constraints.txt
+        run: uv run -m prek run --all-files
+
+      # NOTE: PyMarkdown's `BadTokenizationError` names no file, line or rule
+      # (`ICM/_config/reference-toolchain-pymarkdown.md`, issue #20), so this runs the per-file
+      # bisection that reference documents and annotates the culprit. It never fails the job
+      # itself - the hook step above is the gate.
+      - name: Locate a PyMarkdown tokenizer crash
+        if: failure() && steps.hooks.outcome == 'failure'
+        shell: bash
+        env:
+          UV_CONSTRAINT: ${{ runner.temp }}/constraints.txt
+        run: |
+          # One whole-suite markdown run decides whether the per-file loop below is worth
+          # 107 invocations. A ruff or mypy failure is the common case and reproduces no
+          # crash, so it pays this single run rather than the whole bisection.
+          if ! uv run -m prek run pkgdx-markdown --all-files 2>&1 | grep -q BadTokenization; then
+            echo "No tokenizer crash - the hook failure above is an ordinary violation, already located by prek."
+            exit 0
+          fi
+          found=0
+          while IFS= read -r f; do
+            if uv run -m prek run pkgdx-markdown --files "$f" 2>&1 | grep -q BadTokenization; then
+              echo "::error file=$f::PyMarkdown BadTokenizationError somewhere in this file (issue #20) - a pipe character inside a nested list item. Write 'or' instead of '|'."
+              found=1
+            fi
+          done < <(git ls-files '*.md')
+          if [ "$found" -eq 0 ]; then
+            echo "No BadTokenizationError reproduced per file - the hook failure above is an ordinary rule violation, already located by prek."
+          fi
+          exit 0
 
   pytest:
     strategy:

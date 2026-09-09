@@ -14,6 +14,8 @@ Ruff is used to implement Python linting and formatting standards.
 
 - `uv run pkgdx-lint-hook` - Lint the codebase
 - `uv run pkgdx-format-hook` - Format the codebase
+  - Rewrites files and exits 0 whatever it finds, so it formats but does not gate. `--check` is the
+    gating form, and the `Format [Ruff]` hook carries `--exit-non-zero-on-format`
 - `uv run prek run --all-files` - Run the `lint`/`format` hooks alongside all other hooks
 
 ## Configuration

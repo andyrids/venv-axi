@@ -219,9 +219,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Programming Language :: Python` classifiers while CI ran 3.13 alone, so three of the four were
   advertised on the PyPI listing and exercised by nothing. Every one of them now runs on every
   pull request (issue #115).
+- The `static` job in `.github/workflows/ci.yml` now runs the prek suite itself,
+  `uv run -m prek run --all-files`, superseding the three `pkgdx` console-script steps
+  (`pkgdx-lint-hook`, `pkgdx-format-hook`, `pkgdx-typing-hook -p venvaxi`). All eight hooks
+  `prek.toml` declares are now enforced by CI where three were: the markdown check, the
+  `detect-secrets` scan and the `check-toml`, `check-yaml` and `detect-private-key` builtins ran
+  only where a contributor had run `uv run prek install`. The two `pkgdx` hooks could not have been
+  added as further console-script steps - a `pkgdx-secrets-hook` step with no filenames scans
+  nothing and exits 0 - and the three builtins expose no console script at all. A preceding step
+  exports `uv.lock` to a constraints file and the hook step sets `UV_CONSTRAINT` to it, because prek
+  builds its own hook environments and never reads the lock while `pkgdx` constrains its tools with
+  lower bounds only: unconstrained, a fresh environment resolved ruff 0.16.6 and mypy 2.3.1 against
+  the lock's 0.16.1 and 2.3.0, so a tool release alone could turn CI red on a tree nobody had
+  touched. A failure-only step runs the per-file bisection
+  `ICM/_config/reference-toolchain-pymarkdown.md` documents and annotates the file that crashes
+  PyMarkdown's tokenizer, whose own error names no file, line or rule (issue #117).
 
 ### Fixed
 
+- CI's format check now gates. `uv run pkgdx-format-hook` with no arguments is `ruff format`
+  without `--check`, so it rewrote misformatted files in place and exited 0 - measured on a
+  deliberately misformatted `src/venvaxi/__init__.py`: `1 file reformatted`, exit 0, and a clean
+  `git diff` afterwards, because the rewrite had already happened. The `static` job ran exactly
+  that form, so a green format check gated nothing and its `140 files left unchanged` log line was
+  an unconditional message rather than a result. Run through prek the same hook carries
+  `--exit-non-zero-on-format` from the hook definition, so a misformatted file now fails the job
+  (issue #117).
 - A package whose own root name starts with `_` (`_pytest`) no longer keeps public-sibling
   re-exports below its root. The re-export filter's private-home carve-out tested
   `any(segment.startswith("_") ...)` over **every** segment of the home module name, including
