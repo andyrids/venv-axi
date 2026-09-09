@@ -26,3 +26,17 @@ Prek is used as a pre-commit hook manager and is installed as a dependency. Runn
   - MUST not be changed by hand - re-run `pkgdx init` instead
 - The hooks it references (`pkgdx-lint`, `pkgdx-format`, `pkgdx-typing`, `pkgdx-markdown`,
   `pkgdx-secrets`) are exposed by the `pkgdx` dev dependency
+
+## CI
+
+The suite is not enforced by a contributor's local `prek install` alone. The `static` job in
+`.github/workflows/ci.yml` runs it on every pull request: its `Run every prek hook` step is
+`uv run -m prek run --all-files`, so every hook `prek.toml` declares is a gate.
+
+Prek builds each hook's environment itself and never reads `uv.lock`, and `pkgdx` constrains its
+tools with lower bounds only, so an unconstrained hook environment resolves whatever is newest on
+PyPI - a tool release alone could then turn CI red. The preceding `Pin prek's hook environments to
+uv.lock` step exports the lock's pins and the run step sets `UV_CONSTRAINT` to that file, so the
+hooks resolve the versions the project resolves. `pkgdx` itself is excluded from the export
+(`--no-emit-package pkgdx`): prek clones the hook repo without tags, so the version its `hatch-vcs`
+config derives is not the one the lock records, and pinning it makes the environment unsolvable.
