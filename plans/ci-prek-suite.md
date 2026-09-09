@@ -2,12 +2,12 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs: []
 authors: []
 issues: [117]
-pr:
+pr: 140
 ---
 
 # Plan: CI prek suite
@@ -160,20 +160,42 @@ change makes true, the same class of change as the five CI units preceding it, s
 
 ## Validation
 
-- [ ] When a pull request targets `main` or `develop`, the `static` job shall run every hook
-      `prek.toml` declares.
-- [ ] While the `static` job runs, each hook environment shall resolve the tool versions `uv.lock`
-      pins, so a new tool release cannot turn CI red on an unchanged tree.
-- [ ] While the `static` job runs, `detect-secrets` shall execute over the tracked files rather than
-      be skipped.
-- [ ] If a tracked Python file is misformatted, then the `static` job shall fail rather than
-      reformat it and report success.
-- [ ] If a tracked markdown file crashes PyMarkdown's tokenizer, then the `static` job shall report
-      that file's path rather than a diagnostic naming no file.
-- [ ] If the markdown hook fails on an ordinary rule violation, then the diagnostic step shall add
-      no annotation, since prek already names file, line and rule.
-- [ ] `ICM/_config/reference-toolchain-prek.md` shall name the CI step that runs the suite and shall
-      no longer imply the suite is enforced only by a local install.
+- [x] When a pull request targets `main` or `develop`, the `static` job shall run every hook
+      `prek.toml` declares. — PR #140 run 34392992600, `static`: all eight hooks report `Passed`
+      in one `uv run -m prek run --all-files` step (`Lint [Ruff]`, `Format [Ruff]`,
+      `Check Markdown [PyMarkdown]`, `Typing [Mypy]`, `Detect Secrets [detect-secrets]`,
+      `Check TOML`, `Check YAML`, `Detect PEM`), where `develop` ran three console-script steps
+- [x] While the `static` job runs, each hook environment shall resolve the tool versions `uv.lock`
+      pins, so a new tool release cannot turn CI red on an unchanged tree. — two halves, and
+      neither alone is the whole claim. The configuration is verified in CI: run 34392992600 logs
+      the export step and `UV_CONSTRAINT: /home/runner/work/_temp/constraints.txt` on the hook
+      step. The effect is verified locally, since the CI log does not print hook-environment
+      versions: with `UV_CONSTRAINT` set to the export, a fresh `PREK_HOME` built ruff 0.16.1 and
+      mypy 2.3.0, matching `uv.lock`; the control with `UV_CONSTRAINT` unset built ruff 0.16.6 and
+      mypy 2.3.1. See Notes on what this box does not evidence
+- [x] While the `static` job runs, `detect-secrets` shall execute over the tracked files rather than
+      be skipped. — run 34392992600 reports `Detect Secrets [detect-secrets]....Passed`, not
+      `Skipped`; `uv run -m prek run --all-files --dry-run` lists eight hooks at the default stage
+      against seven under `--stage pre-push`, the omitted one being this hook
+- [x] If a tracked Python file is misformatted, then the `static` job shall fail rather than
+      reformat it and report success. — misformatting `src/venvaxi/__init__.py`, then
+      `uv run -m prek run --all-files`: `Format [Ruff]....Failed`, `exit code: 1`,
+      `files were modified by this hook`. The superseded form on the same input:
+      `uv run pkgdx-format-hook` reports `1 file reformatted` and exits `0`
+- [x] If a tracked markdown file crashes PyMarkdown's tokenizer, then the `static` job shall report
+      that file's path rather than a diagnostic naming no file. — restoring the issue #20
+      reproducer at `ICM/express-change/CONTEXT.md:46` (`'approved' | 'continue'`), the hook reports
+      only `Unexpected Error(BadTokenizationError)`; the diagnostic step body then emits
+      `::error file=ICM/express-change/CONTEXT.md::PyMarkdown BadTokenizationError somewhere in
+      this file (issue #20)` and exits 0. Reverted to blob `9747458f`
+- [x] If the markdown hook fails on an ordinary rule violation, then the diagnostic step shall add
+      no annotation, since prek already names file, line and rule. — an over-length line reports
+      `MD013: Line length [Expected: 100, Actual: 185]` with its file and line, and the diagnostic
+      step's guard short-circuits in 5.9s printing `No tokenizer crash`, emitting no annotation
+- [x] `ICM/_config/reference-toolchain-prek.md` shall name the CI step that runs the suite and shall
+      no longer imply the suite is enforced only by a local install. — the file gains a `## CI`
+      section naming the `Run every prek hook` step, its `--all-files` invocation and the
+      `UV_CONSTRAINT` pinning that precedes it
 
 ## Risks / unknowns
 
@@ -225,4 +247,98 @@ change makes true, the same class of change as the five CI units preceding it, s
 
 ## Notes
 
+**Seven of seven boxes ticked, which is unusual for this sequence** - the four preceding CI units
+each froze with at least one un-triggered box. The difference is that every failure criterion here
+was evidenced by *causing* the failure rather than waiting for one, following the specimen-guard
+demonstration [ci-conformance-tier](ci-conformance-tier.md) did: a misformatted file, a restored
+issue #20 reproducer, an over-length markdown line, a fake credential. A guard nobody has seen fail
+is a guard nobody has checked.
+
+**What criterion 2's box does not evidence.** The CI log prints no hook-environment versions, so the
+run cannot show that ruff 0.16.1 rather than 0.16.6 was the one that ran. What CI evidences is that
+the configuration is in force - the export step ran and `UV_CONSTRAINT` is on the hook step - and
+what the local constrained/control pair evidences is that the configuration has the claimed effect.
+The chain is complete but it is a chain, not one observation, and the box is ticked on that basis
+deliberately rather than quietly. Making it a single CI observation is cheap and is a Follow-up.
+
+**The cost prediction was wrong, and the reason is worth keeping.** This plan's Risks predicted 40s
+of environment building against a ~25s job, so roughly a doubling. Measured on run 34392992600:
+`static` completed in 33s against 18s, 21s and 21s on the three preceding `develop` runs - about
++12s, and the whole prek step took 24.4s including cold hook-environment builds. The reason is that
+`setup-uv` sets `UV_CACHE_DIR` to a directory it caches on `uv.lock`, and prek builds its hook
+environments with `uv pip install`, so they draw wheels from that restored cache instead of the
+network. The local 40s figure was measured against a cache that had to fetch and build `pkgdx`'s
+sdist. Two consequences: the cost is a rounding error rather than a doubling, and a dedicated
+`actions/cache` over `PREK_HOME` is now clearly not worth adding - the caching that matters is
+already there and is keyed on the lock, which is the correct key.
+
+**The approved design would have failed on its first run, and the implementing agent caught it.**
+The constraints export includes `pkgdx==0.2.0`, and that line makes every hook environment
+unsolvable, so `static` would have failed at the first hook with `No solution found when resolving
+dependencies`. The root cause is general and worth knowing beyond this unit: prek clones hook
+repositories **without tags**, so any hook repository versioned by `hatch-vcs` or `setuptools-scm`
+builds at a version its own lock entry disagrees with. `--no-emit-package pkgdx` is the fix. The
+verification that authorised the design used a two-line constraints file and could not have found
+this; only the real export did. The general lesson is that a verification narrower than the thing
+shipped is not a verification of it.
+
+**Why the diagnostic loop is guarded, and why not with `tee`.** Unguarded, the loop ran on any hook
+failure, so a ruff or mypy failure - the common case - paid the full per-file bisection to conclude
+nothing. Measured: 5.9s to short-circuit against 1m33s to bisect, a fifteenfold difference on the
+failure people actually hit. The obvious guard is to capture the hook step's output with `tee` and
+grep it, and that was rejected: piping the gate makes its exit status depend on `pipefail` being in
+force, and a gate that can pass for a shell reason is exactly the defect this unit removes. One
+extra whole-suite markdown run costs 5.9s and touches the gate not at all.
+
+**The format step had never gated anything.** `uv run pkgdx-format-hook` argless is `ruff format`
+with no `--check`. Measured on a deliberately misformatted `src/venvaxi/__init__.py`:
+`1 file reformatted`, exit 0, and a clean `git diff` afterwards, because the rewrite had already
+happened. So `140 files left unchanged` in the old CI log was an unconditional message rather than a
+result, and [ci-static-typing](ci-static-typing.md) quotes it without anything being wrong with that
+plan - the message simply cannot fail. This is filed under `Fixed` in `CHANGELOG.md` rather than
+folded into the `Changed` entry, because it is a defect repair and not a change of approach.
+
+**`detect-secrets` gates Python files only.** The hook carries `types_or: ["python", "pyi"]`, so a
+credential in a YAML, JSON, `.env` or markdown file is still never checked, while the `Justfile`
+`secrets-baseline` recipe scans the whole repository. The asymmetry is sharper than a coverage gap:
+a baseline regeneration would *record* such a secret while nothing ever *gates* it. This unit
+therefore enforces the security control issue #117 partly rests on, but only over Python, and says
+so rather than claiming the broader gate. Widening it needs `prek.toml`, which
+`ICM/_config/reference-toolchain-prek.md` forbids hand-editing, so the fix belongs upstream in
+`pkgdx`; filed as a Follow-up.
+
+**Three `immutable: true` references were amended**, more factory-configuration churn than any
+earlier unit in this sequence. Each is small and each was false or incomplete without it: the prek
+reference implied local enforcement was the only enforcement, the pymarkdown reference gave a
+bisection recipe a contributor no longer has to run by hand, and the ruff reference described
+`pkgdx-format-hook` as formatting the codebase without saying it never gates - which is the gap that
+let the CI defect through in the first place.
+
+**The review corrected one thing in the implementing agent's output**: the format-gate defect was
+written into the `Changed` entry, where a bug fix is not what a reader of `Changed` is looking for.
+Split into `Fixed`. Its own report flagged the `pkgdx` deviation, the loop-cost weakness and the
+`tee` trade-off unprompted, which is what made those three decidable rather than discovered later.
+
 ## Follow-ups
+
+- **Issue to file** - `pkgdx-secrets` scans Python files only (`types_or: ["python", "pyi"]`), so
+  `detect-secrets` gates no YAML, JSON, `.env` or markdown file even though the `Justfile` baseline
+  recipe scans all of them. The fix belongs in `pkgdx`'s `.pre-commit-hooks.yaml` upstream, since
+  `prek.toml` must not be hand-edited and `pkgdx init` would revert a local widening. Worth noting
+  in that issue that a locked repo-wide alternative exists without touching `prek.toml`, passing
+  `git ls-files` output to `detect-secrets-hook` directly, and was rejected here as hand-rolling
+  the file selection prek already does.
+- **Issue** [#20](https://github.com/andyrids/venv-axi/issues/20) - the PyMarkdown tokenizer crash
+  stays open and unmilestoned. This unit makes its failure legible, not fixed: CI now names the file
+  rather than nothing. Its own resolution 1, narrowing the reproducer and reporting upstream, is
+  unchanged and is still the only thing that removes the trap. The reproducer was restored and
+  reverted in this run, so it is confirmed to still reproduce on `pymarkdownlnt` 0.9.39.
+- **Making criterion 2 a single CI observation** - the hook environments' resolved tool versions are
+  not printed by the run, so the pin is evidenced by a chain rather than an observation. A step that
+  prints the versions from the built environments would close that, and is worth adding the first
+  time the pin actually matters, which is a lock bump a hook environment fails to follow.
+- **Issue** [#136](https://github.com/andyrids/venv-axi/issues/136) - unaffected. `static` keeps its
+  check-run name, so the eleven names that issue now lists are still correct, and `release.yml`'s
+  `verify-ci` resolves the workflow run's conclusion by SHA rather than any check name.
+- **Deferred to** - none.
+- **Tracked as** - none.
