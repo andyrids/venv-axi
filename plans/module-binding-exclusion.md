@@ -2,7 +2,7 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs:
   - specs/behaviors/symbol-graph.md
@@ -10,7 +10,7 @@ specs:
   - specs/behaviors/cache-refresh.md
 authors: []
 issues: [130]
-pr:
+pr: 145
 ---
 
 # Plan: Module binding exclusion
