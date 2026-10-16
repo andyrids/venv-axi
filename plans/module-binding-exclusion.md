@@ -187,11 +187,14 @@ after upgrade, because neither the distribution version nor the depth has moved.
   for criterion 9. Those test the *status report*, so the ticked citation is the `tests/test_store.py`
   rebuild-on-open test. Bumps 7 and 8 had per-version eviction tests and 9-11 have none. Optional;
   not filed.
-- **Verified on the user's pkgdx v0.4.0 toolchain and refreshed `uv.lock`.** These were
-  uncommitted, and the work started from `develop` at `81487a5`. `develop` fast-forwarded to
-  `f3e1f84` mid-run, and none of those 20 commits touched this plan's files. The upgrade's new
-  PyMarkdown MD060 rule flagged the pre-existing Edge kinds table in `symbol-graph.md`. The
-  realignment belongs in the user's upgrade commit, not this plan's.
+- **Verified on two toolchains.** Stages 02-03 ran on the user's then-uncommitted pkgdx v0.4.0
+  upgrade and refreshed `uv.lock`. The work started from `develop` at `81487a5`, which
+  fast-forwarded to `f3e1f84` mid-run; none of those 20 commits touched this plan's files.
+  PR 145 first carried the upgrade as its own commit. CI's `prek run --all-files` then failed on
+  MD060 and MD059 findings in 17 files the upgrade exposes repo-wide, none of them this plan's.
+  So the upgrade was split into its own PR and this branch was rebased onto `f3e1f84` without
+  it. On `develop`'s toolchain (pkgdx v0.2.0) the rebased branch passes `prek run --all-files`,
+  626 tests and 32 conformance tests.
 
 ## Follow-ups
 
