@@ -2,7 +2,7 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs:
   - specs/behaviors/symbol-graph.md
@@ -12,7 +12,7 @@ specs:
 authors:
   - specs/commands/show.md
 issues: [142]
-pr:
+pr: 149
 ---
 
 # Plan: Module binding hints
