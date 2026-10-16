@@ -2,11 +2,10 @@
 
 import logging
 import re
+import tomllib
 from dataclasses import dataclass, fields
 from importlib import metadata
 from pathlib import Path
-
-import tomllib
 
 from venvaxi.exceptions import InvalidArgumentError, PackageNotFoundError
 
