@@ -482,6 +482,12 @@ def _walk_class_members(
     for member_name, member in inspect.getmembers(cls):
         if member_name.startswith("_"):
             continue
+        # NOTE: A module stored on a class is no member of it, for the
+        # same reason a module bound in a module is no symbol of it -
+        # recorded here it would read as an `attribute` it is not
+        # (`specs/behaviors/symbol-graph.md`, Module bindings; #130).
+        if inspect.ismodule(member):
+            continue
         kind = (
             NodeKind.METHOD
             if inspect.isroutine(member)
@@ -747,9 +753,17 @@ def _walk_module(
     )
     for symbol_name in sorted(public_names):
         obj: Any = getattr(module, symbol_name, None)
+        # NOTE: A module object is never a symbol, so this skip runs for
+        # every candidate. Nested inside the re-export branch below it
+        # missed a root without `__all__` - importing a submodule binds
+        # it on its parent - and any `__all__` listing a submodule, and
+        # either surfaced in `show --api` as an `attribute` row. Own
+        # submodules reach the graph as module nodes through
+        # `_walk_submodules`; `specs/behaviors/symbol-graph.md`, Module
+        # bindings (#130).
+        if inspect.ismodule(obj):
+            continue
         if explicit_exports is None and depth > 0:
-            if inspect.ismodule(obj):
-                continue
             obj_home = getattr(obj, "__module__", None)
             if (
                 (inspect.isclass(obj) or inspect.isroutine(obj))
