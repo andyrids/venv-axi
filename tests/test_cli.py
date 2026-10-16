@@ -1,6 +1,9 @@
 """Unit tests for `venvaxi._cli`."""
 
 import argparse
+import importlib
+import sys
+import types
 from collections.abc import Callable
 from pathlib import Path
 from unittest import mock
@@ -882,6 +885,82 @@ def test_command_tree_empty_hint_names_private_submodule(
     )
 
 
+@pytest.mark.parametrize(
+    ("tail", "hint"),
+    [
+        (
+            "subpkg.nested",
+            (
+                "`package.subpkg.nested` is bound to module"
+                " `package.subpkg.inner` - run"
+                " `venvaxi tree package.subpkg.inner` for its tree"
+            ),
+        ),
+        (
+            "subpkg.impl",
+            (
+                "`package.subpkg.impl` is bound to private module"
+                " `package._impl` and never indexed - run"
+                " `venvaxi tree package` for the modules that are indexed"
+            ),
+        ),
+        (
+            "subpkg.codec",
+            (
+                "`package.subpkg.codec` is bound to `json`, a module"
+                " outside `package` - run `venvaxi tree package` for the"
+                " submodules that exist"
+            ),
+        ),
+    ],
+)
+def test_command_tree_empty_hint_names_a_module_binding(
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+    fake_package: str,
+    tail: str,
+    hint: str,
+) -> None:
+    """A module-binding miss's hint states what the name is bound to,
+    and names the bound module's own tree for a public alias, the root's
+    otherwise - still `count: 0` at `EX_OK` (#142)."""
+    ctx = make_cli_context(
+        args=argparse.Namespace(package=f"{fake_package}.{tail}", max_depth=2)
+    )
+    exit_code = _cli.command_tree(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "count: 0" in out
+    assert hint in out
+    assert "Run `venvaxi tree" not in out
+
+
+def test_command_tree_empty_hint_names_an_undiscoverable_module(
+    capsys: pytest.CaptureFixture,
+    make_cli_context: ContextFactory,
+    fake_package: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A module registered only in `sys.modules` is named as
+    undiscoverable and never indexed, with the root's tree as the next
+    step (#142)."""
+    subpkg = importlib.import_module(f"{fake_package}.subpkg")
+    name = f"{fake_package}.subpkg.dyn"
+    dyn = types.ModuleType(name)
+    monkeypatch.setitem(sys.modules, name, dyn)
+    monkeypatch.setattr(subpkg, "dyn", dyn, raising=False)
+    ctx = make_cli_context(args=argparse.Namespace(package=name, max_depth=2))
+    exit_code = _cli.command_tree(ctx)
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "count: 0" in out
+    assert (
+        f"`{name}` is registered at import time where the walk cannot"
+        " discover it, and never indexed - run"
+        f" `venvaxi tree {fake_package}` for the modules that are indexed"
+    ) in out
+
+
 def test_command_inspect_prints_symbol_detail(
     capsys: pytest.CaptureFixture,
     make_cli_context: ContextFactory,
@@ -1053,6 +1132,47 @@ def test_command_inspect_module_private_submodule_message_unchanged(
     ):
         _cli.command_inspect(ctx)
     assert str(exc_info.value) == str(original)
+
+
+@pytest.mark.parametrize(
+    ("tail", "fact"),
+    [
+        (
+            "impl",
+            "is bound to private module `package._impl` and never indexed",
+        ),
+        ("nested", "is bound to module `package.subpkg.inner`"),
+        ("codec", "is bound to `json`, a module outside `package`"),
+        (
+            "dyn",
+            (
+                "is registered at import time where the walk cannot"
+                " discover it, and never indexed"
+            ),
+        ),
+    ],
+)
+def test_command_inspect_module_binding_message_states_no_reading(
+    make_cli_context: ContextFactory,
+    fake_package: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tail: str,
+    fact: str,
+) -> None:
+    """A module-binding miss already diagnoses its own case - in every
+    case, the dotted-path reading must not bury it (#142)."""
+    name = f"{fake_package}.subpkg.{tail}"
+    if tail == "dyn":
+        subpkg = importlib.import_module(f"{fake_package}.subpkg")
+        dyn = types.ModuleType(name)
+        monkeypatch.setitem(sys.modules, name, dyn)
+        monkeypatch.setattr(subpkg, "dyn", dyn, raising=False)
+    ctx = make_cli_context(args=argparse.Namespace(qualified_name=name))
+    with pytest.raises(exceptions.SymbolNotFoundError) as exc_info:
+        _cli.command_inspect(ctx)
+    message = str(exc_info.value)
+    assert message == f"Module `{name}` {fact}"
+    assert "read as a dotted module path" not in message
 
 
 def test_command_inspect_module_reading_proposes_no_spelling(
