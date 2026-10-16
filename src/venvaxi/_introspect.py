@@ -18,6 +18,7 @@ import logging
 import pkgutil
 import sys
 from dataclasses import dataclass, fields
+from enum import StrEnum
 from importlib import metadata
 from types import ModuleType
 from typing import Any, cast
@@ -632,6 +633,160 @@ def is_private_submodule(name: str) -> bool:
     return any(segment.startswith("_") for segment in name.split(".")[1:])
 
 
+class ModuleBindingCase(StrEnum):
+    """What a missed dotted module name is bound to on its parent."""
+
+    FOREIGN = "foreign"
+    PRIVATE = "private"
+    ALIAS = "alias"
+    UNDISCOVERABLE = "undiscoverable"
+
+
+@dataclass(frozen=True, slots=True)
+class ModuleBinding:
+    """A module-binding miss: its case and the bound module's own name."""
+
+    case: ModuleBindingCase
+    target: str
+
+
+class ModuleBindingMissError(SymbolNotFoundError):
+    """A module lookup that missed on a name bound to a module.
+
+    NOTE: Still a `SymbolNotFoundError` - the outcome class and exit
+    code are the surface's existing module miss
+    (`specs/behaviors/symbol-graph.md`, Module bindings). The subclass
+    carries the diagnosis out of `show_module`, so a caller deciding
+    on its own wording reads it rather than re-running the check.
+    """
+
+    def __init__(self, message: str, binding: ModuleBinding) -> None:
+        super().__init__(message)
+        self.binding = binding
+
+
+def _classify_module_binding(
+    resolved: str, parent_name: str, tail: str
+) -> ModuleBinding | None:
+    """Read and classify the module `parent_name` binds under `tail`.
+
+    NOTE: Every step here can run package code - the parent's import,
+    a module-level `__getattr__`, and a lazily-loaded bound module that
+    executes its source on first touch - so the caller runs all of it
+    inside one import boundary.
+
+    Args:
+        resolved: The root-resolved dotted name that missed.
+        parent_name: Its parent module's dotted import name.
+        tail: Its final segment, read as an attribute of the parent.
+
+    Returns:
+        The binding, or None where the parent does not bind a module
+        carrying a string `__name__`, or binds a discoverable module of
+        the looked-up name.
+    """
+    parent = importlib.import_module(parent_name)
+    bound: Any = getattr(parent, tail)
+    if not inspect.ismodule(bound):
+        return None
+    target = getattr(bound, "__name__", None)
+    if not isinstance(target, str):
+        return None
+    if top_level_root(target) != top_level_root(resolved):
+        # NOTE: Checked first - `py.path` is `_pytest._py.path`, private
+        # within another package, which this graph cannot speak for.
+        return ModuleBinding(ModuleBindingCase.FOREIGN, target)
+    if target == resolved:
+        discoverable = {
+            subname
+            for _, subname, _ in pkgutil.iter_modules(
+                getattr(parent, "__path__", []), prefix=f"{parent_name}."
+            )
+        }
+        # NOTE: A discoverable module missing its node has another cause
+        # (a failed import during the walk), so it is no binding miss.
+        if resolved in discoverable:
+            return None
+        return ModuleBinding(ModuleBindingCase.UNDISCOVERABLE, target)
+    if is_private_submodule(target):
+        return ModuleBinding(ModuleBindingCase.PRIVATE, target)
+    return ModuleBinding(ModuleBindingCase.ALIAS, target)
+
+
+def module_binding(name: str) -> ModuleBinding | None:
+    """Diagnose a dotted module name with no node as a module binding.
+
+    NOTE: The graph never records a module binding
+    (`specs/behaviors/symbol-graph.md`, Module bindings), so a lookup of
+    one misses. Reading the live binding is what tells that miss apart
+    from a typo - the target is the bound object's own `__name__`, a
+    fact rather than a guessed correction (#142).
+
+    Args:
+        name: The caller's bare, dotted or qualified name.
+
+    Returns:
+        The binding, or None where the name is not a module-binding
+        miss: no dotted module shape, private, an unimportable parent,
+        a non-module binding, or a discoverable module of that name.
+    """
+    resolved = _resolve_qualified_name(name)
+    if "::" in resolved or "." not in resolved:
+        return None
+    if is_private_submodule(resolved):
+        # NOTE: A private name keeps its own, more specific message
+        return None
+    parent_name, tail = resolved.rsplit(".", 1)
+    try:
+        return _classify_module_binding(resolved, parent_name, tail)
+    except KeyboardInterrupt:
+        raise
+    except BaseException:
+        # NOTE: An import boundary over the whole read - the parent, its
+        # `__getattr__` and a lazily-loaded bound module all run package
+        # code, which can raise anything; there is then no binding to
+        # report and the miss keeps its existing wording
+        # (`specs/behaviors/output-contract.md`, Import boundaries).
+        return None
+
+
+def describe_module_binding(name: str, binding: ModuleBinding) -> str:
+    """Spell a module-binding miss as the fact every surface shares.
+
+    NOTE: A fact, never a next step - the `inspect` message carrying it
+    is shared with `showModuleTool`, so it names no command or tool
+    (`specs/mcp/tools.md`, Error message wording); each hint appends
+    its own surface's next step.
+
+    Args:
+        name: The caller's name, as given.
+        binding: The binding `module_binding` diagnosed for it.
+
+    Returns:
+        The fact phrase, e.g. `` `pkg.impl` is bound to private module
+        `pkg._impl` and never indexed ``.
+    """
+    target = binding.target
+    match binding.case:
+        case ModuleBindingCase.FOREIGN:
+            root = top_level_root(name)
+            return (
+                f"`{name}` is bound to `{target}`, a module outside `{root}`"
+            )
+        case ModuleBindingCase.PRIVATE:
+            return (
+                f"`{name}` is bound to private module `{target}`"
+                " and never indexed"
+            )
+        case ModuleBindingCase.ALIAS:
+            return f"`{name}` is bound to module `{target}`"
+        case ModuleBindingCase.UNDISCOVERABLE:
+            return (
+                f"`{name}` is registered at import time where the walk"
+                " cannot discover it, and never indexed"
+            )
+
+
 def _walk_submodules(
     module: ModuleType,
     *,
@@ -932,6 +1087,11 @@ def show_module(
                 msg = (
                     f"Module `{name}` is private and never indexed -"
                     f" `{resolved.split('.', 1)[0]}` is the reachable root"
+                )
+            elif (binding := module_binding(name)) is not None:
+                raise ModuleBindingMissError(
+                    f"Module {describe_module_binding(name, binding)}",
+                    binding,
                 )
             else:
                 msg = f"Module `{name}` not found"

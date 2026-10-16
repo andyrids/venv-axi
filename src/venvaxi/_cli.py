@@ -19,6 +19,9 @@ from venvaxi._core import (
 from venvaxi._introspect import (
     DEFAULT_API_ROW_LIMIT,
     SYMBOL_INFO_FIELDS,
+    ModuleBindingCase,
+    ModuleBindingMissError,
+    describe_module_binding,
     find_symbol,
     get_bases,
     get_inheritors,
@@ -26,6 +29,7 @@ from venvaxi._introspect import (
     get_public_api,
     get_symbol,
     is_private_submodule,
+    module_binding,
     show_module,
     summarize_doc,
 )
@@ -377,6 +381,26 @@ def command_tree(ctx: CLIContext) -> int:
                 f"`{ctx.args.package}` is private and never indexed - run"
                 f" `venvaxi tree {root}` for the modules that are indexed"
             )
+        elif (binding := module_binding(ctx.args.package)) is not None:
+            # NOTE: A public alias names its target's own tree - the
+            # answer the caller was after, read from the live binding;
+            # every other case has no tree of its own in this graph, so
+            # the root's tree is the next step (`specs/commands/tree.md`,
+            # Outputs).
+            fact = describe_module_binding(ctx.args.package, binding)
+            match binding.case:
+                case ModuleBindingCase.ALIAS:
+                    step = f"`venvaxi tree {binding.target}` for its tree"
+                case ModuleBindingCase.FOREIGN:
+                    step = (
+                        f"`venvaxi tree {root}` for the submodules that exist"
+                    )
+                case _:
+                    step = (
+                        f"`venvaxi tree {root}`"
+                        " for the modules that are indexed"
+                    )
+            hint = f"{fact} - run {step}"
         else:
             hint = f"Run `venvaxi tree {root}` for the submodules that exist"
         _emit("count: 0")
@@ -495,11 +519,14 @@ def _with_dotted_module_reading(
 ) -> PackageNotFoundError | SymbolNotFoundError:
     """Append the dotted-path reading statement to a module-lookup failure.
 
-    NOTE: Two carve-outs return `err` unchanged rather than appending: a
-    bare name (no `.`) has no dropped-separator reading to describe, and
-    a private submodule already carries its own more specific diagnosis
-    (`is_private_submodule`) that this must not bury under a generic one
-    (`specs/commands/inspect.md`, Failure modes).
+    NOTE: Three carve-outs return `err` unchanged rather than appending:
+    a bare name (no `.`) has no dropped-separator reading to describe,
+    and a private submodule (`is_private_submodule`) or a module-binding
+    miss (`ModuleBindingMissError`) already carries its own more
+    specific diagnosis that this must not bury under a generic one
+    (`specs/commands/inspect.md`, Failure modes). The binding miss is
+    read from the error `show_module` raised, never re-diagnosed - a
+    second check would re-import a parent that failed the first time.
 
     Args:
         err: The `PackageNotFoundError` or `SymbolNotFoundError` raised
@@ -510,7 +537,11 @@ def _with_dotted_module_reading(
         `err` unchanged, or a new instance of the same exception class
         whose message has the dotted-path reading appended.
     """
-    if "." not in name or is_private_submodule(name):
+    if (
+        "." not in name
+        or is_private_submodule(name)
+        or isinstance(err, ModuleBindingMissError)
+    ):
         return err
     msg = (
         f"{err} - the argument was read as a dotted module path;"

@@ -165,9 +165,49 @@ actually has.
 - If a module's `__all__` lists, under a public name, a module the submodule walk records no node
   for - a private submodule exported under a public alias (`from . import _impl as impl`), or a
   module registered in `sys.modules` that the walk cannot discover - then that name shall be
-  absent from the graph: `show --api` does not report it, and neither `tree` nor `inspect`
-  answers for it. Recording it under the alias would put a module in the graph under a `::` key,
-  the second keying convention this rule exists to avoid; see [Out of scope](#out-of-scope).
+  absent from the graph: `show --api` does not report it, and no module node answers for it.
+  Recording it under the alias would put a module in the graph under a `::` key, the second
+  keying convention this rule exists to avoid; see [Out of scope](#out-of-scope).
+
+The graph holds no node for such a name, but a lookup that misses one is not a generic miss. A
+name bound on its parent module is a fact the live package states, and an agent that followed
+`__all__` to `pkg.impl` and got `not found` cannot tell a deliberate binding from a typo. The
+same miss reaches a public module bound under a second name - `numpy.emath` is
+`numpy.lib.scimath`, recorded only under the latter - and there the binding is the one fact that
+leads the caller to the node that does exist.
+
+A **module-binding miss** is a lookup of a dotted module name, not itself
+[private](#private-submodules), that has no module node, where the name's parent module imports
+and binds the name's final segment to a module object. The bound module's own dotted name - the
+`__name__` it carries - is the **target**. Each case below states a fact read from that object,
+so naming the target is a report of what the binding is, not the guessed correction
+[Package resolution](package-resolution.md#out-of-scope) rules out.
+
+- If the target belongs to another top-level package, then the miss shall state that the name is
+  bound to the target, a module outside the named package. Whether that package's graph indexes
+  the target is that graph's question, so the miss makes no claim about it.
+- If the target is a private submodule of the named package, then the miss shall state that the
+  name is bound to that private module and is never indexed.
+- If the target is a public module of the named package under a dotted name other than the one
+  looked up, then the miss shall state that the name is bound to the target. The module is
+  recorded, where the walk reaches it, under the target's name and no other.
+- If the target is the looked-up name itself and the walk's discovery of the parent's submodules
+  does not list it, then the miss shall state that the module is registered at import time where
+  the walk cannot discover it, and is never indexed.
+- If the parent cannot be imported, does not bind the final segment, or binds it to an object
+  that is not a module, or to a module carrying no string `__name__` and so naming no target, or
+  the target is the looked-up name and the walk's discovery does list it, then the miss is not a
+  module-binding miss and keeps the surface's existing wording.
+- If a module-binding miss is diagnosed, then the outcome class and exit code of the miss shall be
+  those the surface already gives a module miss; only its wording changes.
+
+Reading the binding is an import boundary, per
+[Output contract](output-contract.md#import-boundaries), for as long as it runs package code:
+importing the parent, reading the attribute, and inspecting the bound object - a lazily-loaded
+module executes its source on first touch. Whatever any of these raises leaves the miss with its
+existing wording, except an interrupt, which propagates. Each surface's wording is
+declared with it - [`inspect`](../commands/inspect.md#failure-modes),
+[`tree`](../commands/tree.md#outputs) and [MCP tools](../mcp/tools.md#hint-wording).
 
 ### Private submodules
 
@@ -222,9 +262,12 @@ the rowid mapping must stay stable, per
 
 - **Indexing a module the walk cannot reach by its own name** - a private submodule exported
   under a public alias, or a module registered only in `sys.modules`. Such a name is absent from
-  the graph, per [Module bindings](#module-bindings); not planned here. Giving it a node would
-  have to answer which key it takes, since its dotted name is either private or undiscoverable.
-  Filed as [#142](https://github.com/andyrids/venv-axi/issues/142).
+  the graph, and a lookup of it is answered by the module-binding miss in
+  [Module bindings](#module-bindings) instead. Not planned: giving it a node would have to answer
+  which key it takes, since its dotted name is either private or undiscoverable, and
+  [#142](https://github.com/andyrids/venv-axi/issues/142) measured no case in this project's own
+  venv - of 97 packages walked two levels deep, the only private aliases (`numpy.core`'s) each
+  also exist as a public module of the same dotted name.
 
 - **Static analysis fallback** - a package that cannot be imported is reported as broken, never
   approximated by parsing its source. Never - reporting what would 'probably' import reintroduces

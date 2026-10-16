@@ -1,7 +1,10 @@
 """Unit tests for `venvaxi._mcp`."""
 
 import asyncio
+import importlib
 import logging
+import sys
+import types
 from collections.abc import Callable
 from pathlib import Path
 from unittest import mock
@@ -1534,6 +1537,106 @@ def test_get_module_tree_tool_empty_hint_names_private_submodule(
     assert f"`{fake_package}._impl` is private and never indexed" in result
     assert "getModuleTreeTool" in result
     assert f"name={fake_package}" in result
+
+
+def test_get_module_tree_tool_alias_hint_names_the_bound_module(
+    fake_package: str,
+) -> None:
+    """A public alias's hint names the bound module and calls
+    `getModuleTreeTool` with that module, mirroring `tree`'s scope - not
+    the root's tree (#142; `specs/mcp/tools.md`, Hint wording)."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("get_module_tree_tool")))
+    result = tool.fn(name=f"{fake_package}.subpkg.nested")
+    assert result.startswith("count: 0")
+    assert (
+        f"`{fake_package}.subpkg.nested` is bound to module"
+        f" `{fake_package}.subpkg.inner` - call `getModuleTreeTool`"
+        f" with name={fake_package}.subpkg.inner for its tree"
+    ) in result
+    assert f"name={fake_package} " not in result
+    assert "venvaxi" not in result
+
+
+@pytest.mark.parametrize(
+    ("tail", "fact", "step"),
+    [
+        (
+            "subpkg.impl",
+            "is bound to private module `package._impl` and never indexed",
+            "for the modules that are indexed",
+        ),
+        (
+            "subpkg.codec",
+            "is bound to `json`, a module outside `package`",
+            "for the submodules that exist",
+        ),
+    ],
+)
+def test_get_module_tree_tool_binding_hint_names_the_root(
+    fake_package: str, tail: str, fact: str, step: str
+) -> None:
+    """A binding to a private module or another package's module has no
+    tree of its own here, so the hint calls `getModuleTreeTool` with the
+    root (#142)."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("get_module_tree_tool")))
+    name = f"{fake_package}.{tail}"
+    result = tool.fn(name=name)
+    assert result.startswith("count: 0")
+    assert (
+        f"`{name}` {fact} - call `getModuleTreeTool`"
+        f" with name={fake_package} {step}"
+    ) in result
+
+
+@pytest.mark.parametrize(
+    ("tail", "fact"),
+    [
+        ("nested", "is bound to module `package.subpkg.inner`"),
+        (
+            "impl",
+            "is bound to private module `package._impl` and never indexed",
+        ),
+        ("codec", "is bound to `json`, a module outside `package`"),
+    ],
+)
+def test_show_module_tool_binding_returns_the_shared_message(
+    fake_package: str, tail: str, fact: str
+) -> None:
+    """`showModuleTool` returns the same binding message `inspect`
+    raises on the CLI, naming no command or tool (#142;
+    `specs/mcp/tools.md`, Error message wording)."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("show_module_tool")))
+    name = f"{fake_package}.subpkg.{tail}"
+    result = tool.fn(name=name)
+    assert "error: true" in result
+    assert f"Module `{name}` {fact}" in result
+    assert "not found" not in result
+    assert "venvaxi" not in result
+
+
+def test_get_module_tree_tool_undiscoverable_hint_names_the_root(
+    fake_package: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A module registered only in `sys.modules` has no tree here, so
+    the hint states it is undiscoverable and calls `getModuleTreeTool`
+    with the root (#142)."""
+    subpkg = importlib.import_module(f"{fake_package}.subpkg")
+    name = f"{fake_package}.subpkg.dyn"
+    dyn = types.ModuleType(name)
+    monkeypatch.setitem(sys.modules, name, dyn)
+    monkeypatch.setattr(subpkg, "dyn", dyn, raising=False)
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("get_module_tree_tool")))
+    result = tool.fn(name=name)
+    assert result.startswith("count: 0")
+    assert (
+        f"`{name}` is registered at import time where the walk cannot"
+        " discover it, and never indexed - call `getModuleTreeTool`"
+        f" with name={fake_package} for the modules that are indexed"
+    ) in result
 
 
 REFRESH_TOOL = "refresh_package_graph_tool"

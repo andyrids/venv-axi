@@ -89,6 +89,17 @@ Rules binding both modes:
   **symbol**-mode miss (`::` present) for a symbol homed in a private submodule and re-exported
   nowhere is unaffected by this bullet; it is governed by
   [Private submodules](../behaviors/symbol-graph.md#private-submodules) already.
+- If the qualified name is a module name that is a
+  [module-binding miss](../behaviors/symbol-graph.md#module-bindings) - its parent module binds
+  its final segment to a module the graph holds no node for under this name - then the `inspect`
+  command shall still raise `SymbolNotFoundError` and exit `EX_FAILURE`, but the message shall
+  state what the name is bound to, in the case that applies: a module of another package, named;
+  a private module of this package, named, and never indexed; a public module of this package,
+  named by its own dotted name; or a module registered at import time where the walk cannot
+  discover it, never indexed. The message names the bound module's own `__name__`, read from the
+  live binding, so it reports what the name is rather than proposing what the caller meant. The
+  message is shared with `showModuleTool`, so it names no command and no tool, per
+  [Error message wording](../mcp/tools.md#error-message-wording).
 - If the name's top-level component is not a possible package name, then the `inspect` command
   shall raise `InvalidArgumentError`, emit the TOON error block and exit `EX_FAILURE`.
 - If the owning package is not installed in the venv, then the `inspect` command shall raise
@@ -111,8 +122,11 @@ Rules binding both modes:
   of the argument - [Package resolution](../behaviors/package-resolution.md) rules that out, and
   the reading is a fact about what happened rather than a guess about what was meant.
 - A **bare** name carries no dropped-separator reading, so a failure for one is unchanged. The
-  private-submodule message above is likewise unchanged: it already diagnoses its own case, and
-  restating the dispatch over it would bury the more specific answer.
+  private-submodule and module-binding messages above are likewise unchanged: each already
+  diagnoses its own case, and restating the dispatch over it would bury the more specific answer.
+  A module-binding miss in particular has established that the name is bound on a module, so the
+  dropped-separator reading the statement offers is not the open question it is for an unknown
+  name.
 
 The three package classes are defined once in
 [Package resolution](../behaviors/package-resolution.md). Only the top-level component is

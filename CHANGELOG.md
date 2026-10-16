@@ -49,6 +49,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A lookup of a dotted module name that is a binding rather than a module now says what it is
+  bound to instead of reading as a generic miss. `inspect numpy.emath` reported
+  ``Module `numpy.emath` not found`` and now reports that it is bound to `numpy.lib.scimath`.
+  `inspect py.path` names `_pytest._py.path` as a module outside `py`. A private alias
+  (`from . import _impl as impl`) names its private module as never indexed. A module registered
+  only in `sys.modules` is named as one the walk cannot discover. `tree` and `getModuleTreeTool`
+  carry the same fact in their `count: 0` hint, and name the bound module's own tree for a public
+  alias. Outcome classes and exit codes are unchanged, and the dotted-path statement is no longer
+  appended to a binding miss. The graph is unchanged, so no cache rebuild is needed. Indexing such
+  names stays out of scope: across 97 packages in this repo's venv, none left an `__all__` name
+  without an answer (issue [#142](https://github.com/andyrids/venv-axi/issues/142)).
 - The `inspect` row of `specs/principles.md`'s measured-efficiency table changes unit, from `~6%`
   to `~10 chars`. Measuring more symbols than the figure's original evidencing fixture showed the
   percentage standing for a whole command it did not describe: `os.path::join` saves ~11% on the

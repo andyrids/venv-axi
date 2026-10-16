@@ -12,3 +12,9 @@ from .. import _impl as impl  # noqa: F401
 from . import inner  # noqa: F401
 
 __all__ = ["codec", "impl", "inner"]
+
+# NOTE: A public alias of a public submodule under a second name, kept
+# out of `__all__` so no listing moves. A lookup of `subpkg.nested`
+# misses - `inner` is recorded under its own name only - and the miss
+# names `inner` as the module it is bound to (#142).
+nested = inner

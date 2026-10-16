@@ -17,6 +17,8 @@ from venvaxi._introspect import (
     DEFAULT_API_ROW_LIMIT,
     MCP_ESCAPE_HATCH,
     SYMBOL_INFO_FIELDS,
+    ModuleBindingCase,
+    describe_module_binding,
     find_symbol,
     get_bases,
     get_inheritors,
@@ -24,6 +26,7 @@ from venvaxi._introspect import (
     get_public_api,
     get_symbol,
     is_private_submodule,
+    module_binding,
     refresh_package_graph,
     show_module,
     summarize_doc,
@@ -545,6 +548,20 @@ def get_module_tree_tool(name: str, max_depth: int = 2) -> str:
                 f"`{name}` is private and never indexed - call `{cname}`"
                 f" with name={root} for the modules that are indexed"
             )
+        elif (binding := module_binding(name)) is not None:
+            # NOTE: Mirrors the CLI `tree` binding hint in this surface's
+            # spelling, scoped the same way - the target for a public
+            # alias, the root otherwise (`specs/mcp/tools.md`, Hint
+            # wording).
+            fact = describe_module_binding(name, binding)
+            match binding.case:
+                case ModuleBindingCase.ALIAS:
+                    step = f"with name={binding.target} for its tree"
+                case ModuleBindingCase.FOREIGN:
+                    step = f"with name={root} for the submodules that exist"
+                case _:
+                    step = f"with name={root} for the modules that are indexed"
+            hint = f"{fact} - call `{cname}` {step}"
         else:
             hint = (
                 f"Call `{cname}` with name={root} for the"

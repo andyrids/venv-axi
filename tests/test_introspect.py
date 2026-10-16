@@ -1,6 +1,7 @@
 """Unit tests for `venvaxi._introspect`."""
 
 import importlib
+import importlib.util
 import logging
 import re
 import sqlite3
@@ -21,6 +22,8 @@ from venvaxi._introspect import (
     DOCSTRING_ABSENT,
     MCP_ESCAPE_HATCH,
     SIGNATURE_UNAVAILABLE,
+    ModuleBinding,
+    ModuleBindingCase,
     _doc_of,
     _ensure_installed,
     _ensure_valid_name,
@@ -35,6 +38,7 @@ from venvaxi._introspect import (
     get_public_api,
     get_symbol,
     is_private_submodule,
+    module_binding,
     refresh_package_graph,
     resolve_import_and_distributions,
     show_module,
@@ -959,6 +963,221 @@ def test_show_module_raises_not_found_for_nonexistent_submodule(
     ) as exc_info:
         show_module(f"{fake_package}.nosuchmodule")
     assert "private" not in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ("tail", "case", "target"),
+    [
+        ("subpkg.impl", ModuleBindingCase.PRIVATE, "package._impl"),
+        ("subpkg.nested", ModuleBindingCase.ALIAS, "package.subpkg.inner"),
+        ("subpkg.codec", ModuleBindingCase.FOREIGN, "json"),
+    ],
+)
+def test_module_binding_reads_the_bound_module_by_its_own_name(
+    fake_package: str, tail: str, case: ModuleBindingCase, target: str
+) -> None:
+    """A dotted name its parent binds to a module is diagnosed by what
+    that module is, read from its own `__name__` - a private module of
+    the package, a public one under another name, or another package's
+    (#142; `specs/behaviors/symbol-graph.md`, Module bindings)."""
+    binding = module_binding(f"{fake_package}.{tail}")
+    assert binding == ModuleBinding(case, target)
+
+
+@pytest.mark.parametrize(
+    ("tail", "fact"),
+    [
+        (
+            "subpkg.impl",
+            "is bound to private module `package._impl` and never indexed",
+        ),
+        ("subpkg.nested", "is bound to module `package.subpkg.inner`"),
+        ("subpkg.codec", "is bound to `json`, a module outside `package`"),
+    ],
+)
+def test_show_module_states_what_a_module_binding_is_bound_to(
+    fake_package: str, tail: str, fact: str
+) -> None:
+    """A module-binding miss still raises `SymbolNotFoundError`, but
+    names the bound module rather than reading as a generic miss that
+    cannot be told from a typo (#142)."""
+    name = f"{fake_package}.{tail}"
+    with pytest.raises(SymbolNotFoundError) as exc_info:
+        show_module(name)
+    message = str(exc_info.value)
+    assert message == f"Module `{name}` {fact}"
+    assert "not found" not in message
+
+
+def test_module_binding_diagnoses_a_module_only_in_sys_modules(
+    fake_package: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A module registered at import time under its own dotted name,
+    which the walk's submodule discovery cannot list, is diagnosed as
+    undiscoverable and never indexed (#142)."""
+    subpkg = importlib.import_module(f"{fake_package}.subpkg")
+    name = f"{fake_package}.subpkg.dyn"
+    dyn = types.ModuleType(name)
+    monkeypatch.setitem(sys.modules, name, dyn)
+    monkeypatch.setattr(subpkg, "dyn", dyn, raising=False)
+    assert module_binding(name) == ModuleBinding(
+        ModuleBindingCase.UNDISCOVERABLE, name
+    )
+    with pytest.raises(
+        SymbolNotFoundError,
+        match=(
+            rf"Module `{re.escape(name)}` is registered at import time"
+            " where the walk cannot discover it, and never indexed"
+        ),
+    ):
+        show_module(name)
+
+
+def test_module_binding_is_none_for_a_discoverable_module_of_that_name(
+    fake_package: str,
+) -> None:
+    """A module the walk can discover is no binding miss - a missing
+    node for it has another cause, such as a failed import during the
+    walk, so it keeps the generic wording (#142)."""
+    assert module_binding(f"{fake_package}.subpkg.inner") is None
+
+
+def test_module_binding_is_none_for_a_non_module_binding(
+    fake_package: str,
+) -> None:
+    """A dotted name whose parent binds a class, not a module, is no
+    binding miss, and `show_module` keeps the generic message (#142)."""
+    name = f"{fake_package}.subpkg.inner.Registry"
+    assert module_binding(name) is None
+    with pytest.raises(
+        SymbolNotFoundError, match=rf"Module `{re.escape(name)}` not found"
+    ):
+        show_module(name)
+
+
+@pytest.mark.parametrize("suffix", ["", ".subpkg::impl"])
+def test_module_binding_is_none_for_a_non_dotted_module_shape(
+    fake_package: str, suffix: str
+) -> None:
+    """A bare name has no parent to bind it, and a qualified name is a
+    symbol lookup - neither is a module-binding miss (#142)."""
+    assert module_binding(f"{fake_package}{suffix}") is None
+
+
+def test_module_binding_is_none_for_a_module_without_a_name(
+    fake_package: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A bound module carrying no `__name__` names no target, so no
+    binding is reported rather than one naming nothing (#142)."""
+    subpkg = importlib.import_module(f"{fake_package}.subpkg")
+    anonymous = types.ModuleType("anonymous")
+    del anonymous.__name__
+    monkeypatch.setattr(subpkg, "anonymous", anonymous, raising=False)
+    assert module_binding(f"{fake_package}.subpkg.anonymous") is None
+
+
+def test_module_binding_leaves_a_private_name_to_its_own_message(
+    fake_package: str,
+) -> None:
+    """A private name is never diagnosed as a binding - its own
+    private-and-never-indexed message is the more specific answer
+    (#142)."""
+    assert module_binding(f"{fake_package}._impl") is None
+
+
+def test_module_binding_is_none_when_the_parent_raises(
+    fake_package: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Reading the binding is an import boundary - a parent whose
+    attribute access raises leaves the miss with its existing wording
+    (#142; `specs/behaviors/output-contract.md`, Import boundaries)."""
+    subpkg = importlib.import_module(f"{fake_package}.subpkg")
+
+    def explode(attribute: str) -> None:
+        raise RuntimeError(attribute)
+
+    monkeypatch.setattr(subpkg, "__getattr__", explode, raising=False)
+    name = f"{fake_package}.subpkg.boom"
+    assert module_binding(name) is None
+    with pytest.raises(
+        SymbolNotFoundError, match=rf"Module `{re.escape(name)}` not found"
+    ):
+        show_module(name)
+
+
+@pytest.mark.parametrize("raised", ["RuntimeError('boom')", "SystemExit(3)"])
+def test_module_binding_is_none_when_a_lazy_bound_module_raises(
+    fake_package: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path_factory: pytest.TempPathFactory,
+    raised: str,
+) -> None:
+    """A lazily-loaded bound module runs its source on first touch, so
+    inspecting it is inside the import boundary too - whatever it
+    raises, `SystemExit` included, leaves the miss with its existing
+    wording rather than escaping as an unexpected error (#142;
+    `specs/behaviors/symbol-graph.md`, Module bindings).
+
+    NOTE: One lookup only - the loader raises on the first touch alone,
+    after which the module reads as an ordinary (foreign) one. Written
+    under a `src_test` directory, which coverage omits, like the
+    fixtures' own copies."""
+    src_test = tmp_path_factory.mktemp("src_test")
+    (src_test / "lazyboom.py").write_text(f"raise {raised}\n")
+    monkeypatch.syspath_prepend(str(src_test))
+    spec = importlib.util.find_spec("lazyboom")
+    assert spec is not None
+    assert spec.loader is not None
+    loader = importlib.util.LazyLoader(spec.loader)
+    spec.loader = loader
+    lazy = importlib.util.module_from_spec(spec)
+    loader.exec_module(lazy)
+    subpkg = importlib.import_module(f"{fake_package}.subpkg")
+    monkeypatch.setattr(subpkg, "lazy", lazy, raising=False)
+    name = f"{fake_package}.subpkg.lazy"
+    with pytest.raises(
+        SymbolNotFoundError, match=rf"Module `{re.escape(name)}` not found"
+    ):
+        show_module(name)
+
+
+@pytest.mark.parametrize("parent", ["nosuchmodule", "exit_error"])
+def test_module_binding_is_none_when_the_parent_cannot_be_imported(
+    fake_package: str, parent: str
+) -> None:
+    """A parent that does not exist, or whose import raises
+    `SystemExit`, binds nothing - no binding is reported, and the
+    interpreter is not exited (#142)."""
+    assert module_binding(f"{fake_package}.{parent}.child") is None
+
+
+def test_module_binding_propagates_an_interrupt(
+    fake_package: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An interrupt raised while the binding is read propagates - the
+    import boundary must never swallow the caller's abort (#142)."""
+    subpkg = importlib.import_module(f"{fake_package}.subpkg")
+
+    def interrupt(attribute: str) -> None:
+        raise KeyboardInterrupt(attribute)
+
+    monkeypatch.setattr(subpkg, "__getattr__", interrupt, raising=False)
+    with pytest.raises(KeyboardInterrupt):
+        module_binding(f"{fake_package}.subpkg.boom")
+
+
+def test_walk_records_no_node_under_a_module_binding_name(
+    fake_package: str,
+) -> None:
+    """Diagnosing the miss leaves the graph unchanged - no node is
+    recorded under a module-binding name, as a module or a symbol
+    (#142; `specs/behaviors/symbol-graph.md`, Module bindings)."""
+    subpkg = f"{fake_package}.subpkg"
+    _, children = show_module(subpkg)
+    names = {child.name for child in children}
+    assert names.isdisjoint({"impl", "nested", "codec"})
+    tree = {node.qualified_name for _, node in get_module_tree(subpkg)}
+    assert tree.isdisjoint({f"{subpkg}.impl", f"{subpkg}.nested"})
 
 
 def test_private_submodule_miss_identical_after_refresh(
