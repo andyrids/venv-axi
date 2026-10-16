@@ -76,12 +76,31 @@ bound is definitive under
 that the dropped names do not exist. 'Callable' is no better a proxy: it keeps `pytest.fail` and
 still drops `pytest.mark`.
 
-Submodules are the one exclusion, and it is a depth exclusion rather than a kind one. A package's
-children in the graph include its submodules, recorded by the same walk under the same edge kind
-as its symbols, so reporting 'every child' would answer a different question: `fastmcp` declares
-six names in `__all__` and carries sixteen public submodules, and listing all twenty-two states
-that its public API is twenty-two names. Nested module structure is `tree`'s job, per
-[Out of scope](#out-of-scope).
+Modules are the one exclusion. The `show` command shall not report a module as a symbol, however
+the package binds it: a submodule its `__all__` lists, a submodule its root merely imports, or
+another package's module imported into it. A package's children in the graph include its
+submodules, recorded by the same walk under the same edge kind as its symbols, so reporting 'every
+child' would answer a different question: `fastmcp` declares six names in `__all__` and carries
+sixteen public submodules, and listing all twenty-two states that its public API is twenty-two
+names. Nested module structure is `tree`'s job, per [Out of scope](#out-of-scope).
+
+The exclusion follows what the object is, not how the name reached the package. Importing a
+submodule binds it as an attribute of its parent, so a root declaring no `__all__` exposes every
+submodule anything has imported - `coverage` exposes dozens - and an `__all__` naming a submodule
+binds it the same way. Reported, either one arrives as a row of kind `attribute` with an empty
+signature and the module's docstring, which breaks the kinds-stay-honest rule below and, since a
+`count` below the bound is definitive, states as fact that a module is part of the package's
+public API.
+
+- If a package's `__all__` lists one of its own submodules, then the `show` command shall not
+  report that name in API mode. A public submodule stays reachable through `tree`, and through
+  `inspect` by its dotted module name; one exported under a public alias of a private name is
+  reachable through neither, per
+  [Module bindings](../behaviors/symbol-graph.md#module-bindings).
+- If a package's root declares no `__all__` and binds one of its submodules as an attribute, then
+  the `show` command shall not report that name in API mode.
+- If a package binds another package's module under a public name, then the `show` command shall
+  not report that name in API mode. The other package is answered by naming it.
 
 Kinds stay honest. A reported symbol carries the kind it actually has - an exported instance
 reports `attribute`, never promoted to `function` because it happens to be callable. Callability

@@ -26,7 +26,7 @@ from typing import Self
 
 logger = logging.getLogger(__package__)
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 """The cache schema version, stored as SQLite's `PRAGMA user_version`.
 
 NOTE: Tracks *what the store ends up holding*, not only the table
@@ -73,6 +73,15 @@ for such a package holds the duplicate rows the fixed walk no longer
 writes, which no rebuild of an unrelated package can restore and which
 `specs/behaviors/symbol-graph.md` Re-exported symbols now says shall
 not happen.
+
+NOTE: 11 - the walk now skips a module-valued binding at every depth,
+with or without `__all__`, and a module held as a class member (#130);
+a version-10 cache holds an
+`attribute` node for every submodule a root without `__all__` happened
+to have imported, and for any submodule an `__all__` lists, each
+surfacing in `show --api` as a public symbol, which
+`specs/behaviors/symbol-graph.md` Module bindings now says shall not
+happen.
 """
 
 

@@ -90,12 +90,14 @@ Keying differs between `CONTAINS` and `INHERITS` - see
 ### Re-exported symbols
 
 A re-export is a name bound in one module whose object is defined in another. Whether the walk
-records it turns on two things: whether the recording module declares `__all__`, and whether it
-is the package's own root module.
+records it turns first on whether the object is a module, which is never recorded - see
+[Module bindings](#module-bindings). For any other name it turns on two things: whether the
+recording module declares `__all__`, and whether it is the package's own root module.
 
 Where a module declares `__all__`, every name it lists shall be recorded at that module, whatever
-module defines the object, at any depth. `__all__` is the module's own statement of what it
-exports, and a stated intent is not second-guessed.
+module defines the object, at any depth, except a name bound to a module, per
+[Module bindings](#module-bindings). `__all__` is the module's own statement of what it exports,
+and a stated intent is not second-guessed.
 
 Where a module declares no `__all__` and is not the package's own root module, a class or
 function whose defining module differs from the recording module shall not be recorded there.
@@ -129,6 +131,43 @@ at module level would read as belonging to `re` rather than to the module that d
   private submodule of the same package root, then it shall still be recorded at the re-exporting
   module. This is the single carve-out from the rule above, because the facade is that symbol's
   only public surface - declared at [Private submodules](#private-submodules).
+
+### Module bindings
+
+A name whose object is a module shall never be recorded as a symbol - neither of the module that
+binds it, at any depth and whether or not that module declares `__all__`, nor as a member of a
+class that holds it. A module of the walked package that the submodule walk discovers is recorded
+once, as a `module` or `package` node keyed by its dotted name; the walk records it by descending
+into it, not by reading it as an attribute of its parent.
+
+Recording the binding as well would put a second node in the graph for the same object, under a
+`::` key, with kind `attribute` - a kind the object does not have, which
+[Node kinds](#node-kinds) rules out. Importing a submodule binds it on its parent, so without this
+rule every root declaring no `__all__` would carry one such node per submodule anything had
+imported.
+
+This is the one exception to `__all__` not being second-guessed, and it does not discard the
+declaration. A public submodule listed in `__all__` is declared public, and the graph already
+records it as public - as the module node `tree` and `inspect` answer from - under the kind it
+actually has.
+
+- If a module's `__all__` lists one of the package's own public submodules, then the walk shall
+  record that submodule as its `module` or `package` node only, and no symbol of the listing module
+  shall name it.
+- If a module declaring no `__all__` binds one of the package's own submodules as an attribute,
+  then the walk shall record no symbol for that binding, at the root as at any depth below it.
+- If a module binds a module from outside the walked package root, under a public name, then the
+  walk shall record no node for it. That module belongs to another package, whose own graph is
+  where it is answered.
+- If a class holds a module as a public member, then the walk shall record no member node for it.
+  The class's members are what the class defines; a module stored on it is answered by its own
+  name, like any other module binding.
+- If a module's `__all__` lists, under a public name, a module the submodule walk records no node
+  for - a private submodule exported under a public alias (`from . import _impl as impl`), or a
+  module registered in `sys.modules` that the walk cannot discover - then that name shall be
+  absent from the graph: `show --api` does not report it, and neither `tree` nor `inspect`
+  answers for it. Recording it under the alias would put a module in the graph under a `::` key,
+  the second keying convention this rule exists to avoid; see [Out of scope](#out-of-scope).
 
 ### Private submodules
 
@@ -180,6 +219,12 @@ the rowid mapping must stay stable, per
 [Qualified name semantics](qualified-name-semantics.md).
 
 ## Out of scope
+
+- **Indexing a module the walk cannot reach by its own name** - a private submodule exported
+  under a public alias, or a module registered only in `sys.modules`. Such a name is absent from
+  the graph, per [Module bindings](#module-bindings); not planned here. Giving it a node would
+  have to answer which key it takes, since its dotted name is either private or undiscoverable.
+  Filed as [#142](https://github.com/andyrids/venv-axi/issues/142).
 
 - **Static analysis fallback** - a package that cannot be imported is reported as broken, never
   approximated by parsing its source. Never - reporting what would 'probably' import reintroduces

@@ -505,16 +505,12 @@ def test_get_public_api_top_level_keeps_default_depth(
     # root re-exports it from the public sibling `package.module` and a
     # package's own root keeps its re-exports
     # (`specs/behaviors/symbol-graph.md`, Re-exported symbols; #106).
-    # `module` is not: the same import binds `package.module` as an
-    # attribute of `package`, which surfaces as an `attribute` row - the
-    # submodule-as-`attribute` finding in
-    # `plans/reexport-filter-contract.md` Risks / unknowns, filed
-    # separately and not declared behaviour.
+    # The same import binds `package.module` on `package`, and that
+    # binding is no symbol (Module bindings; #130).
     assert [symbol.name for symbol in symbols] == [
         "Animal",
         "Cat",
         "Dog",
-        "module",
         "render_grid",
     ]
     with SymbolStore(get_cache_db_path(get_project_root())) as store:
@@ -541,26 +537,86 @@ def test_get_public_api_excludes_module_and_package_kind(
     names = {symbol.name for symbol in symbols}
     assert "module" not in kinds
     assert "package" not in kinds
-    # NOTE: `module` is *narrowed out* of the disjoint set below, not
-    # deleted. The #106 fixture root re-exports `render_grid` from
-    # `package.module`, and the same import binds `package.module` as an
-    # attribute of `package`. At depth 0 the walk's re-export filter -
-    # and with it the `inspect.ismodule` skip nested inside it - does
-    # not run, so `_record_symbol` records the module object keyed
-    # `package::module` with kind `attribute`, and `get_public_api`
-    # excludes only the `module`|`package` *kinds*. That is the
-    # submodule-as-`attribute` finding recorded in
-    # `plans/reexport-filter-contract.md` Risks / unknowns: an artefact
-    # reached by a route the #82 kind-based fix does not cover, filed as
-    # its own issue at closeout. It is NOT blessed behaviour, and it
-    # contradicts the declaration this test guards, which is why the
-    # name stays visible here rather than being dropped from the set.
+    # NOTE: The fixture root has no `__all__` and its `render_grid`
+    # import binds `package.module` as an attribute of `package`, so
+    # `module` is the root-without-`__all__` route of #130 as well as a
+    # submodule (`specs/behaviors/symbol-graph.md`, Module bindings).
     assert names.isdisjoint(
-        {"api", "constants", "facade", "importer", "subpkg"}
+        {"api", "constants", "facade", "importer", "module", "subpkg"}
     )
-    # The finding itself, pinned so that fixing it fails this test and
-    # returns a reader to the narrowing above instead of leaving it.
-    assert "module" in names
+
+
+def test_get_public_api_excludes_modules_listed_in_all(
+    fake_package: str,
+) -> None:
+    """A module named in `__all__` is not a public-API symbol, whether
+    it is the package's own submodule (`inner`) or another package's
+    module (`codec`, bound from `json`) - and the own submodule stays
+    reachable through `tree` as its module node (#130;
+    `specs/behaviors/symbol-graph.md`, Module bindings)."""
+    subpkg = f"{fake_package}.subpkg"
+    names = {symbol.name for symbol in get_public_api(subpkg).symbols}
+    assert names.isdisjoint({"codec", "inner"})
+    tree = {(node.name, node.kind) for _, node in get_module_tree(subpkg)}
+    assert ("inner", NodeKind.MODULE) in tree
+    with pytest.raises(SymbolNotFoundError):
+        get_symbol(f"{subpkg}::codec")
+
+
+def test_walk_records_no_member_node_for_a_module_on_a_class(
+    fake_package: str,
+) -> None:
+    """A class holding a module as a public member records no member
+    node for it (#130; `specs/behaviors/symbol-graph.md`, Module
+    bindings)."""
+    registry = f"{fake_package}.subpkg.inner::Registry"
+    assert get_symbol(registry).kind is NodeKind.CLASS
+    with pytest.raises(SymbolNotFoundError):
+        get_symbol(f"{registry}.codec")
+
+
+def test_walk_leaves_a_private_alias_in_all_out_of_the_graph(
+    fake_package: str,
+) -> None:
+    """A private submodule exported under a public alias in `__all__`
+    has no module node to fall back on, so the name is absent from the
+    graph - `show --api`, `tree` and `inspect` all answer without it
+    (#130; `specs/behaviors/symbol-graph.md`, Module bindings)."""
+    subpkg = f"{fake_package}.subpkg"
+    names = {symbol.name for symbol in get_public_api(subpkg).symbols}
+    assert "impl" not in names
+    _, children = show_module(subpkg)
+    assert "impl" not in [child.name for child in children]
+    tree = [node.name for _, node in get_module_tree(subpkg)]
+    assert "impl" not in tree
+    with pytest.raises(SymbolNotFoundError):
+        get_symbol(f"{subpkg}::impl")
+
+
+def test_walk_records_no_attribute_node_for_a_module(
+    fake_package: str,
+) -> None:
+    """No `attribute` node anywhere in the walked graph resolves to a
+    module object - the graph-wide form of the rule, over the fixture's
+    module-binding routes: a root without `__all__`, an `__all__` listing
+    own, foreign and private-aliased modules, and a class holding a
+    module (#130; `specs/behaviors/symbol-graph.md`, Module bindings)."""
+    get_public_api(fake_package)
+    connection = sqlite3.connect(get_cache_db_path(get_project_root()))
+    try:
+        rows = connection.execute(
+            "SELECT qualified_name FROM nodes WHERE package = ? AND kind = ?",
+            (fake_package, NodeKind.ATTRIBUTE.value),
+        ).fetchall()
+    finally:
+        connection.close()
+    assert rows
+    for (qualified_name,) in rows:
+        module_name, _, path = qualified_name.partition("::")
+        obj: object = importlib.import_module(module_name)
+        for part in path.split("."):
+            obj = getattr(obj, part)
+        assert not isinstance(obj, types.ModuleType), qualified_name
 
 
 def test_show_module_returns_node_and_children(fake_package: str) -> None:
@@ -568,13 +624,11 @@ def test_show_module_returns_node_and_children(fake_package: str) -> None:
     node, children = show_module(fake_package)
     assert node.kind is NodeKind.PACKAGE
     names = [child.name for child in children]
-    # NOTE: `module` appears twice and the two rows are distinct nodes -
-    # `_walk_submodules` keys the module node `package.module`, while
-    # `_record_symbol` keys the attribute row `package::module`, so
-    # neither upsert overwrites the other. The attribute row is the
-    # submodule-as-`attribute` finding in
-    # `plans/reexport-filter-contract.md` Risks / unknowns, not declared
-    # behaviour. `render_grid` is the root exemption working (#106).
+    # NOTE: `module` appears once, as its module node. The root's
+    # `render_grid` import binds `package.module` on `package` too, and
+    # that binding records no second, `attribute`-kind row (#130;
+    # `specs/behaviors/symbol-graph.md`, Module bindings).
+    # `render_grid` is the root exemption working (#106).
     assert names == [
         "Animal",
         "Cat",
@@ -584,12 +638,11 @@ def test_show_module_returns_node_and_children(fake_package: str) -> None:
         "facade",
         "importer",
         "module",
-        "module",
         "render_grid",
         "subpkg",
     ]
     kinds = [child.kind for child in children if child.name == "module"]
-    assert kinds == [NodeKind.MODULE, NodeKind.ATTRIBUTE]
+    assert kinds == [NodeKind.MODULE]
 
 
 def test_show_module_raises_for_unknown_symbol(fake_package: str) -> None:
@@ -1635,22 +1688,7 @@ def test_walk_module_visited_set_prevents_revisit(
             version="1.0.0",
         )
         children = store.get_children(fake_package)
-    # NOTE: The subject here is `_walk_submodules`' visited-set skip, so
-    # the assertion is narrowed to the `module`-kind row it governs. A
-    # second, unrelated row named `module` now reaches the store by the
-    # other route: the #106 root re-export binds `package.module` as an
-    # attribute of `package`, and `_record_symbol` records it keyed
-    # `package::module` with kind `attribute` from `_walk_module`, which
-    # the visited set does not govern. That is the
-    # submodule-as-`attribute` finding in
-    # `plans/reexport-filter-contract.md` Risks / unknowns - collateral
-    # of the fixture change, not a hole in the skip under test.
-    assert f"{fake_package}.module" not in [
-        child.qualified_name for child in children
-    ]
-    assert NodeKind.MODULE not in [
-        child.kind for child in children if child.name == "module"
-    ]
+    assert "module" not in [child.name for child in children]
 
 
 def test_refresh_package_graph_reports_the_rebuilt_walk(

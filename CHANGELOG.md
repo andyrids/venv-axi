@@ -237,6 +237,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `show --api` no longer reports a module as a public-API symbol of kind `attribute`. The walk's
+  module skip sat inside the `__all__`-less, below-the-root branch of the re-export filter, so it
+  missed two routes:
+  - **A root declaring no `__all__`.** Importing a submodule binds it on its parent, so every
+    submodule anything had imported was reported. `show coverage --api` listed dozens of them.
+  - **Any `__all__` naming a module.** `show polars --api` listed `api`, `exceptions`, `plugins`
+    and `selectors`, and `show venvaxi --api` listed `exceptions`.
+
+  Another package's module bound under a public name leaked the same way (`yaml`'s `io`,
+  `adodbapi`'s `time`), as did a module held as a class member. The skip now runs for every
+  candidate at every depth, and for class members. `specs/behaviors/symbol-graph.md` gains a
+  `Module bindings` subsection: it is the one exception to `__all__` not being second-guessed,
+  because a public submodule is already recorded under the kind it actually has, as the module
+  node `tree` and `inspect` answer from. `show venvaxi --api` drops from `count: 2` to `count: 1`.
+  A private submodule exported under a public alias, or a module only registered in
+  `sys.modules`, has no module node, so such a name is now absent from the graph. The spec
+  declares this, and [#142](https://github.com/andyrids/venv-axi/issues/142) tracks indexing it.
+  `inspect pkg::sub` no longer answers; `inspect pkg.sub` does. `SCHEMA_VERSION` moves 10 to 11,
+  so every cache rebuilds once on first use after upgrade
+  (issue [#130](https://github.com/andyrids/venv-axi/issues/130)).
 - CI's format check now gates. `uv run pkgdx-format-hook` with no arguments is `ruff format`
   without `--check`, so it rewrote misformatted files in place and exited 0 - measured on a
   deliberately misformatted `src/venvaxi/__init__.py`: `1 file reformatted`, exit 0, and a clean
