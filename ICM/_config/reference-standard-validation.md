@@ -35,14 +35,14 @@ contracts, authoring standards and this file are not.
 Each is a fixed shape. Picking the shape first is most of the work, because the shape names the
 part you have not thought about yet.
 
-| Pattern          | Template                                                  |
-| ---------------- | --------------------------------------------------------- |
-| Ubiquitous       | The `<system>` shall `<response>`.                        |
-| Event-driven     | When `<trigger>`, the `<system>` shall `<response>`.      |
-| State-driven     | While `<state>`, the `<system>` shall `<response>`.       |
-| Optional feature | Where `<feature>`, the `<system>` shall `<response>`.     |
-| Unwanted         | If `<trigger>`, then the `<system>` shall `<response>`.   |
-| Complex          | Two or more of the above, preconditions first.            |
+| Pattern          | Template                                                |
+| ---------------- | ------------------------------------------------------- |
+| Ubiquitous       | The `<system>` shall `<response>`.                      |
+| Event-driven     | When `<trigger>`, the `<system>` shall `<response>`.    |
+| State-driven     | While `<state>`, the `<system>` shall `<response>`.     |
+| Optional feature | Where `<feature>`, the `<system>` shall `<response>`.   |
+| Unwanted         | If `<trigger>`, then the `<system>` shall `<response>`. |
+| Complex          | Two or more of the above, preconditions first.          |
 
 ### Ubiquitous
 

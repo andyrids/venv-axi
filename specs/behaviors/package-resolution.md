@@ -11,11 +11,11 @@ tags: [behavior, package, resolution]
 
 A package argument fails in exactly one of three ways, and the exception says which:
 
-| The name is | Meaning | Error |
-| ----------- | ------- | ----- |
-| **Malformed** | Not a possible package name at all | `InvalidArgumentError` |
-| **Absent** | A possible name, but nothing in the venv provides it | `PackageNotFoundError` |
-| **Broken** | Provided, but will not import | `PackageImportError` |
+| The name is   | Meaning                                              | Error                  |
+| ------------- | ---------------------------------------------------- | ---------------------- |
+| **Malformed** | Not a possible package name at all                   | `InvalidArgumentError` |
+| **Absent**    | A possible name, but nothing in the venv provides it | `PackageNotFoundError` |
+| **Broken**    | Provided, but will not import                        | `PackageImportError`   |
 
 If a user-supplied argument value cannot be honoured, then the command shall raise an `Error` and
 exit `EX_FAILURE`, never `EX_SYNTAX`. Exit 2 means venvaxi is broken; it MUST NOT mean the caller

@@ -25,11 +25,11 @@ declared the private-submodule skip. Declaring it made the next defect legible: 
 a private submodule is indistinguishable from a module that does not exist, and on two of them
 the answer is a definitive success an agent is meant to stop searching on.
 
-| Surface      | Private submodule                     | Nonexistent submodule |
-| ------------ | -------------------------------------- | ----------------------- |
-| `tree`       | `count: 0` + hint naming `tree pkg`    | identical                |
+| Surface      | Private submodule                         | Nonexistent submodule |
+| ------------ | ----------------------------------------- | --------------------- |
+| `tree`       | `count: 0` + hint naming `tree pkg`       | identical             |
 | `show --api` | `count: 0` + hint naming `tree pkg._impl` | raises, `EX_FAILURE`  |
-| `inspect`    | `` Module `pkg._impl` not found ``     | identical                |
+| `inspect`    | `` Module `pkg._impl` not found ``        | identical             |
 
 `show --api`'s hint is the sharpest defect: it routes to `tree pkg._impl`, which itself answers
 `count: 0`, so the offered recovery confirms the empty answer a second time.

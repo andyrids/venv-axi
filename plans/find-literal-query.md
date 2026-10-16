@@ -233,11 +233,11 @@ Step 1 of the helper exists to make that miss honest rather than to rescue a mat
 backslash first, then `%`, then `_`. Reversing that double-escapes the escapes just introduced.
 Verified against this venv's SQLite 3.50.4, and re-verified by mutation at stages 02 and 03:
 
-| Helper | query | matches |
-| ------ | ----- | ------- |
-| correct | `a\b` | `a\b` |
-| correct | `print_json` | `print_json`, `print_jsonx` |
-| forgets step 1 | `a\b` | `ab` - **wrong** |
+| Helper         | query        | matches                                   |
+| -------------- | ------------ | ----------------------------------------- |
+| correct        | `a\b`        | `a\b`                                     |
+| correct        | `print_json` | `print_json`, `print_jsonx`               |
+| forgets step 1 | `a\b`        | `ab` - **wrong**                          |
 | none (pre-fix) | `print_json` | `print_json`, `printXjson`, `print_jsonx` |
 
 Row 3 is the one that matters: SQLite raises nothing when the escape character precedes an ordinary

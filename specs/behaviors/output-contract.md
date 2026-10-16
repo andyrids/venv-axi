@@ -40,8 +40,8 @@ report does.
 
 ### Exit codes
 
-| Code | Name         | Meaning                                              |
-| ---- | ------------ | ---------------------------------------------------- |
+| Code | Name         | Meaning                                               |
+| ---- | ------------ | ----------------------------------------------------- |
 | 0    | `EX_OK`      | Command completed, including definitive empty results |
 | 1    | `EX_FAILURE` | A `venvaxi.exceptions.Error` was raised and reported  |
 | 2    | `EX_SYNTAX`  | An unexpected (non-`Error`) exception escaped         |
