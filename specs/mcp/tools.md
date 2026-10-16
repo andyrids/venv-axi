@@ -441,14 +441,22 @@ have given.
 
 The [private-submodule](../behaviors/symbol-graph.md#private-submodules) hints on
 `getModuleTreeTool` and `showPackageApiTool` are where this is easiest to get half right.
-`getModuleTreeTool`'s empty-state hint already names itself scoped to the query root, so
-mirroring [`tree`](../commands/tree.md#outputs)'s private case changes only the sentence, not the
-target. `showPackageApiTool`'s does not: today it names `getModuleTreeTool` scoped to the *given*
-name, and the private case shall instead name `showPackageApiTool` itself, scoped to the *root* -
+`getModuleTreeTool`'s empty-state hint names itself scoped to the query root - for every miss
+but a module-binding miss to a public module, below - so mirroring
+[`tree`](../commands/tree.md#outputs)'s private case changes only the sentence, not the target.
+`showPackageApiTool`'s does not: today it names `getModuleTreeTool` scoped to the *given* name,
+and the private case shall instead name `showPackageApiTool` itself, scoped to the *root* -
 matching [`show --api`](../commands/show.md#outputs)'s hint exactly. Keeping the old target with
 the new sentence, or the new target at the old (private) scope, both leave the recovery
 confirming the same empty answer a second time - naming the right tool with the wrong parameter
 is a plausible-looking hint that still fails.
+
+The [module-binding miss](../behaviors/symbol-graph.md#module-bindings) follows the same pattern.
+`getModuleTreeTool`'s empty-state hint shall state what the name is bound to in the cases
+[`tree`](../commands/tree.md#outputs) declares, and name the same next step in this surface's
+spelling: `getModuleTreeTool` with `name=` the bound module where that module is a public module
+of the package, and with `name=` the root otherwise. `showModuleTool` carries no hint for it;
+the miss is an error whose message is shared with `inspect` and states the binding there.
 
 Truncation suffixes carry the same obligation as footers, and are specified with the truncation
 rule in [Output contract](../behaviors/output-contract.md#truncation).

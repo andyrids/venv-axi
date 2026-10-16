@@ -94,9 +94,9 @@ public API.
 
 - If a package's `__all__` lists one of its own submodules, then the `show` command shall not
   report that name in API mode. A public submodule stays reachable through `tree`, and through
-  `inspect` by its dotted module name; one exported under a public alias of a private name is
-  reachable through neither, per
-  [Module bindings](../behaviors/symbol-graph.md#module-bindings).
+  `inspect` by its dotted module name; one exported under a public alias of a private name has no
+  node for either to answer from, and a lookup of the alias names the private module it is bound
+  to instead, per [Module bindings](../behaviors/symbol-graph.md#module-bindings).
 - If a package's root declares no `__all__` and binds one of its submodules as an attribute, then
   the `show` command shall not report that name in API mode.
 - If a package binds another package's module under a public name, then the `show` command shall
@@ -155,6 +155,12 @@ An empty API result is success - `count: 0` exits `EX_OK`, per the
 
 - **Deep API enumeration** - `--api` reports public, top-level symbols only; nested module
   structure is `tree`'s job and per-symbol depth is `inspect`'s.
+- **A module binding named as the package** - `show numpy.emath --api` names a binding rather
+  than an importable module, and fails as though the package were not installed. `tree` and
+  `inspect` diagnose the same name as a
+  [module-binding miss](../behaviors/symbol-graph.md#module-bindings); this command does not yet,
+  because its failure is raised before any graph is read and moving it needs its own decision on
+  the outcome class. Filed as [#147](https://github.com/andyrids/venv-axi/issues/147).
 - **Recommendation** - the API table reports the surface; it does not rank, recommend, or
   explain which symbol to reach for. Never - the
   [Report what a symbol is](../principles.md#report-what-a-symbol-is-not-how-to-use-it)
