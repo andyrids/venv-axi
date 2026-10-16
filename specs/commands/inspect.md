@@ -13,11 +13,11 @@ tags: [command, inspect]
 venvaxi inspect <qualified_name> [--docstring] [--refresh]
 ```
 
-| Argument         | Default  | Meaning                                       |
-| ---------------- | -------- | --------------------------------------------- |
-| `qualified_name` | required | A symbol or module name (see below)           |
+| Argument         | Default  | Meaning                                        |
+| ---------------- | -------- | ---------------------------------------------- |
+| `qualified_name` | required | A symbol or module name (see below)            |
 | `--docstring`    | off      | Complete docstrings, not truncated first lines |
-| `--refresh`      | off      | Rebuild the cached graph first                |
+| `--refresh`      | off      | Rebuild the cached graph first                 |
 
 `qualified_name` accepts `module::Symbol`, `module::Class.method`, or a bare/dotted module name.
 

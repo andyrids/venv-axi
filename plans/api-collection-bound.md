@@ -22,12 +22,12 @@ pr: 86
 the truncated view's own footer suggests the call that makes it worse. Measured on `develop` at
 the head of this plan, after issue 82 widened the reported surface:
 
-| Package | `--api` | `--api --docstring` | rows |
-| ------- | ------- | ------------------- | ---- |
-| numpy | 67,516 B | 1,023,453 B | 496 |
-| polars | 46,100 B | 382,765 B | 203 |
-| pydantic | 23,300 B | 108,478 B | 151 |
-| fastmcp | 2,601 B | 7,229 B | 6 |
+| Package  | `--api`  | `--api --docstring` | rows |
+| -------- | -------- | ------------------- | ---- |
+| numpy    | 67,516 B | 1,023,453 B         | 496  |
+| polars   | 46,100 B | 382,765 B           | 203  |
+| pydantic | 23,300 B | 108,478 B           | 151  |
+| fastmcp  | 2,601 B  | 7,229 B             | 6    |
 
 Over MCP the numpy call does not merely arrive large - it is refused outright by the token-limit
 guard, so the tool's own suggested next step reliably fails (issue 67).

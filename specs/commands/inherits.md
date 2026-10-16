@@ -13,11 +13,11 @@ tags: [command, inherits]
 venvaxi inherits <qualified_name> [--bases] [--refresh]
 ```
 
-| Argument         | Default  | Meaning                                              |
-| ---------------- | -------- | ---------------------------------------------------- |
-| `qualified_name` | required | Qualified class name (`module::Class`)               |
+| Argument         | Default  | Meaning                                               |
+| ---------------- | -------- | ----------------------------------------------------- |
+| `qualified_name` | required | Qualified class name (`module::Class`)                |
 | `--bases`        | off      | Report the class's base classes instead of subclasses |
-| `--refresh`      | off      | Rebuild the cached graph first                       |
+| `--refresh`      | off      | Rebuild the cached graph first                        |
 
 The positional is the **base** class in the default direction and the **subclass** in the
 `--bases` direction. It is one argument either way - the class the caller has in hand.

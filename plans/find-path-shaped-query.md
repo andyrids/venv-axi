@@ -239,13 +239,13 @@ the query's own `_` and `%` characters into the pattern as wildcards - a query c
 literal text and is immune to that. Verified against this venv's live SQLite 3.50.4 at stage 01,
 re-verified independently at stage 02:
 
-| `qualified_name` | `:query` | tail (`length+1`) | key 3 |
-| ---------------- | -------- | ----------------- | ----- |
-| `rich.console::Console.print` | `Console.print` | `:console.print` | 1 |
-| `rich.console::Console.print_json` | `Console.print` | `ole.print_json` | 0 |
-| `pkg.mod::Outer.Inner.method` | `Inner.method` | `.inner.method` | 1 |
-| `abc` | `xxxxxxxxxx` | `abc` | 0 |
-| `rich.console::Console.print` | `rich.console::Console.print` | (whole string) | 1 |
+| `qualified_name`                   | `:query`                      | tail (`length+1`) | key 3 |
+| ---------------------------------- | ----------------------------- | ----------------- | ----- |
+| `rich.console::Console.print`      | `Console.print`               | `:console.print`  | 1     |
+| `rich.console::Console.print_json` | `Console.print`               | `ole.print_json`  | 0     |
+| `pkg.mod::Outer.Inner.method`      | `Inner.method`                | `.inner.method`   | 1     |
+| `abc`                              | `xxxxxxxxxx`                  | `abc`             | 0     |
+| `rich.console::Console.print`      | `rich.console::Console.print` | (whole string)    | 1     |
 
 Row 4 is the over-length clamp: `substr` returns the whole string rather than erroring when the
 query is longer than the `qualified_name`, so the comparison is simply false and there is no

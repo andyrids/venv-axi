@@ -77,12 +77,12 @@ Keying on the **standard library** rather than the package separates every docum
 the test is a set membership on the top-level component of `type(obj).__module__`. Verified
 against all four cases before this plan was written:
 
-| Symbol | Type's module | In stdlib | Wanted | Rule gives |
-| ------ | ------------- | --------- | ------ | ---------- |
-| `pytest.fail` | `_pytest.outcomes` | no | keep | keep |
-| `pytest.version_tuple` | `builtins` | yes | blank | blank |
-| `fastmcp.settings` | `fastmcp.settings` | no | keep | keep |
-| a `NewType` alias | `typing` | yes | blank | blank |
+| Symbol                 | Type's module      | In stdlib | Wanted | Rule gives |
+| ---------------------- | ------------------ | --------- | ------ | ---------- |
+| `pytest.fail`          | `_pytest.outcomes` | no        | keep   | keep       |
+| `pytest.version_tuple` | `builtins`         | yes       | blank  | blank      |
+| `fastmcp.settings`     | `fastmcp.settings` | no        | keep   | keep       |
+| a `NewType` alias      | `typing`           | yes       | blank  | blank      |
 
 **Why `SCHEMA_VERSION` must move.** `_doc_of` runs at walk time and its result is frozen into the
 store, so changing it leaves every existing cache serving the old value.

@@ -54,19 +54,19 @@ shall catch `BaseException`, re-raising only `KeyboardInterrupt` and `SystemExit
 
 ## Tools
 
-| Tool                  | Parameters                          | CLI equivalent            |
-| --------------------- | ----------------------------------- | ------------------------- |
-| `describeBindingTool` | none                                | none - see below          |
-| `listPackagesTool`    | `include_dev=False`                 | `list [--all]`            |
-| `showPackageTool`     | `name`                              | `show <package>`          |
-| `showPackageApiTool`  | `name`, `docstring=False`, `limit=20` | `show <package> --api`  |
-| `showModuleTool`      | `name`, `docstring=False`           | `inspect <module>`        |
-| `getSymbolTool`       | `qualified_name`, `docstring=False` | `inspect <symbol>`        |
-| `findSymbolTool`      | `query`, `limit=20`, `package=None` | `find <query>`            |
-| `getInheritorsTool`   | `qualified_name`                    | `inherits <name>`         |
-| `getBasesTool`        | `qualified_name`                    | `inherits <name> --bases` |
-| `getModuleTreeTool`   | `name`, `max_depth=2`               | `tree <package>`          |
-| `refreshPackageGraphTool` | `name`                          | `--refresh` - see below   |
+| Tool                      | Parameters                            | CLI equivalent            |
+| ------------------------- | ------------------------------------- | ------------------------- |
+| `describeBindingTool`     | none                                  | none - see below          |
+| `listPackagesTool`        | `include_dev=False`                   | `list [--all]`            |
+| `showPackageTool`         | `name`                                | `show <package>`          |
+| `showPackageApiTool`      | `name`, `docstring=False`, `limit=20` | `show <package> --api`    |
+| `showModuleTool`          | `name`, `docstring=False`             | `inspect <module>`        |
+| `getSymbolTool`           | `qualified_name`, `docstring=False`   | `inspect <symbol>`        |
+| `findSymbolTool`          | `query`, `limit=20`, `package=None`   | `find <query>`            |
+| `getInheritorsTool`       | `qualified_name`                      | `inherits <name>`         |
+| `getBasesTool`            | `qualified_name`                      | `inherits <name> --bases` |
+| `getModuleTreeTool`       | `name`, `max_depth=2`                 | `tree <package>`          |
+| `refreshPackageGraphTool` | `name`                                | `--refresh` - see below   |
 
 ## The binding report
 

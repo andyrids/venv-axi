@@ -144,8 +144,8 @@ The system is self-documenting and has been wrapped up in a Claude Code plugin a
 
 A large community dedicated to this methodology can be found at [https://www.skool.com/cliefnotes](https://www.skool.com/cliefnotes/about?ref=478219c6d94340bd984dde6a8d1046e6).
 
-A community member made a detailed and easy-to-understand video guide on YouTube -
-[here](https://youtu.be/tvvaOCK_Z50?si=dX86mhIKVEXSVM0k).
+A community member made a detailed and easy-to-understand
+[video guide on YouTube](https://youtu.be/tvvaOCK_Z50?si=dX86mhIKVEXSVM0k).
 
 > [!NOTE]
 > ICM can leverage AI in a way that streamlines development, but also generates enough friction

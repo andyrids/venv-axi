@@ -22,16 +22,16 @@ Start at `CONTEXT.md` in the repository root; it routes to the workspace that ow
 Five layers. Layers 0 to 2 route; layers 3 and 4 carry content. Load a layer only when the work
 has reached it - reading ahead is how a stage acquires context it was designed not to have.
 
-| Layer | Role              | Path                            | `immutable` | Budget |
-| ----- | ----------------- | ------------------------------- | ----------- | ------ |
-| 0     | Global identity   | `AGENTS.md`                     | false       | 900    |
-| 1     | Workspace routing | `CONTEXT.md`                    | false       | 300    |
-| 2     | Stage routing     | `ICM/*/CONTEXT.md`              | false       | 500    |
-| 2     | Stage contract    | `ICM/*/stages/**/CONTEXT.md`    | false       | 500    |
-| 3     | Reference material| `ICM/_config/reference-*.md`, both READMEs | true | 2500 |
-| 3     | Reference material| `specs/**/*.md`                 | false       | -      |
-| 4     | Working artifact  | `plans/*.md`                    | false       | -      |
-| 4     | Working artifact  | `ICM/*/stages/**/output/*.md`   | false       | -      |
+| Layer | Role               | Path                                       | `immutable` | Budget |
+| ----- | ------------------ | ------------------------------------------ | ----------- | ------ |
+| 0     | Global identity    | `AGENTS.md`                                | false       | 900    |
+| 1     | Workspace routing  | `CONTEXT.md`                               | false       | 300    |
+| 2     | Stage routing      | `ICM/*/CONTEXT.md`                         | false       | 500    |
+| 2     | Stage contract     | `ICM/*/stages/**/CONTEXT.md`               | false       | 500    |
+| 3     | Reference material | `ICM/_config/reference-*.md`, both READMEs | true        | 2500   |
+| 3     | Reference material | `specs/**/*.md`                            | false       | -      |
+| 4     | Working artifact   | `plans/*.md`                               | false       | -      |
+| 4     | Working artifact   | `ICM/*/stages/**/output/*.md`              | false       | -      |
 
 ### Frontmatter
 

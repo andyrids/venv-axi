@@ -233,13 +233,13 @@ note: This has inner spaces
 
 Six escape sequences are valid in quoted strings:
 
-| Character | Escape |
-|-----------|--------|
-| Backslash (`\`) | `\\` |
-| Double quote (`"`) | `\"` |
-| Newline | `\n` |
-| Carriage return | `\r` |
-| Tab | `\t` |
+| Character                                 | Escape   |
+| ----------------------------------------- | -------- |
+| Backslash (`\`)                           | `\\`     |
+| Double quote (`"`)                        | `\"`     |
+| Newline                                   | `\n`     |
+| Carriage return                           | `\r`     |
+| Tab                                       | `\t`     |
 | Any other U+0000-U+001F control character | `\uXXXX` |
 
 Other escapes (e.g. `\x`, `\0`, `\b`) are invalid, and lone-surrogate `\uXXXX` values
@@ -318,17 +318,17 @@ host: example.com
 
 ## Type conversions
 
-| Input | Output |
-|-------|--------|
-| Finite number in `[1e-6, 1e21)` (or zero) | Canonical decimal |
-| Finite number outside that range | Exponent form permitted |
-| `NaN`, `Infinity`, `-Infinity` | `null` |
-| `BigInt` (safe range) | Number |
-| `BigInt` (out of range) | Quoted decimal string |
-| `Date` | ISO string (quoted) |
-| `Set` | Array of normalized values |
-| `Map` | Object with `String(key)` keys |
-| `undefined`, `function`, `symbol` | `null` |
+| Input                                     | Output                         |
+| ----------------------------------------- | ------------------------------ |
+| Finite number in `[1e-6, 1e21)` (or zero) | Canonical decimal              |
+| Finite number outside that range          | Exponent form permitted        |
+| `NaN`, `Infinity`, `-Infinity`            | `null`                         |
+| `BigInt` (safe range)                     | Number                         |
+| `BigInt` (out of range)                   | Quoted decimal string          |
+| `Date`                                    | ISO string (quoted)            |
+| `Set`                                     | Array of normalized values     |
+| `Map`                                     | Object with `String(key)` keys |
+| `undefined`, `function`, `symbol`         | `null`                         |
 
 > [!INFO]
 > TOON itself doesn't specify how `Date` should be encoded - the spec leaves this to implementations.
