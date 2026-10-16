@@ -60,13 +60,13 @@ exactly the docstrings worth keeping.
 
 Five are declared; only two are read:
 
-| Kind           | Written                                            | Read by            |
-| -------------- | -------------------------------------------------- | ------------------ |
-| `CONTAINS`     | Module or class -> each symbol it holds             | `inspect`, `tree`  |
-| `INHERITS`     | Subclass -> base class                              | `inherits`, both ways |
-| `EXPORTS`      | Module -> a symbol whose home module differs        | nothing            |
-| `IMPORTS_FROM` | Module -> the home module it re-exports from        | nothing            |
-| `DEPENDS_ON`   | never                                               | nothing            |
+| Kind           | Written                                      | Read by               |
+| -------------- | -------------------------------------------- | --------------------- |
+| `CONTAINS`     | Module or class -> each symbol it holds      | `inspect`, `tree`     |
+| `INHERITS`     | Subclass -> base class                       | `inherits`, both ways |
+| `EXPORTS`      | Module -> a symbol whose home module differs | nothing               |
+| `IMPORTS_FROM` | Module -> the home module it re-exports from | nothing               |
+| `DEPENDS_ON`   | never                                        | nothing               |
 
 `INHERITS` is the one edge read in both directions. `inherits` follows it to the subclasses of a
 class, and `inherits --bases` follows it back to that class's own bases - one stored edge, two
