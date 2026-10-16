@@ -3,8 +3,8 @@ revision = 5
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'win32'",
-    "python_full_version == '3.14.*' and sys_platform == 'win32'",
     "python_full_version >= '3.15' and sys_platform != 'win32'",
+    "python_full_version == '3.14.*' and sys_platform == 'win32'",
     "python_full_version == '3.14.*' and sys_platform != 'win32'",
     "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'win32'",
     "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform != 'win32'",
@@ -1372,8 +1372,8 @@ version = "2.5.4"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'win32'",
-    "python_full_version == '3.14.*' and sys_platform == 'win32'",
     "python_full_version >= '3.15' and sys_platform != 'win32'",
+    "python_full_version == '3.14.*' and sys_platform == 'win32'",
     "python_full_version == '3.14.*' and sys_platform != 'win32'",
     "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'win32'",
     "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform != 'win32'",
@@ -1500,7 +1500,7 @@ wheels = [
 
 [[package]]
 name = "pkgdx"
-version = "0.4.0"
+version = "0.4.1"
 source = { registry = "https://gitlab.com/api/v4/projects/82928123/packages/pypi/simple" }
 dependencies = [
     { name = "detect-secrets" },
@@ -1511,9 +1511,9 @@ dependencies = [
     { name = "ruff" },
     { name = "tomlkit" },
 ]
-sdist = { url = "https://gitlab.com/api/v4/projects/82928123/packages/pypi/files/cfc88ee952bb778fa2bbb266aed25c6a681862b69b0d865b37212f95a5bad352/pkgdx-0.4.0.tar.gz", hash = "sha256:cfc88ee952bb778fa2bbb266aed25c6a681862b69b0d865b37212f95a5bad352" }
+sdist = { url = "https://gitlab.com/api/v4/projects/82928123/packages/pypi/files/f77bc32215b7c1433f712a9f625309026f89b85ce5b10de9dd2843c1b62e54ee/pkgdx-0.4.1.tar.gz", hash = "sha256:f77bc32215b7c1433f712a9f625309026f89b85ce5b10de9dd2843c1b62e54ee" }
 wheels = [
-    { url = "https://gitlab.com/api/v4/projects/82928123/packages/pypi/files/61a78d6b0eb64d9aae6bac41633f51909800a210800e9c5c2908729b00853546/pkgdx-0.4.0-py3-none-any.whl", hash = "sha256:61a78d6b0eb64d9aae6bac41633f51909800a210800e9c5c2908729b00853546" },
+    { url = "https://gitlab.com/api/v4/projects/82928123/packages/pypi/files/c8bf8cf67a170b8e3fdd46d49848b51f3ce22bc03e0eaf73afaebbd09f995c56/pkgdx-0.4.1-py3-none-any.whl", hash = "sha256:c8bf8cf67a170b8e3fdd46d49848b51f3ce22bc03e0eaf73afaebbd09f995c56" },
 ]
 
 [[package]]
