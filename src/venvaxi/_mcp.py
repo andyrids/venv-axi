@@ -18,6 +18,7 @@ from venvaxi._introspect import (
     MCP_ESCAPE_HATCH,
     SYMBOL_INFO_FIELDS,
     ModuleBindingCase,
+    SymbolModuleMissError,
     describe_module_binding,
     find_symbol,
     get_bases,
@@ -48,16 +49,38 @@ from venvaxi.exceptions import (
 logger = logging.getLogger(__package__)
 
 
+def _error_hints(err: Error) -> list[str] | None:
+    """Spell the MCP next step an error's failure mode declares, if any.
+
+    NOTE: Mirrors `_cli.error_hint` in this surface's spelling - only a
+    symbol miss carrying the module a module lookup answers declares
+    one (`specs/mcp/tools.md`, Hint wording). `show_module_tool` is
+    read at call time, so its later definition is no obstacle.
+
+    Args:
+        err: The `Error` a tool raised.
+
+    Returns:
+        A one-line hint list, or None where the error declares no next
+        step and so takes no footer.
+    """
+    if isinstance(err, SymbolModuleMissError) and err.module is not None:
+        cname = camel_case(show_module_tool.__name__)
+        return [f"Call `{cname}` with name={err.module} for its symbols"]
+    return None
+
+
 def _toon_errors(fn: Callable[..., str]) -> Callable[..., str]:
     """Wrap an MCP tool so no exception escapes into FastMCP.
 
     NOTE: Mirrors the CLI catch discipline - `Error`s return the TOON
     error object, and anything else returns the `Unexpected error:`
-    shape. Both arms pass no hints, so no tool error carries the CLI's
-    generic footer - the footer is surface-addressed, and this surface
-    has no generic next step to name (`specs/mcp/tools.md`). Without
-    the broad arm, a non-`Error` exception escapes into FastMCP's
-    generic error path.
+    shape. An `Error` passes only the hint its failure mode declares
+    (`_error_hints`) and the unexpected arm passes none, so no tool
+    error carries the CLI's generic footer - the footer is
+    surface-addressed, and this surface has no generic next step to
+    name (`specs/mcp/tools.md`). Without the broad arm, a non-`Error`
+    exception escapes into FastMCP's generic error path.
 
     Args:
         fn: The tool function to wrap.
@@ -74,7 +97,7 @@ def _toon_errors(fn: Callable[..., str]) -> Callable[..., str]:
         # `Exception`, so the broad arm placed first would swallow
         # every domain error into the unexpected shape.
         except Error as err:
-            return format_error(str(err))
+            return format_error(str(err), _error_hints(err))
         except (KeyboardInterrupt, SystemExit):
             # NOTE: Mirrors `__main__.main` - neither is a tool answer,
             # and import boundaries keep third-party `SystemExit` from

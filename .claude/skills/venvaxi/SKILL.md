@@ -209,7 +209,9 @@ Notable CLI differences:
 
 - **Qualified-name form.** The separator is `::`, not a dot: `rich.console::Console` and
   `rich.console::Console.print`. A fully dotted spelling like `rich.console.Console.print`
-  has no `::`, so `inspect` treats it as a *module* name and it fails to resolve.
+  has no `::`, so `inspect` treats it as a *module* name and it fails to resolve. The converse
+  holds too: a module takes no `::` at all - `rich::console` is a symbol spelling and misses,
+  where `rich.console` is the module.
 - **`find` without `--package` only searches what is already cached.** On a cold cache that
   is nothing, and you get `count: 0`. Always pass `--package` on the first lookup for a
   package - it indexes and scopes in one step. `--refresh` without `--package` is a hard

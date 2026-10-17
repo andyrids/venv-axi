@@ -21,6 +21,7 @@ from venvaxi._introspect import (
     SYMBOL_INFO_FIELDS,
     ModuleBindingCase,
     ModuleBindingMissError,
+    SymbolModuleMissError,
     describe_module_binding,
     find_symbol,
     get_bases,
@@ -41,6 +42,7 @@ from venvaxi._packages import (
 )
 from venvaxi._toon import encode_object, encode_table, format_help
 from venvaxi.exceptions import (
+    Error,
     InvalidArgumentError,
     PackageNotFoundError,
     SymbolNotFoundError,
@@ -656,6 +658,26 @@ def command_inspect(ctx: CLIContext) -> int:
             )
         )
     return ExitCode.EX_OK
+
+
+def error_hint(err: Error) -> str | None:
+    """Spell the CLI next step an error's failure mode declares, if any.
+
+    NOTE: Declared per failure mode, never inferred - only a symbol miss
+    that carries the module a module lookup answers has one, and every
+    other error takes the generic footer
+    (`specs/behaviors/output-contract.md`, Error shape;
+    `specs/commands/inspect.md`, Failure modes).
+
+    Args:
+        err: The error about to be rendered.
+
+    Returns:
+        The hint line, or None where the error declares no next step.
+    """
+    if isinstance(err, SymbolModuleMissError) and err.module is not None:
+        return f"Run `venvaxi inspect {err.module}` for its symbols"
+    return None
 
 
 def command_cache(ctx: CLIContext) -> int:
