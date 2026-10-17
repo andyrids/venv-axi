@@ -1617,6 +1617,114 @@ def test_show_module_tool_binding_returns_the_shared_message(
     assert "venvaxi" not in result
 
 
+@pytest.mark.parametrize(
+    ("spelling", "fact", "module"),
+    [
+        (
+            "::subpkg",
+            "not found - `package.subpkg` is a module",
+            "package.subpkg",
+        ),
+        (
+            ".subpkg::nested",
+            "is bound to module `package.subpkg.inner`",
+            "package.subpkg.inner",
+        ),
+    ],
+)
+def test_get_symbol_tool_module_miss_hint_names_show_module_tool(
+    fake_package: str, spelling: str, fact: str, module: str
+) -> None:
+    """Where `inspect`'s footer names a module, `getSymbolTool` returns
+    the same message with a hint calling `showModuleTool` with that
+    module, and never the CLI spelling (#143; Validation: the MCP
+    hint; `specs/mcp/tools.md`, Hint wording)."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("get_symbol_tool")))
+    name = f"{fake_package}{spelling}"
+    result = tool.fn(qualified_name=name)
+    assert "error: true" in result
+    assert f"Symbol `{name}` {fact}" in result
+    hint = f"Call `showModuleTool` with name={module} for its symbols"
+    assert "help[1]:" in result
+    assert hint in result
+    assert "venvaxi" not in result
+
+
+@pytest.mark.parametrize(
+    ("spelling", "fact"),
+    [
+        (
+            ".subpkg::impl",
+            "is bound to private module `package._impl` and never indexed",
+        ),
+        (".subpkg::codec", "is bound to `json`, a module outside `package`"),
+        ("::nosuch", "not found"),
+    ],
+)
+def test_get_symbol_tool_module_miss_without_a_module_omits_footer(
+    fake_package: str, spelling: str, fact: str
+) -> None:
+    """Where `inspect`'s footer stays generic, `getSymbolTool` returns
+    the same message with no `help[]` footer at all (#143; Validation:
+    no MCP footer for a generic-footer miss)."""
+    server = build_server()
+    tool = asyncio.run(server.get_tool(camel_case("get_symbol_tool")))
+    name = f"{fake_package}{spelling}"
+    result = tool.fn(qualified_name=name)
+    assert "error: true" in result
+    assert f"Symbol `{name}` {fact}" in result
+    assert "help[" not in result
+
+
+def test_get_symbol_tool_below_depth_miss_is_unchanged_by_a_deeper_query(
+    fake_package: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """In one server process, a below-depth `getSymbolTool` miss returns
+    the same message and hint before and after a deeper `showModuleTool`
+    query walks, imports and binds the module - the walk's discovery,
+    never the parent's live attribute, decides it (#143; Validation:
+    determinism across a deeper query; `specs/behaviors/symbol-graph.md`,
+    Module bindings).
+
+    NOTE: An unrelated query builds the cache to the lookup's depth
+    first - that walk binds `leaf` through `package.facade`'s import of
+    it - and only then is the module evicted from `sys.modules` and
+    unbound on its parent, so the first `getSymbolTool` call meets it
+    absent and the deeper walk genuinely imports and binds it. The
+    eviction is not monkeypatched: `monkeypatch` is undone after
+    `fake_package`'s own `sys.modules` cleanup, and would restore the
+    stale module into the next test."""
+    target = f"{fake_package}.subpkg.inner.leaf"
+    server = build_server()
+    get_symbol_tool = asyncio.run(
+        server.get_tool(camel_case("get_symbol_tool"))
+    )
+    show_module_tool = asyncio.run(
+        server.get_tool(camel_case("show_module_tool"))
+    )
+    assert "error: true" not in get_symbol_tool.fn(
+        qualified_name=f"{fake_package}::Dog"
+    )
+    inner = importlib.import_module(f"{fake_package}.subpkg.inner")
+    sys.modules.pop(target, None)
+    monkeypatch.delattr(inner, "leaf", raising=False)
+    assert target not in sys.modules
+    assert not hasattr(inner, "leaf")
+    name = f"{fake_package}.subpkg.inner::leaf"
+    before = get_symbol_tool.fn(qualified_name=name)
+    shown = show_module_tool.fn(name=target)
+    assert "error: true" not in shown
+    assert target in sys.modules
+    assert hasattr(inner, "leaf")
+    after = get_symbol_tool.fn(qualified_name=name)
+    assert after == before
+    hint = f"Call `showModuleTool` with name={target} for its symbols"
+    for result in (before, after):
+        assert f"Symbol `{name}` not found - `{target}` is a module" in result
+        assert hint in result
+
+
 def test_get_module_tree_tool_undiscoverable_hint_names_the_root(
     fake_package: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:

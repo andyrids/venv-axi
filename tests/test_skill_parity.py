@@ -88,3 +88,20 @@ def test_no_bases_two_cause_claim() -> None:
     ):
         assert "under `--bases` has two causes" not in text
         assert "under `--bases` has one cause and no recovery" in text
+
+
+def test_qualified_name_gotcha_states_the_converse() -> None:
+    """Both copies' qualified-name gotcha state that a module takes no
+    `::`.
+
+    NOTE: Validation: the packaged skill's qualified-name gotcha. The
+    gotcha taught only the dotted symbol spelling's failure; a module
+    written with `::` is the converse an agent reading `from pkg import
+    sub` reaches, and it costs a query (#143;
+    `specs/behaviors/skill-content.md`).
+    """
+    for text in (
+        skill_markdown.read_text(encoding="utf-8"),
+        INSTALLED.read_text(encoding="utf-8"),
+    ):
+        assert "a module takes no `::` at all" in text

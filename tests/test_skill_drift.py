@@ -44,11 +44,10 @@ from typing import NamedTuple
 
 import pytest
 
-from venvaxi.__main__ import CLI_ERROR_HINT, build_parser
+from venvaxi.__main__ import build_parser, error_report
 from venvaxi._ambient import skill_markdown
 from venvaxi._core import CLIContext, ExitCode
 from venvaxi._mcp import _TOOLS, camel_case
-from venvaxi._toon import format_error
 from venvaxi.exceptions import Error
 
 SKILL_TEXT = skill_markdown.read_text(encoding="utf-8")
@@ -1242,8 +1241,7 @@ def test_documented_query_teaches_what_it_claims(
     try:
         exit_code = int(args.func(CLIContext(args=args)))
     except Error as err:
-        report = format_error(str(err), hints=[CLI_ERROR_HINT])
-        sys.stdout.write(f"{report}\n")
+        sys.stdout.write(f"{error_report(err)}\n")
         exit_code = int(ExitCode.EX_FAILURE)
     out = capsys.readouterr().out
     assert example.check is not None

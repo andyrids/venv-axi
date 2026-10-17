@@ -29,7 +29,7 @@ import pytest
 
 from venvaxi._cli import command_find, command_show, command_tree
 from venvaxi._core import CLIContext
-from venvaxi._introspect import get_public_api, show_module
+from venvaxi._introspect import get_public_api, get_symbol, show_module
 from venvaxi._store import NodeKind
 
 pytestmark = pytest.mark.conformance
@@ -205,3 +205,36 @@ def test_show_api_docstring_payload_stays_bounded(
     out = capsys.readouterr().out
     assert exit_code == 0
     assert len(out.encode("utf-8")) <= SANE_PAYLOAD_BYTES
+
+
+@pytest.mark.parametrize("specimen", SPECIMENS)
+def test_symbol_named_like_a_submodule_keeps_its_answer(
+    isolated_cache: Path, specimen: str
+) -> None:
+    """A root symbol sharing its name with a submodule of that root -
+    `fastmcp::settings` beside the module `fastmcp.settings` - answers
+    as that symbol, never as a module diagnosis: the diagnosis runs only
+    after the lookup has missed (#143; Validation: a real symbol keeps
+    its answer).
+
+    NOTE: Surface-level, per this tier's rule - the shared names are
+    read from the walk's own children, never pinned, and a specimen
+    with none is skipped rather than passing vacuously.
+    """
+    pytest.importorskip(specimen)
+    _, children = show_module(specimen)
+    modules = (NodeKind.MODULE, NodeKind.PACKAGE)
+    submodules = {child.name for child in children if child.kind in modules}
+    shared = [
+        child
+        for child in children
+        if child.kind not in modules and child.name in submodules
+    ]
+    if not shared:
+        pytest.skip(f"`{specimen}` has no root symbol named like a submodule")
+    for child in shared:
+        node = get_symbol(child.qualified_name)
+        assert (node.qualified_name, node.kind) == (
+            child.qualified_name,
+            child.kind,
+        )
