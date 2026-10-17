@@ -71,6 +71,17 @@ help[1]:
   Run `venvaxi --help` for available commands
 ```
 
+Where a command's failure modes declare an error-specific **footer** hint for a failure, the CLI
+error object shall instead be followed by that hint, spelled for the CLI, in place of the generic
+footer. The generic footer is the fallback for an error with no known next step; printed beside a
+concrete one, it is the static usage summary [contextual disclosure](#contextual-disclosure)
+rules out. The footer hint is declared per failure mode, never inferred: an error carries one only
+where its command's spec declares it as a footer, so a diagnosed miss without one keeps the
+generic footer rather than acquiring a next step no plan reviewed. A next step a failure mode
+states inside the message itself is a different thing - part of the message, not a footer - and
+leaves the generic footer in place. The message stays the fact shared by every surface, and the
+footer hint stays the one surface's step.
+
 If an unexpected exception escapes - any `BaseException` other than `KeyboardInterrupt` and
 `SystemExit`, not merely any `Exception` - then the entry point shall render the same shape with
 an `Unexpected error:` prefix, log it to STDERR at `ERROR` level with the traceback attached
@@ -86,11 +97,12 @@ shall never carry the CLI footer. That footer names a shell command a tool-calli
 run, and `venvaxi --help` has no tool-surface equivalent: a connected agent already holds the
 tool list, so a generic substitute would be a manufactured step, which
 [contextual disclosure](#contextual-disclosure) below forbids. An MCP tool error carries an
-error-specific hint where a genuine next step exists, phrased per the
-[MCP hint wording rule](../mcp/tools.md#hint-wording); if none exists, then the `help[N]:`
-footer shall be omitted entirely rather than emitted empty, per the same suppression rule. The
-`Unexpected error:` shape takes the identical per-surface footer - an unexpected error has no
-next step to name, so over MCP it carries no footer at all.
+error-specific footer hint where the tool's contract declares one for that failure, phrased per
+the [MCP hint wording rule](../mcp/tools.md#hint-wording) - the same declared-per-failure rule as
+the CLI's; if none is declared, then the `help[N]:` footer shall be omitted entirely rather than
+emitted empty, per the same suppression rule. The `Unexpected error:` shape always takes the
+fallback for its surface - the generic footer on the CLI, and no footer at all over MCP - because
+an unexpected error has no next step to name.
 
 ### Import boundaries
 

@@ -36,6 +36,13 @@ qualified name no other command can resolve. A member spelling that still misses
 resolution raises `SymbolNotFoundError`. See
 [Qualified name semantics](../behaviors/qualified-name-semantics.md).
 
+A symbol lookup reads the graph at **the lookup's depth**: the default build depth - the
+`tree --max-depth` default - or the depth of the name's module part where that is deeper, per the
+[lazy-depth model](../behaviors/cache-refresh.md#lazy-depth-model). So the dotted names `pkg.x` and
+`pkg.a.x`, read from `pkg::x` and `pkg.a::x`, lie within the lookup's depth, while `pkg.a.b.x`,
+read from `pkg.a.b::x`, lies below it, as does every deeper one. The lookup's depth is a fact
+about the name, not about the cache: a graph an earlier query built deeper does not change it.
+
 ## Outputs
 
 **Symbol mode** (`::` present) - the `inspect` command shall emit a flat TOON object of
@@ -100,6 +107,50 @@ Rules binding both modes:
   live binding, so it reports what the name is rather than proposing what the caller meant. The
   message is shared with `showModuleTool`, so it names no command and no tool, per
   [Error message wording](../mcp/tools.md#error-message-wording).
+- If the qualified name is a **symbol** name `<module>::<name>` that resolves to no symbol, where
+  `<name>` is a single Python identifier and the dotted name `<module>.<name>` is not
+  [private](../behaviors/symbol-graph.md#private-submodules), then the `inspect` command shall
+  still raise `SymbolNotFoundError` and exit `EX_FAILURE`, but shall read the miss against
+  `<module>.<name>`. `from <module> import <name>` names a module as readily as a symbol, and the
+  walk never records a module as a symbol
+  ([Module bindings](../behaviors/symbol-graph.md#module-bindings)), so every module an agent
+  spells that way misses here:
+  - If `<module>.<name>` is a module of the package - the graph holds a `module` or `package` node
+    keyed `<module>.<name>` where that name lies within the lookup's depth, or the walk's
+    discovery of `<module>`'s submodules lists it where it lies below - then the message shall
+    state that `<module>.<name>` is a module, and the footer shall name
+    `venvaxi inspect <module>.<name>`, the module in its import spelling, in place of the generic
+    footer. Below the lookup's depth the graph cannot speak for the module, even where the cache
+    holds a deeper build. Discovery is the evidence the walk itself uses on reaching that depth,
+    read as [Module bindings](../behaviors/symbol-graph.md#module-bindings) declares, and never
+    the parent's attribute, which the process rebinds as it imports. The message states that the
+    module exists and no more - not that `<module>` binds `<name>` to it - because a parent
+    attribute the walk did not record can shadow a submodule of the same name.
+  - If no module answers and `<module>.<name>` is a
+    [module-binding miss](../behaviors/symbol-graph.md#module-bindings) read in its symbol
+    spelling, then the message shall state what the name is bound to, in the case that applies,
+    spelled with the caller's `::` name. Where the target is a public module of this package, the
+    footer shall name `venvaxi inspect <target>`, the target in its import spelling, in place of
+    the generic footer: the target is recorded under its own name wherever the walk reaches it, so
+    its own lookup is where the caller's question is answered, if anywhere. For a private module, a
+    module of another package, or a module registered at import time, the footer shall stay
+    generic: none of these is a module this package's graph records.
+  - If neither applies, then the message shall keep its existing wording.
+
+  The message is shared with `getSymbolTool`, so it names no command and no tool, per
+  [Error message wording](../mcp/tools.md#error-message-wording); the footer is this surface's
+  own, per [Error shape](../behaviors/output-contract.md#error-shape). Where the message names a
+  module, it names it in its import spelling - the node's key, the discovered dotted name, or the
+  target's own `__name__` - while the caller's spelling is echoed as given, so a distribution-name
+  root is answered under its import name: `python-dotenv::main` names `dotenv.main`. The
+  import-time case and the existing wording name only the caller's spelling. The package the
+  foreign case names its target outside of is no module the message reports: it is the caller's
+  root as given, as in the module spelling, so `python-dotenv.main::os` is bound to `os`, a module
+  outside `python-dotenv`. Naming the module is a report, not the guessed correction
+  [Package resolution](../behaviors/package-resolution.md) rules out: the module exists by the
+  graph's or the walk's own evidence, and a binding's target is the bound object's own `__name__`.
+  The check runs only after the symbol lookup, member resolution included, has missed, so a name
+  that is a real symbol keeps its answer.
 - If the name's top-level component is not a possible package name, then the `inspect` command
   shall raise `InvalidArgumentError`, emit the TOON error block and exit `EX_FAILURE`.
 - If the owning package is not installed in the venv, then the `inspect` command shall raise
@@ -149,6 +200,22 @@ success and exits `EX_OK`, per the [exit codes](../behaviors/output-contract.md#
   named for modules and reached deliberately. Filed if the shape turns up against it in use; the
   asymmetry is recorded rather than left silent because a reader who found the statement here
   would otherwise reasonably assume both surfaces carry it.
+- **A dotted or private tail after `::`** - `pkg::sub.Thing` is not read as `pkg.sub::Thing`, and
+  `pkg::_x` is not read as a module. The first is a correction across separators - a guess at
+  which `.` the caller meant as `::` - which
+  [Package resolution](../behaviors/package-resolution.md#out-of-scope) rules out. The second
+  names a private segment, as likely a private function as a module, and a private module is
+  never indexed either way. Never.
+- **The same reading on `inherits`** - `inherits <module>::<name>` keeps its existing `not found`
+  for a module so spelled. `inherits` asks about a class, and a caller who reached it with a
+  module name has a different misreading than the one this rule answers. Filed if the shape turns
+  up against it in use.
+- **A footer on the module-mode binding miss** - `inspect numpy.emath` names its target in the
+  message and keeps the generic footer, while `inspect numpy::emath` also names
+  `venvaxi inspect numpy.lib.scimath` as the next step. The module-mode message was settled by
+  [#142](https://github.com/andyrids/venv-axi/issues/142), and giving it a footer is its own
+  change; the asymmetry is recorded so it is declared rather than discovered. Filed as
+  [#150](https://github.com/andyrids/venv-axi/issues/150).
 
 ## Principles
 
