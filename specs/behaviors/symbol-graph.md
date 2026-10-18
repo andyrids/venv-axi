@@ -201,13 +201,49 @@ so naming the target is a report of what the binding is, not the guessed correct
 - If a module-binding miss is diagnosed, then the outcome class and exit code of the miss shall be
   those the surface already gives a module miss; only its wording changes.
 
+A symbol lookup reaches the same miss in its own spelling. `from pkg import sub` names a module as
+readily as a symbol, so an agent that writes it as `pkg::sub` asks for a symbol this rule never
+records. Where a symbol name `<module>::<name>` misses, `<name>` is a single Python identifier, and
+the dotted name `<module>.<name>` is not [private](#private-submodules), the lookup first asks
+whether `<module>.<name>` is a module of the package. A private dotted name is never asked about,
+even where discovery would list it: the walk never descends into it, so `pkg.a.b::_x` is no module
+of the graph's, and its miss keeps the existing wording. Only where no module answers is the
+binding read, with the cases above applied to the dotted name `<module>.<name>` as written, and
+each case's fact stated in the caller's `::` spelling. The cases so applied include the same-name
+check, unchanged from the dotted spelling: it lists the parent's `__path__` under the looked-up
+dotted name, whatever `__name__` the parent carries. So a target that is `<module>.<name>` itself,
+and that the check lists, stays out of the binding cases in either spelling.
+
+- If a module answers for a symbol spelling, then no binding shall be read.
+- If a binding case applies to a symbol spelling, then the outcome class and exit code of the miss
+  shall be the symbol miss's - `SymbolNotFoundError`, exiting `EX_FAILURE` - and its footer shall
+  be the one [`inspect`](../commands/inspect.md#failure-modes) declares for it. The bullet above
+  stating that only the wording changes governs the module spelling alone.
+
+Which evidence decides whether a module answers is fixed by
+[the lookup's depth](../commands/inspect.md#data-requirements), never by the depth the cache
+happens to hold: within it, the graph's node; below it, the walk's own discovery of `<module>`'s
+submodules, even where the cache holds a deeper build. The parent's attribute is never the
+evidence. That discovery is read as the walk reads it, under the `__name__` the imported
+`<module>` carries, so where that is not `<module>`'s own dotted import name, it lists no submodule
+of `<module>`. The rule is the module answer's alone: the binding cases' same-name check keeps its
+listing under the looked-up name, so module mode is unaffected. The evidence is no steadier than
+the walk's own: within the lookup's depth the node is whatever the cache's walk recorded, and below
+it discovery imports `<module>`, an import that can succeed or fail by what the process imported
+first, and lists `<module>`'s `__path__` as it stands, which package code can extend after the
+import. The module answer and the wording on each surface are declared with
+[`inspect`](../commands/inspect.md#failure-modes) and [MCP tools](../mcp/tools.md#hint-wording).
+
 Reading the binding is an import boundary, per
 [Output contract](output-contract.md#import-boundaries), for as long as it runs package code:
 importing the parent, reading the attribute, and inspecting the bound object - a lazily-loaded
-module executes its source on first touch. Whatever any of these raises leaves the miss with its
-existing wording, except an interrupt, which propagates. Each surface's wording is
-declared with it - [`inspect`](../commands/inspect.md#failure-modes),
-[`tree`](../commands/tree.md#outputs) and [MCP tools](../mcp/tools.md#hint-wording).
+module executes its source on first touch. Reading discovery for a symbol spelling below the
+lookup's depth is an import boundary of the same kind: listing `<module>`'s submodules imports
+`<module>`. Whatever any of these raises leaves the miss with its existing wording, except an
+interrupt, which propagates, and a raise in the discovery read ends the check there: no binding is
+read for a `<module>` whose discovery could not be read. Each surface's wording is declared with
+it - [`inspect`](../commands/inspect.md#failure-modes), [`tree`](../commands/tree.md#outputs) and
+[MCP tools](../mcp/tools.md#hint-wording).
 
 ### Private submodules
 

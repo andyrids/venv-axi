@@ -16,8 +16,12 @@ from venvaxi._cache import CacheState, PackageBuild
 from venvaxi._core import CLIContext, ExitCode
 from venvaxi._introspect import (
     SYMBOL_INFO_FIELDS,
+    ModuleBinding,
+    ModuleBindingCase,
+    ModuleBindingMissError,
     PublicAPI,
     SymbolInfo,
+    SymbolModuleMissError,
 )
 from venvaxi._packages import PackageInfo
 from venvaxi._store import NodeKind, SymbolNode
@@ -1823,6 +1827,92 @@ def test_main_maps_error_to_toon_and_exit_1(
     # surface-addressed, and this is the CLI surface.
     assert "help[1]:" in out
     assert "Run `venvaxi --help` for available commands" in out
+
+
+@pytest.mark.parametrize(
+    ("spelling", "module"),
+    [
+        ("::subpkg", "package.subpkg"),
+        (".subpkg.inner::leaf", "package.subpkg.inner.leaf"),
+        (".subpkg::nested", "package.subpkg.inner"),
+    ],
+)
+def test_main_inspect_module_miss_footer_names_the_module(
+    capsys: pytest.CaptureFixture,
+    fake_package: str,
+    spelling: str,
+    module: str,
+) -> None:
+    """A symbol miss that names a module - by its node, or below the
+    lookup's depth by the walk's discovery - or a public bound module
+    exits 1 with a footer naming `venvaxi inspect` on that module, in
+    place of the generic footer (#143; Validation: the module footer,
+    for both evidences; the public-alias footer; `EX_FAILURE`)."""
+    exit_code = _run_main(["inspect", f"{fake_package}{spelling}"])
+    out = capsys.readouterr().out
+    assert exit_code == ExitCode.EX_FAILURE
+    assert "error: true" in out
+    assert "help[1]:" in out
+    assert f"Run `venvaxi inspect {module}` for its symbols" in out
+    assert "venvaxi --help" not in out
+
+
+@pytest.mark.parametrize(
+    "spelling", [".subpkg::impl", ".subpkg::codec", ".subpkg::dyn", "::nosuch"]
+)
+def test_main_inspect_module_miss_without_a_module_keeps_generic_footer(
+    capsys: pytest.CaptureFixture,
+    fake_package: str,
+    monkeypatch: pytest.MonkeyPatch,
+    spelling: str,
+) -> None:
+    """A symbol miss bound to a private module, another package's or an
+    import-time module - or one diagnosing nothing - names no module
+    node of this package, so it keeps the generic footer (#143;
+    Validation: the generic footer for the other binding cases, and an
+    error declaring no next step)."""
+    if spelling == ".subpkg::dyn":
+        subpkg = importlib.import_module(f"{fake_package}.subpkg")
+        dotted = f"{fake_package}.subpkg.dyn"
+        dyn = types.ModuleType(dotted)
+        monkeypatch.setitem(sys.modules, dotted, dyn)
+        monkeypatch.setattr(subpkg, "dyn", dyn, raising=False)
+    exit_code = _run_main(["inspect", f"{fake_package}{spelling}"])
+    out = capsys.readouterr().out
+    assert exit_code == ExitCode.EX_FAILURE
+    assert "error: true" in out
+    assert "help[1]:" in out
+    assert "Run `venvaxi --help` for available commands" in out
+    assert "for its symbols" not in out
+
+
+@pytest.mark.parametrize(
+    ("err", "hint"),
+    [
+        (
+            SymbolModuleMissError("miss", "pkg.sub"),
+            "Run `venvaxi inspect pkg.sub` for its symbols",
+        ),
+        (SymbolModuleMissError("miss", None), None),
+        (exceptions.SymbolNotFoundError("miss"), None),
+        (
+            ModuleBindingMissError(
+                "miss", ModuleBinding(ModuleBindingCase.ALIAS, "pkg.sub")
+            ),
+            None,
+        ),
+    ],
+    ids=["carried-module", "no-module", "plain-miss", "module-mode-binding"],
+)
+def test_error_hint_is_declared_only_for_a_carried_module(
+    err: exceptions.Error, hint: str | None
+) -> None:
+    """Only a symbol miss carrying a module declares a CLI next step -
+    a plain miss, and the module-mode binding miss whose footer is
+    declared out of scope, declare none (#143; Validation: an error
+    declaring no next step takes the generic footer;
+    `specs/commands/inspect.md`, Out of scope)."""
+    assert _cli.error_hint(err) == hint
 
 
 def test_main_show_malformed_name_maps_to_exit_1(

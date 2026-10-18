@@ -458,6 +458,16 @@ spelling: `getModuleTreeTool` with `name=` the bound module where that module is
 of the package, and with `name=` the root otherwise. `showModuleTool` carries no hint for it;
 the miss is an error whose message is shared with `inspect` and states the binding there.
 
+The symbol spelling of that miss reaches `getSymbolTool`, which returns the message
+[`inspect`](../commands/inspect.md#failure-modes) declares for it. Where `inspect`'s footer names
+`venvaxi inspect <module>` - a module of the package, whether the graph's node or the walk's
+discovery answers for it, or a public module the name is bound to - the error shall carry a
+`help[]` footer hint naming `showModuleTool` with `name=` that module.
+Otherwise it carries no footer, per [Error shape](../behaviors/output-contract.md#error-shape).
+The [malformed-name diagnosis](#malformed-qualified-names) names `showModuleTool` in its message
+instead; it is raised at this surface's boundary and shared with no other, so the one-surface
+escape hatch in [Error message wording](#error-message-wording) applies to it and not to this.
+
 Truncation suffixes carry the same obligation as footers, and are specified with the truncation
 rule in [Output contract](../behaviors/output-contract.md#truncation).
 

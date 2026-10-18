@@ -49,6 +49,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A symbol-spelled lookup of a module now says what answers instead of reading as a generic miss.
+  `inspect venvaxi::exceptions` reported ``Symbol `venvaxi::exceptions` not found`` and now adds
+  that `venvaxi.exceptions` is a module, with a footer naming `venvaxi inspect venvaxi.exceptions`;
+  `getSymbolTool` carries the same message with a `showModuleTool` hint. A symbol-spelled module
+  binding reports what it is bound to, as the dotted spelling already did (#142):
+  `inspect numpy::emath` names `numpy.lib.scimath`. A CLI error can now carry an error-specific
+  footer hint in place of the generic one, where its failure mode declares one; every other error
+  keeps the generic footer. The packaged skill's qualified-name gotcha gains its converse. Outcome
+  classes and exit codes are unchanged, and the graph is unchanged, so no cache rebuild is needed
+  (issue [#143](https://github.com/andyrids/venv-axi/issues/143)).
 - A lookup of a dotted module name that is a binding rather than a module now says what it is
   bound to instead of reading as a generic miss. `inspect numpy.emath` reported
   ``Module `numpy.emath` not found`` and now reports that it is bound to `numpy.lib.scimath`.

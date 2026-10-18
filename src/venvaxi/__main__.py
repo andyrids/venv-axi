@@ -17,8 +17,30 @@ __all__: list[str] = ["build_parser", "main"]
 
 # NOTE: CLI spelling, so it lives here rather than in `_toon.py` - the
 # formatter is surface-neutral and each surface supplies its own footer
-# (`specs/behaviors/output-contract.md`, Error shape).
+# (`specs/behaviors/output-contract.md`, Error shape). It is the fallback
+# for an error with no declared hint - printed beside a concrete next
+# step, it would be the static usage summary contextual disclosure
+# rules out.
 CLI_ERROR_HINT = "Run `venvaxi --help` for available commands"
+
+
+def error_report(err: exceptions.Error) -> str:
+    """Render a `venvaxi` error as the CLI's TOON error block.
+
+    NOTE: The single CLI error renderer - `main()` and the skill drift
+    gate's hand-copied error arm both call it, so the two cannot drift
+    apart on which footer an error takes.
+
+    Args:
+        err: The error to render.
+
+    Returns:
+        The TOON error object, followed by the error's declared hint or
+        the generic footer.
+    """
+    return format_error(
+        str(err), hints=[_cli.error_hint(err) or CLI_ERROR_HINT]
+    )
 
 
 class _VersionAction(argparse.Action):
@@ -123,8 +145,7 @@ def main() -> NoReturn:
         # NOTE: The TOON block on stdout *is* the error report - logging
         # it again at error level would duplicate it on stderr, so the
         # log line is debug-only (`--verbose`).
-        report = format_error(str(err), hints=[CLI_ERROR_HINT])
-        sys.stdout.write(f"{report}\n")
+        sys.stdout.write(f"{error_report(err)}\n")
         logger.debug(str(err))
         exit_code = _core.ExitCode.EX_FAILURE
     except (KeyboardInterrupt, SystemExit):

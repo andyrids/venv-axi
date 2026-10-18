@@ -2,12 +2,13 @@
 
 import importlib
 import importlib.util
+import json
 import logging
 import re
 import sqlite3
 import sys
 import types
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from importlib import metadata
 from pathlib import Path
 from unittest import mock
@@ -24,6 +25,7 @@ from venvaxi._introspect import (
     SIGNATURE_UNAVAILABLE,
     ModuleBinding,
     ModuleBindingCase,
+    SymbolModuleMissError,
     _doc_of,
     _ensure_installed,
     _ensure_valid_name,
@@ -45,7 +47,7 @@ from venvaxi._introspect import (
     summarize_doc,
     truncate,
 )
-from venvaxi._store import NodeKind, SymbolStore
+from venvaxi._store import NodeKind, SymbolNode, SymbolStore
 from venvaxi.exceptions import (
     InvalidArgumentError,
     PackageImportError,
@@ -1190,6 +1192,503 @@ def test_private_submodule_miss_identical_after_refresh(
         show_module(f"{fake_package}._impl")
     with pytest.raises(SymbolNotFoundError):
         show_module(f"{fake_package}._impl", refresh=True)
+
+
+@pytest.mark.parametrize(
+    ("spelling", "module"),
+    [
+        ("::subpkg", "package.subpkg"),
+        ("::module", "package.module"),
+        (".subpkg::inner", "package.subpkg.inner"),
+    ],
+)
+def test_get_symbol_states_a_symbol_spelled_module_is_a_module(
+    fake_package: str, spelling: str, module: str
+) -> None:
+    """A symbol miss `<module>::<name>` whose `<module>.<name>` is a
+    module node at the lookup's depth states the graph fact - it is a
+    module - and carries it for the surface's hint. Still a
+    `SymbolNotFoundError`, so the exit code is the existing miss's
+    (#143; Validation: the module-node message, and `EX_FAILURE`)."""
+    name = f"{fake_package}{spelling}"
+    with pytest.raises(SymbolNotFoundError) as exc_info:
+        get_symbol(name)
+    err = exc_info.value
+    assert str(err) == f"Symbol `{name}` not found - `{module}` is a module"
+    assert isinstance(err, SymbolModuleMissError)
+    assert err.module == module
+
+
+@pytest.mark.parametrize(
+    ("tail", "fact", "module"),
+    [
+        (
+            "nested",
+            "is bound to module `package.subpkg.inner`",
+            "package.subpkg.inner",
+        ),
+        (
+            "impl",
+            "is bound to private module `package._impl` and never indexed",
+            None,
+        ),
+        ("codec", "is bound to `json`, a module outside `package`", None),
+    ],
+)
+def test_get_symbol_states_what_a_symbol_spelled_binding_is_bound_to(
+    fake_package: str, tail: str, fact: str, module: str | None
+) -> None:
+    """A symbol miss `<module>::<name>` that `<module>` binds to a module
+    names that module, as the module spelling's miss does, and drops
+    "not found". Only a public module of the package is carried for a
+    hint (#143; Validation: the public, private and foreign binding
+    messages, and `EX_FAILURE`)."""
+    name = f"{fake_package}.subpkg::{tail}"
+    with pytest.raises(SymbolNotFoundError) as exc_info:
+        get_symbol(name)
+    err = exc_info.value
+    assert str(err) == f"Symbol `{name}` {fact}"
+    assert "not found" not in str(err)
+    assert isinstance(err, SymbolModuleMissError)
+    assert err.module == module
+
+
+def test_get_symbol_diagnoses_a_symbol_spelled_module_only_in_sys_modules(
+    fake_package: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A symbol spelling of a module registered at import time, which the
+    walk's discovery cannot list, states it is undiscoverable and never
+    indexed, and carries no module for a hint (#143; Validation: the
+    import-time message)."""
+    subpkg = importlib.import_module(f"{fake_package}.subpkg")
+    dotted = f"{fake_package}.subpkg.dyn"
+    dyn = types.ModuleType(dotted)
+    monkeypatch.setitem(sys.modules, dotted, dyn)
+    monkeypatch.setattr(subpkg, "dyn", dyn, raising=False)
+    name = f"{fake_package}.subpkg::dyn"
+    with pytest.raises(SymbolModuleMissError) as exc_info:
+        get_symbol(name)
+    assert str(exc_info.value) == (
+        f"Symbol `{name}` is registered at import time where the walk"
+        " cannot discover it, and never indexed"
+    )
+    assert exc_info.value.module is None
+
+
+@pytest.mark.parametrize(
+    ("binds", "deeper_cache"),
+    [(True, False), (False, False), (True, True), (False, True)],
+    ids=["bound", "unbound", "bound-deeper-cache", "unbound-deeper-cache"],
+)
+def test_get_symbol_states_a_below_depth_module_from_discovery(
+    fake_package: str,
+    monkeypatch: pytest.MonkeyPatch,
+    binds: bool,
+    deeper_cache: bool,
+) -> None:
+    """Below the lookup's depth, a `<module>.<name>` the walk's
+    discovery lists is stated as a module whether or not the parent
+    binds `<name>` - the parent's attribute is never the evidence. The
+    depth is the lookup's own: a cache an earlier query built deeper,
+    holding the module's node, changes nothing (#143; Validation:
+    below-depth discovery; the cache already deeper;
+    `specs/behaviors/symbol-graph.md`, Module bindings).
+
+    NOTE: The cache is built before the binding is set - any walk binds
+    `leaf` on its parent, through `package.facade`'s import of it - so
+    the parent's attribute is the one the test chose at query time."""
+    target = f"{fake_package}.subpkg.inner.leaf"
+    if deeper_cache:
+        assert show_module(target)[0].qualified_name == target
+    else:
+        get_symbol(f"{fake_package}::Dog")
+    inner = importlib.import_module(f"{fake_package}.subpkg.inner")
+    if binds:
+        importlib.import_module(target)
+    else:
+        monkeypatch.delattr(inner, "leaf", raising=False)
+    assert hasattr(inner, "leaf") is binds
+    name = f"{fake_package}.subpkg.inner::leaf"
+    with pytest.raises(SymbolModuleMissError) as exc_info:
+        get_symbol(name)
+    message = f"Symbol `{name}` not found - `{target}` is a module"
+    assert str(exc_info.value) == message
+    assert exc_info.value.module == target
+    if not deeper_cache:
+        # NOTE: The graph built to the lookup's depth holds no node for
+        # the module, so discovery alone answered.
+        with SymbolStore(get_cache_db_path(get_project_root())) as store:
+            assert store.get_node(target) is None
+
+
+@pytest.mark.parametrize(
+    "deeper_cache", [False, True], ids=["lookup-depth", "deeper-cache"]
+)
+def test_get_symbol_states_a_below_depth_module_that_fails_to_import(
+    fake_package: str, deeper_cache: bool
+) -> None:
+    """Below the lookup's depth, a `<module>.<name>` the walk's
+    discovery lists is stated as a module although it fails to import,
+    so no build at any depth holds its node. A cache an earlier query
+    built past it is never the evidence - the lookup's own depth sends
+    the name to discovery (#143; Validation: below-depth discovery; the
+    cache already deeper).
+
+    NOTE: The module is written into the fixture's per-test copy, never
+    `tests/resources`, so no other test's walk meets it. The deeper
+    case discriminates only while the deeper build reaches the module's
+    depth and its walk skipped the module, so both are asserted."""
+    inner = importlib.import_module(f"{fake_package}.subpkg.inner")
+    (Path(inner.__path__[0]) / "broken.py").write_text(
+        'raise ImportError("broken")\n', encoding="utf-8"
+    )
+    target = f"{fake_package}.subpkg.inner.broken"
+    if deeper_cache:
+        show_module(f"{fake_package}.subpkg.inner.leaf")
+    name = f"{fake_package}.subpkg.inner::broken"
+    with pytest.raises(SymbolModuleMissError) as exc_info:
+        get_symbol(name)
+    message = f"Symbol `{name}` not found - `{target}` is a module"
+    assert str(exc_info.value) == message
+    assert exc_info.value.module == target
+    with SymbolStore(get_cache_db_path(get_project_root())) as store:
+        build = store.get_build(fake_package)
+        assert store.get_node(target) is None
+    assert build is not None
+    # NOTE: A module's depth is its dot count below the root.
+    assert (build[1] >= target.count(".")) is deeper_cache
+
+
+def test_get_symbol_keeps_not_found_for_a_module_missing_within_depth(
+    fake_package: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Within the lookup's depth, a discoverable module of the looked-up
+    name with no node is a submodule that failed to import during the
+    walk - the parent's binding of it is no binding miss, so the
+    existing message stands (#143; Validation: discoverable, within
+    depth, no node)."""
+    hidden = f"{fake_package}.subpkg.inner"
+    real_get_node = SymbolStore.get_node
+
+    def get_node(store: SymbolStore, qualified_name: str) -> object:
+        if qualified_name == hidden:
+            return None
+        return real_get_node(store, qualified_name)
+
+    monkeypatch.setattr(SymbolStore, "get_node", get_node)
+    name = f"{fake_package}.subpkg::inner"
+    with pytest.raises(SymbolNotFoundError) as exc_info:
+        get_symbol(name)
+    assert str(exc_info.value) == f"Symbol `{name}` not found"
+    assert type(exc_info.value) is SymbolNotFoundError
+
+
+@pytest.mark.parametrize("spelling", ["::subpkg.inner", "::_impl", "::nosuch"])
+def test_get_symbol_keeps_not_found_for_an_excluded_symbol_spelling(
+    fake_package: str, spelling: str
+) -> None:
+    """A dotted tail is never read across separators, a private
+    `<module>.<name>` is never read as a module, and a name nothing
+    binds is a plain miss - each keeps the existing message (#143;
+    Validation: a dotted or private tail)."""
+    name = f"{fake_package}{spelling}"
+    with pytest.raises(SymbolNotFoundError) as exc_info:
+        get_symbol(name)
+    assert str(exc_info.value) == f"Symbol `{name}` not found"
+    assert type(exc_info.value) is SymbolNotFoundError
+
+
+@pytest.mark.parametrize("raised", [RuntimeError, SystemExit])
+def test_get_symbol_keeps_not_found_when_the_parent_raises(
+    fake_package: str,
+    monkeypatch: pytest.MonkeyPatch,
+    raised: type[BaseException],
+) -> None:
+    """Reading a symbol spelling's binding is an import boundary - a
+    parent whose attribute access raises, `SystemExit` included, leaves
+    the miss with its existing message (#143; Validation: the parent
+    raising; `specs/behaviors/output-contract.md`, Import boundaries).
+
+    NOTE: The cache is warmed first, so the raise is met by the binding
+    read alone and never by the walk."""
+    get_symbol(f"{fake_package}::Dog")
+    subpkg = importlib.import_module(f"{fake_package}.subpkg")
+
+    def explode(attribute: str) -> None:
+        raise raised(attribute)
+
+    monkeypatch.setattr(subpkg, "__getattr__", explode, raising=False)
+    name = f"{fake_package}.subpkg::boom"
+    with pytest.raises(SymbolNotFoundError) as exc_info:
+        get_symbol(name)
+    assert str(exc_info.value) == f"Symbol `{name}` not found"
+
+
+def test_get_symbol_propagates_an_interrupt_from_the_binding_read(
+    fake_package: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An interrupt raised while a symbol spelling's binding is read
+    propagates - the import boundary never swallows the caller's abort
+    (#143; Validation: `KeyboardInterrupt`).
+
+    NOTE: The cache is warmed first, and the interrupt carries the
+    attribute name, so it is the binding read that met it."""
+    get_symbol(f"{fake_package}::Dog")
+    subpkg = importlib.import_module(f"{fake_package}.subpkg")
+
+    def interrupt(attribute: str) -> None:
+        raise KeyboardInterrupt(attribute)
+
+    monkeypatch.setattr(subpkg, "__getattr__", interrupt, raising=False)
+    with pytest.raises(KeyboardInterrupt, match="boom"):
+        get_symbol(f"{fake_package}.subpkg::boom")
+
+
+@pytest.mark.parametrize("raised", [RuntimeError, SystemExit])
+def test_get_symbol_keeps_not_found_when_discovery_raises(
+    fake_package: str,
+    monkeypatch: pytest.MonkeyPatch,
+    raised: type[BaseException],
+) -> None:
+    """Discovery below the lookup's depth is an import boundary - a
+    parent whose import raises, `SystemExit` included, leaves the miss
+    with its existing message (#143; Validation: the parent raising;
+    `specs/behaviors/output-contract.md`, Import boundaries).
+
+    NOTE: The cache is warmed first, so the raise is met by the reads
+    alone and never by the walk."""
+    get_symbol(f"{fake_package}::Dog")
+    parent = f"{fake_package}.subpkg.inner"
+    real_import_module = importlib.import_module
+
+    def import_module(
+        name: str, package: str | None = None
+    ) -> types.ModuleType:
+        if name == parent:
+            raise raised(name)
+        return real_import_module(name, package)
+
+    monkeypatch.setattr(importlib, "import_module", import_module)
+    name = f"{parent}::leaf"
+    with pytest.raises(SymbolNotFoundError) as exc_info:
+        get_symbol(name)
+    assert str(exc_info.value) == f"Symbol `{name}` not found"
+    assert type(exc_info.value) is SymbolNotFoundError
+
+
+def test_get_symbol_propagates_an_interrupt_from_the_discovery_read(
+    fake_package: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An interrupt raised while discovery imports a below-depth name's
+    parent propagates - the import boundary never swallows the caller's
+    abort (#143; Validation: `KeyboardInterrupt`).
+
+    NOTE: The cache is warmed first, and only the parent's first import
+    raises - discovery's, which runs before the binding read - so a
+    discovery read that swallowed it would let the binding read answer
+    instead."""
+    get_symbol(f"{fake_package}::Dog")
+    parent = f"{fake_package}.subpkg.inner"
+    real_import_module = importlib.import_module
+    raised: list[str] = []
+
+    def import_module(
+        name: str, package: str | None = None
+    ) -> types.ModuleType:
+        if name == parent and not raised:
+            raised.append(name)
+            raise KeyboardInterrupt(name)
+        return real_import_module(name, package)
+
+    monkeypatch.setattr(importlib, "import_module", import_module)
+    with pytest.raises(KeyboardInterrupt, match=re.escape(parent)):
+        get_symbol(f"{parent}::leaf")
+
+
+def test_get_symbol_reads_no_binding_when_only_discovery_raises(
+    fake_package: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A raise in the discovery read ends the check - no binding is read
+    for a below-depth `<module>` whose discovery could not be read, even
+    where reading it would succeed and report one (#143; Validation:
+    reading the walk's discovery of `<module>` raises).
+
+    NOTE: The cache is warmed first, so the raise is met by discovery
+    alone and never by the walk. The parent binds a foreign module, a
+    case the classifier returns before it would list submodules, so the
+    binding read itself is untouched by the raising listing."""
+    get_symbol(f"{fake_package}::Dog")
+    inner = importlib.import_module(f"{fake_package}.subpkg.inner")
+    monkeypatch.setattr(inner, "codec", json, raising=False)
+
+    def discoverable_submodules(
+        parent: types.ModuleType, parent_name: str
+    ) -> set[str]:
+        raise RuntimeError(parent_name)
+
+    monkeypatch.setattr(
+        "venvaxi._introspect._discoverable_submodules",
+        discoverable_submodules,
+    )
+    name = f"{fake_package}.subpkg.inner::codec"
+    with pytest.raises(SymbolNotFoundError) as exc_info:
+        get_symbol(name)
+    assert str(exc_info.value) == f"Symbol `{name}` not found"
+    assert type(exc_info.value) is SymbolNotFoundError
+
+
+def test_get_symbol_lists_nothing_under_a_parent_of_another_name(
+    fake_package: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Discovery is read as the walk reads it, under the imported
+    parent's own `__name__` - a `sys.modules` alias of a below-depth
+    `<module>` to another package's module lists none of that module's
+    submodules as `<module>`'s, so only the binding read answers (#143;
+    Validation: the parent imports under another `__name__`).
+
+    NOTE: The cache is warmed before the alias is installed, so the walk
+    never meets it; monkeypatch restores `sys.modules` after the test.
+    `json` always binds `decoder`, so the binding read is a fact."""
+    get_symbol(f"{fake_package}::Dog")
+    parent = f"{fake_package}.subpkg.inner"
+    monkeypatch.setitem(sys.modules, parent, json)
+    name = f"{parent}::decoder"
+    with pytest.raises(SymbolModuleMissError) as exc_info:
+        get_symbol(name)
+    message = (
+        f"Symbol `{name}` is bound to `json.decoder`, a module outside "
+        f"`{fake_package}`"
+    )
+    assert str(exc_info.value) == message
+    assert "is a module" not in str(exc_info.value)
+    assert exc_info.value.module != f"{parent}.decoder"
+
+
+def test_get_symbol_answers_a_real_symbol_that_is_also_a_module(
+    fake_package: str,
+    monkeypatch: pytest.MonkeyPatch,
+    make_symbol_node: Callable[..., SymbolNode],
+) -> None:
+    """A `<module>::<name>` that resolves to a symbol answers with that
+    node although `<module>.<name>` is also a module - the diagnosis
+    runs only after the lookup has missed (#143; Validation: a real
+    symbol keeps its answer).
+
+    NOTE: The fixture records no symbol sharing a submodule's name, so
+    the store is stubbed to hold one; `fastmcp::settings` is the live
+    case, in `tests/test_conformance.py`."""
+    name = f"{fake_package}::subpkg"
+    symbol = make_symbol_node(
+        qualified_name=name,
+        kind=NodeKind.ATTRIBUTE,
+        name="subpkg",
+        module=fake_package,
+        package=fake_package,
+    )
+    real_get_node = SymbolStore.get_node
+
+    def get_node(store: SymbolStore, qualified_name: str) -> object:
+        if qualified_name == name:
+            return symbol
+        return real_get_node(store, qualified_name)
+
+    monkeypatch.setattr(SymbolStore, "get_node", get_node)
+    module = f"{fake_package}.subpkg"
+    assert show_module(module)[0].qualified_name == module
+    assert get_symbol(name) is symbol
+
+
+@pytest.mark.parametrize(
+    "spelling",
+    [
+        "::subpkg",
+        ".subpkg.inner::leaf",
+        ".subpkg::nested",
+        ".subpkg::impl",
+        ".subpkg::codec",
+        ".subpkg::dyn",
+        "::nosuch",
+    ],
+)
+def test_get_symbol_module_miss_names_no_command_or_tool(
+    fake_package: str, monkeypatch: pytest.MonkeyPatch, spelling: str
+) -> None:
+    """Every symbol-mode miss message is the fact the CLI and MCP share,
+    so none names a command or a tool (#143; Validation: names no
+    command and no tool; `specs/mcp/tools.md`, Error message wording)."""
+    if spelling == ".subpkg::dyn":
+        subpkg = importlib.import_module(f"{fake_package}.subpkg")
+        dotted = f"{fake_package}.subpkg.dyn"
+        dyn = types.ModuleType(dotted)
+        monkeypatch.setitem(sys.modules, dotted, dyn)
+        monkeypatch.setattr(subpkg, "dyn", dyn, raising=False)
+    with pytest.raises(SymbolNotFoundError) as exc_info:
+        get_symbol(f"{fake_package}{spelling}")
+    message = str(exc_info.value)
+    assert message.startswith(f"Symbol `{fake_package}{spelling}` ")
+    assert "venvaxi" not in message
+    assert "Tool" not in message
+
+
+@pytest.mark.parametrize(
+    ("spelling", "fact", "module"),
+    [
+        (
+            "::subpkg",
+            "not found - `package.subpkg` is a module",
+            "package.subpkg",
+        ),
+        (
+            ".subpkg.inner::leaf",
+            "not found - `package.subpkg.inner.leaf` is a module",
+            "package.subpkg.inner.leaf",
+        ),
+        (
+            ".subpkg::nested",
+            "is bound to module `package.subpkg.inner`",
+            "package.subpkg.inner",
+        ),
+    ],
+    ids=["node", "discovered", "binding"],
+)
+def test_get_symbol_module_miss_names_a_distribution_root_by_import_name(
+    fake_package: str, spelling: str, fact: str, module: str
+) -> None:
+    """A distribution-name root is answered under its import name - the
+    message names the module in its import spelling and echoes the
+    caller's spelling as given (#143; Validation: a distribution-name
+    root).
+
+    NOTE: Mapped the way `test_refresh_package_graph_reports_resolved_
+    import_name` maps it - `fake-dist` is a fictional distribution, so
+    `metadata.version` is mocked too."""
+    name = f"fake-dist{spelling}"
+    with (
+        mock.patch.object(
+            metadata,
+            "packages_distributions",
+            return_value={fake_package: ["fake-dist"]},
+        ),
+        mock.patch.object(metadata, "version", return_value="1.2.3"),
+        pytest.raises(SymbolModuleMissError) as exc_info,
+    ):
+        get_symbol(name)
+    assert str(exc_info.value) == f"Symbol `{name}` {fact}"
+    assert exc_info.value.module == module
+
+
+@pytest.mark.parametrize("spelling", ["::subpkg", ".subpkg::nested"])
+def test_get_symbol_module_miss_identical_after_refresh(
+    fake_package: str, spelling: str
+) -> None:
+    """A symbol-spelled module miss is no cache-staleness signal - a
+    `refresh` rebuild reports the identical message (#143)."""
+    name = f"{fake_package}{spelling}"
+    with pytest.raises(SymbolModuleMissError) as cached:
+        get_symbol(name)
+    with pytest.raises(SymbolModuleMissError) as rebuilt:
+        get_symbol(name, refresh=True)
+    assert str(rebuilt.value) == str(cached.value)
 
 
 def test_get_symbol_facade_member_miss_raises(fake_package: str) -> None:

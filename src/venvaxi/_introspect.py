@@ -665,6 +665,48 @@ class ModuleBindingMissError(SymbolNotFoundError):
         self.binding = binding
 
 
+class SymbolModuleMissError(SymbolNotFoundError):
+    """A symbol lookup that missed on a name a module lookup answers.
+
+    NOTE: Still a `SymbolNotFoundError` - the outcome class and exit
+    code are the surface's existing symbol miss, mapped by `isinstance`
+    (`specs/commands/inspect.md`, Failure modes). The subclass carries
+    the module a module lookup answers - the graph's node within the
+    lookup's depth, a submodule the walk's discovery lists below it, or
+    a public module the name is bound to - or None where none does, so
+    each surface spells its own hint from it rather than the shared
+    message naming a command (`specs/behaviors/output-contract.md`,
+    Error shape).
+    """
+
+    def __init__(self, message: str, module: str | None) -> None:
+        super().__init__(message)
+        self.module = module
+
+
+def _discoverable_submodules(parent: ModuleType, parent_name: str) -> set[str]:
+    """List the submodules the walk's discovery finds under a parent.
+
+    NOTE: The listing `_walk_submodules` iterates - the parent's
+    `__path__` as found on disk, not the modules the process has
+    imported - though package code can extend that `__path__` at
+    runtime (`specs/behaviors/symbol-graph.md`, Module bindings).
+
+    Args:
+        parent: The imported parent module.
+        parent_name: Its dotted import name.
+
+    Returns:
+        The dotted names discovery lists, or none for a non-package.
+    """
+    return {
+        subname
+        for _, subname, _ in pkgutil.iter_modules(
+            getattr(parent, "__path__", []), prefix=f"{parent_name}."
+        )
+    }
+
+
 def _classify_module_binding(
     resolved: str, parent_name: str, tail: str
 ) -> ModuleBinding | None:
@@ -697,15 +739,9 @@ def _classify_module_binding(
         # within another package, which this graph cannot speak for.
         return ModuleBinding(ModuleBindingCase.FOREIGN, target)
     if target == resolved:
-        discoverable = {
-            subname
-            for _, subname, _ in pkgutil.iter_modules(
-                getattr(parent, "__path__", []), prefix=f"{parent_name}."
-            )
-        }
         # NOTE: A discoverable module missing its node has another cause
         # (a failed import during the walk), so it is no binding miss.
-        if resolved in discoverable:
+        if resolved in _discoverable_submodules(parent, parent_name):
             return None
         return ModuleBinding(ModuleBindingCase.UNDISCOVERABLE, target)
     if is_private_submodule(target):
@@ -733,6 +769,25 @@ def module_binding(name: str) -> ModuleBinding | None:
     resolved = _resolve_qualified_name(name)
     if "::" in resolved or "." not in resolved:
         return None
+    return _read_module_binding(resolved)
+
+
+def _read_module_binding(resolved: str) -> ModuleBinding | None:
+    """Read the binding a dotted name's parent holds, inside one boundary.
+
+    NOTE: Shared by both spellings - `module_binding` for a dotted module
+    name and `_symbol_module_miss` for a `<module>::<name>` read as
+    `<module>.<name>` (`specs/behaviors/symbol-graph.md`, Module
+    bindings).
+
+    Args:
+        resolved: A root-resolved, dotted module name.
+
+    Returns:
+        The binding, or None where the name is private, the read raised,
+        or the parent binds no module carrying a string `__name__`, or
+        binds a discoverable module of the looked-up name.
+    """
     if is_private_submodule(resolved):
         # NOTE: A private name keeps its own, more specific message
         return None
@@ -750,17 +805,58 @@ def module_binding(name: str) -> ModuleBinding | None:
         return None
 
 
+def _discovery_lists(dotted: str) -> bool | None:
+    """Whether the walk's discovery of its parent lists a dotted name.
+
+    NOTE: Never the parent's attribute - that changes with what the
+    process has imported, while discovery is the evidence the walk
+    itself uses on reaching the name (`specs/behaviors/symbol-graph.md`,
+    Module bindings).
+
+    Args:
+        dotted: A root-resolved, dotted module name.
+
+    Returns:
+        True if discovery lists `dotted`; False where it is private, the
+        parent imports under another `__name__`, or discovery does not
+        list it; None where the read raised.
+    """
+    if is_private_submodule(dotted):
+        return False
+    parent_name = dotted.rsplit(".", 1)[0]
+    try:
+        parent = importlib.import_module(parent_name)
+        if getattr(parent, "__name__", None) != parent_name:
+            # NOTE: Read as the walk reads it, under the parent's own
+            # `__name__` - a `sys.modules` alias to another module lists
+            # none of that module's submodules as the parent's
+            # (`specs/behaviors/symbol-graph.md`, Module bindings).
+            return False
+        discoverable = _discoverable_submodules(parent, parent_name)
+    except KeyboardInterrupt:
+        raise
+    except BaseException:
+        # NOTE: An import boundary - importing the parent and listing
+        # its `__path__` run package code, which can raise anything, and
+        # the check ends there, so no binding is read either
+        # (`specs/behaviors/output-contract.md`, Import boundaries;
+        # `specs/behaviors/symbol-graph.md`, Module bindings).
+        return None
+    return dotted in discoverable
+
+
 def describe_module_binding(name: str, binding: ModuleBinding) -> str:
     """Spell a module-binding miss as the fact every surface shares.
 
     NOTE: A fact, never a next step - the `inspect` message carrying it
-    is shared with `showModuleTool`, so it names no command or tool
-    (`specs/mcp/tools.md`, Error message wording); each hint appends
-    its own surface's next step.
+    is shared with `showModuleTool` and `getSymbolTool`, so it names no
+    command or tool (`specs/mcp/tools.md`, Error message wording); each
+    hint appends its own surface's next step.
 
     Args:
-        name: The caller's name, as given.
-        binding: The binding `module_binding` diagnosed for it.
+        name: The caller's name, as given - a dotted module name, or a
+            `<module>::<name>` symbol spelling read as one.
+        binding: The binding diagnosed for it.
 
     Returns:
         The fact phrase, e.g. `` `pkg.impl` is bound to private module
@@ -1138,6 +1234,69 @@ def _resolve_facade_member(
     return store.get_node(f"{canonical}.{member}")
 
 
+def _symbol_module_miss(
+    store: SymbolStore, qualified_name: str, resolved: str, built_depth: int
+) -> SymbolModuleMissError | None:
+    """Diagnose a missed `<module>::<name>` as the module it names.
+
+    NOTE: `from <module> import <name>` names a module as readily as a
+    symbol, and the walk never records a module as a symbol, so the
+    miss is read against `<module>.<name>` (`specs/commands/inspect.md`,
+    Failure modes). A module answers first - the graph's node within
+    the lookup's depth, the walk's discovery below it, never the
+    parent's attribute - so the lookup's depth, never the cache's,
+    fixes which evidence decides; only where none answers, and
+    discovery did not raise, is the live binding read
+    (`specs/behaviors/symbol-graph.md`, Module bindings).
+
+    Args:
+        store: The open `SymbolStore` the lookup missed against.
+        qualified_name: The caller's symbol name, as given.
+        resolved: Its root-resolved spelling.
+        built_depth: The lookup's depth (`specs/commands/inspect.md`,
+            Data requirements).
+
+    Returns:
+        The diagnosed miss, carrying the module a module lookup answers
+        or None, or None where the name keeps the generic wording.
+    """
+    module_part, _, symbol_part = resolved.partition("::")
+    if not symbol_part.isidentifier():
+        # NOTE: A dotted tail, an empty tail or a second `::` - reading
+        # one across separators is a guessed correction, never a fact.
+        return None
+    dotted = f"{module_part}.{symbol_part}"
+    if is_private_submodule(dotted):
+        return None
+    if _module_offset(dotted) <= built_depth:
+        node = store.get_node(dotted)
+        is_module = node is not None and node.kind in (
+            NodeKind.MODULE,
+            NodeKind.PACKAGE,
+        )
+    else:
+        listed = _discovery_lists(dotted)
+        if listed is None:
+            # NOTE: Discovery could not be read, so whether a module
+            # answers is unknown and no binding is read - the miss
+            # keeps its existing wording.
+            return None
+        is_module = listed
+    if is_module:
+        # NOTE: The module's existence and no more - a parent attribute
+        # the walk did not record can shadow a submodule of the same
+        # name, so neither a node nor discovery can say what `<module>`
+        # binds `<name>` to.
+        msg = f"Symbol `{qualified_name}` not found - `{dotted}` is a module"
+        return SymbolModuleMissError(msg, dotted)
+    binding = _read_module_binding(dotted)
+    if binding is None:
+        return None
+    msg = f"Symbol {describe_module_binding(qualified_name, binding)}"
+    is_alias = binding.case is ModuleBindingCase.ALIAS
+    return SymbolModuleMissError(msg, binding.target if is_alias else None)
+
+
 def get_symbol(qualified_name: str, *, refresh: bool = False) -> SymbolNode:
     """Fetch a single symbol node by its qualified name.
 
@@ -1146,21 +1305,31 @@ def get_symbol(qualified_name: str, *, refresh: bool = False) -> SymbolNode:
         refresh: Rebuild the cached graph first. Defaults to False.
 
     Raises:
-        SymbolNotFoundError: If no matching node exists.
+        SymbolNotFoundError: If no matching node exists - as a
+            `SymbolModuleMissError` where `<module>::<name>` reads as a
+            module: the graph's node within the lookup's depth, the
+            walk's discovery below it, or a module binding.
 
     Returns:
         The matching `SymbolNode`.
     """
     resolved = _resolve_qualified_name(qualified_name)
+    built_depth = max(DEFAULT_MAX_DEPTH, _module_offset(resolved))
     with _build_store_for(
-        qualified_name,
-        max_depth=max(DEFAULT_MAX_DEPTH, _module_offset(resolved)),
-        refresh=refresh,
+        qualified_name, max_depth=built_depth, refresh=refresh
     ) as store:
         node = store.get_node(resolved)
         if node is None:
             node = _resolve_facade_member(store, resolved)
         if node is None:
+            # NOTE: Only after member resolution has missed, so a name
+            # that is a real symbol keeps its answer; inside the `with`,
+            # so the store closes on any escape from either guarded read.
+            error = _symbol_module_miss(
+                store, qualified_name, resolved, built_depth
+            )
+            if error is not None:
+                raise error
             msg = f"Symbol `{qualified_name}` not found"
             raise SymbolNotFoundError(msg)
         return node
