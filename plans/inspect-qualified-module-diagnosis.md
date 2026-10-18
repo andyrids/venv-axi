@@ -2,7 +2,7 @@
 context-hierarchy: Layer 4
 context-hierarchy-role: Working artifact
 immutable: false
-status: in-progress
+status: done
 depends: []
 specs:
   - specs/behaviors/output-contract.md
@@ -12,7 +12,7 @@ specs:
   - specs/mcp/tools.md
 authors: []
 issues: [143]
-pr:
+pr: 154
 ---
 
 # Plan: Inspect qualified module diagnosis
